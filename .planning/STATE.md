@@ -3,20 +3,20 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 1b-01-design-system
-last_updated: "2026-04-28T17:58:27Z"
+stopped_at: Completed 1b-02-component-refactor
+last_updated: "2026-04-28T18:25:00Z"
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 0
-  completed_plans: 7
+  completed_plans: 6
 ---
 
 ## Current Position
 
 - **Phase:** 01b-visual-refinement-argon
-- **Plan:** 01 (completed)
-- **Stopped at:** Completed 1b-01-design-system
+- **Plan:** 02 (completed)
+- **Stopped at:** Completed 1b-02-component-refactor
 
 ## Decisions
 
@@ -36,6 +36,10 @@ progress:
 - Single theme mechanism: .dark class on html, no applyTheme() (D-07)
 - Status tokens paired bg+fg for dark mode contrast safety (D-11)
 - Sidebar vars kept as Argon dark navy in both themes (always-dark sidebar)
+- StatusBadge/SeverityBadge use inline style with CSS vars — bg-[oklch(...)] syntax not supported in Tailwind v4 for dynamic vars
+- Status dot hex colors (#2dce89/#fb6340/#f5365c/#95959e) are allowlisted — constant across themes by design
+- SparklineChart uses key={isDark} to force Chart.js re-mount on theme change
+- success/info button variants added to shadcn CVA config
 
 ## Performance Metrics
 
@@ -48,9 +52,10 @@ progress:
 | 01 | 05 | ~15min | 2 | 11 |
 | 01 | 06 | ~15min | 2 | 9 |
 | 1b | 01 | ~15min | 4 | 3 |
+| 1b | 02 | ~15min | 9 | 40 |
 
 ## Last Session
 
-- **Timestamp:** 2026-04-28T17:58:27Z
-- **Stopped at:** Completed 1b-01-design-system
+- **Timestamp:** 2026-04-28T18:25:00Z
+- **Stopped at:** Completed 1b-02-component-refactor
 - **Resume file:** None
