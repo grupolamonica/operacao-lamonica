@@ -17,9 +17,10 @@ export function MapPlaceholder({ height = 400, showLegend = true }: Props) {
     >
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="text-center">
-          <MapIcon className="h-12 w-12 mx-auto text-gray-400 mb-2" />
-          <p className="text-sm text-gray-300">Mapa será carregado na Phase 3</p>
-          <p className="text-xs text-gray-500 mt-1">Mapbox GL JS</p>
+          {/* text-slate-* intentional: overlaid on always-dark map gradient, theme token not applicable */}
+          <MapIcon className="h-12 w-12 mx-auto text-slate-400 mb-2" />
+          <p className="text-sm text-slate-300">Mapa será carregado na Phase 3</p>
+          <p className="text-xs text-slate-500 mt-1">Mapbox GL JS</p>
         </div>
       </div>
 
