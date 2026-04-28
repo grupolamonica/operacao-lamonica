@@ -1,13 +1,8 @@
 import { NavLink } from 'react-router-dom'
 import {
-  Sidebar, SidebarContent, SidebarHeader, SidebarFooter,
-  SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarGroup,
-} from '@/components/ui/sidebar'
-import {
   LayoutDashboard, Radio, Truck, Users, MapPin,
-  AlertTriangle, BarChart3, Settings, ChevronLeft, Antenna,
+  AlertTriangle, BarChart3, Settings, Antenna,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
 
 const navItems = [
   { to: '/dashboard',         label: 'Dashboard',          icon: LayoutDashboard },
@@ -22,63 +17,175 @@ const navItems = [
 
 export function AppSidebar() {
   return (
-    <Sidebar collapsible="icon" className="border-r-0">
-      <SidebarHeader className="bg-sidebar">
-        <div className="flex items-center gap-2 px-3 py-4">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-sidebar-primary">
-            <Antenna className="h-5 w-5 text-white" />
-          </div>
-          <div className="flex flex-col leading-tight group-data-[collapsible=icon]:hidden">
-            <span className="text-[11px] font-bold tracking-widest text-white">TORRE DE CONTROLE</span>
-            <span className="text-[10px] tracking-widest text-sidebar-primary">DE ENTREGAS</span>
-          </div>
-        </div>
-      </SidebarHeader>
-
-      <SidebarContent className="bg-sidebar">
-        <SidebarGroup>
-          <SidebarMenu>
-            {navItems.map(({ to, label, icon: Icon, ...rest }) => {
-              const badge = 'badge' in rest ? rest.badge : undefined
-              return (
-                <SidebarMenuItem key={to}>
-                  <NavLink to={to}>
-                    {({ isActive }) => (
-                      <SidebarMenuButton
-                        asChild
-                        isActive={isActive}
-                        className={cn(
-                          'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-                          'data-[active=true]:bg-sidebar-primary data-[active=true]:text-sidebar-primary-foreground'
-                        )}
-                      >
-                        <span className="flex items-center gap-3 w-full">
-                          <Icon className="h-4 w-4" />
-                          <span className="flex-1 group-data-[collapsible=icon]:hidden">{label}</span>
-                          {badge !== undefined && (
-                            <span className="ml-auto rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white group-data-[collapsible=icon]:hidden">
-                              {badge}
-                            </span>
-                          )}
-                        </span>
-                      </SidebarMenuButton>
-                    )}
-                  </NavLink>
-                </SidebarMenuItem>
-              )
-            })}
-          </SidebarMenu>
-        </SidebarGroup>
-      </SidebarContent>
-
-      <SidebarFooter className="bg-sidebar">
-        <button
-          className="flex items-center gap-2 px-3 py-2 text-xs text-sidebar-foreground hover:text-sidebar-accent-foreground"
+    <nav
+      style={{
+        position: 'fixed',
+        top: '12px',
+        left: '12px',
+        width: '250px',
+        height: 'calc(100vh - 24px)',
+        background: 'var(--sidebar)',
+        borderRadius: '1rem',
+        boxShadow: '0 0 2rem 0 rgba(136, 152, 170, 0.15)',
+        display: 'flex',
+        flexDirection: 'column',
+        overflowY: 'auto',
+        zIndex: 50,
+      }}
+    >
+      {/* Logo area */}
+      <div
+        style={{
+          padding: '1.25rem 1.5rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+          borderBottom: '1px solid var(--sidebar-border)',
+        }}
+      >
+        <div
+          style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: '0.75rem',
+            background: 'linear-gradient(310deg, #5e72e4 0%, #825ee4 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
         >
-          <ChevronLeft className="h-4 w-4" />
-          <span className="group-data-[collapsible=icon]:hidden">Recolher menu</span>
-        </button>
-      </SidebarFooter>
-    </Sidebar>
+          <Antenna style={{ width: '18px', height: '18px', color: 'white' }} />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.2' }}>
+          <span
+            style={{
+              fontSize: '11px',
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+              color: 'var(--sidebar-foreground)',
+            }}
+          >
+            TORRE DE CONTROLE
+          </span>
+          <span
+            style={{
+              fontSize: '10px',
+              letterSpacing: '0.05em',
+              color: 'var(--sidebar-primary)',
+            }}
+          >
+            DE ENTREGAS
+          </span>
+        </div>
+      </div>
+
+      {/* Navigation */}
+      <div style={{ flex: 1, padding: '0.75rem 0' }}>
+        <p
+          style={{
+            fontSize: '10px',
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+            opacity: 0.6,
+            padding: '0.25rem 1.5rem 0.5rem',
+            color: 'var(--sidebar-foreground)',
+            marginTop: '0.5rem',
+          }}
+        >
+          Menu
+        </p>
+
+        {navItems.map(({ to, label, icon: Icon, ...rest }) => {
+          const badge = 'badge' in rest ? rest.badge : undefined
+          return (
+            <NavLink
+              key={to}
+              to={to}
+              style={{ textDecoration: 'none', display: 'block', margin: '1px 8px' }}
+            >
+              {({ isActive }) => (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '0.5rem 1rem',
+                    borderRadius: '0.5rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    background: isActive
+                      ? 'linear-gradient(310deg, #5e72e4 0%, #825ee4 100%)'
+                      : 'transparent',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.background = 'var(--sidebar-accent)'
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.background = 'transparent'
+                    }
+                  }}
+                >
+                  {/* Icon wrapper */}
+                  <div
+                    style={{
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '0.5rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: '0.75rem',
+                      flexShrink: 0,
+                      background: isActive
+                        ? 'rgba(255, 255, 255, 0.2)'
+                        : 'var(--sidebar-accent)',
+                    }}
+                  >
+                    <Icon
+                      style={{
+                        width: '14px',
+                        height: '14px',
+                        color: isActive ? 'white' : 'var(--sidebar-primary)',
+                      }}
+                    />
+                  </div>
+
+                  <span
+                    style={{
+                      flex: 1,
+                      fontSize: '13px',
+                      fontWeight: isActive ? 600 : 400,
+                      color: isActive ? 'white' : 'var(--sidebar-foreground)',
+                    }}
+                  >
+                    {label}
+                  </span>
+
+                  {badge !== undefined && (
+                    <span
+                      style={{
+                        marginLeft: 'auto',
+                        borderRadius: '9999px',
+                        background: isActive ? 'rgba(255,255,255,0.25)' : '#ef4444',
+                        padding: '1px 7px',
+                        fontSize: '10px',
+                        fontWeight: 700,
+                        color: 'white',
+                      }}
+                    >
+                      {badge}
+                    </span>
+                  )}
+                </div>
+              )}
+            </NavLink>
+          )
+        })}
+      </div>
+    </nav>
   )
 }

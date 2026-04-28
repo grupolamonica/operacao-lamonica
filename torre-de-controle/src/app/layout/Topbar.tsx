@@ -1,57 +1,76 @@
-import { Search, Bell, Filter, Calendar, Sun, Moon } from 'lucide-react'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
+import { Bell, Sun, Moon } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { SidebarTrigger } from '@/components/ui/sidebar'
 import { useThemeStore } from '@/stores/useThemeStore'
+import { useLocation } from 'react-router-dom'
+
+const routeNames: Record<string, string> = {
+  '/dashboard': 'Dashboard',
+  '/torre-de-controle': 'Torre de Controle',
+  '/viagens': 'Viagens',
+  '/motoristas': 'Motoristas',
+  '/alertas': 'Alertas',
+  '/geofences': 'Geofences',
+  '/insights': 'Insights',
+  '/configuracoes': 'Configurações',
+}
 
 export function Topbar() {
   const { isDark, toggleTheme } = useThemeStore()
+  const { pathname } = useLocation()
+  const currentPage = routeNames[pathname] ?? 'Dashboard'
 
   return (
-    <header className="flex h-14 items-center gap-4 border-b border-border bg-card px-4 shrink-0">
-      <SidebarTrigger />
-      <div className="relative flex-1 max-w-xl">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar viagens, motoristas, clientes..."
-          className="pl-9 pr-16 h-9 bg-secondary border-border"
-        />
-        <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-mono text-muted-foreground border border-border rounded px-1.5 py-0.5">⌘K</kbd>
+    <nav
+      style={{ background: 'transparent' }}
+      className="flex items-center justify-between px-6 py-3"
+    >
+      {/* Left: breadcrumb + page title */}
+      <div>
+        <p className="text-white/60 text-xs mb-0 leading-none">Páginas / {currentPage}</p>
+        <h6 className="text-white font-bold text-sm mb-0 mt-0.5 leading-none">{currentPage}</h6>
       </div>
 
-      <Button variant="outline" size="sm" className="gap-2 text-xs">
-        <Calendar className="h-3.5 w-3.5" />
-        20/05/2025 00:00 — 20/05/2025 23:59
-      </Button>
-
-      <Button variant="outline" size="sm" className="gap-2 text-xs">
-        <Filter className="h-3.5 w-3.5" />
-        Filtros
-      </Button>
-
-      <button className="relative p-2 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors">
-        <Bell className="h-4 w-4" />
-        <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" />
-      </button>
-
-      <button
-        onClick={toggleTheme}
-        className="p-2 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-        aria-label="Alternar tema"
-      >
-        {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-      </button>
-
+      {/* Right: actions */}
       <div className="flex items-center gap-3">
-        <Avatar className="h-8 w-8">
-          <AvatarFallback className="bg-primary text-primary-foreground text-xs">AS</AvatarFallback>
-        </Avatar>
-        <div className="flex flex-col leading-tight">
-          <span className="text-xs font-semibold text-foreground">Ana Silva</span>
-          <span className="text-[10px] text-muted-foreground">Torre de Controle</span>
+        {/* Notification bell */}
+        <button
+          className="relative p-2 rounded-lg transition-colors"
+          style={{ color: 'white' }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+        >
+          <Bell className="h-4 w-4" />
+          <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-red-400" />
+        </button>
+
+        {/* Theme toggle */}
+        <button
+          onClick={toggleTheme}
+          className="p-2 rounded-lg transition-colors"
+          style={{ color: 'white' }}
+          aria-label="Alternar tema"
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+        >
+          {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </button>
+
+        {/* User avatar */}
+        <div className="flex items-center gap-2">
+          <Avatar className="h-8 w-8">
+            <AvatarFallback
+              style={{ background: 'linear-gradient(310deg, #5e72e4 0%, #825ee4 100%)' }}
+              className="text-white text-xs font-bold"
+            >
+              AS
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex flex-col leading-tight">
+            <span className="text-xs font-semibold text-white">Ana Silva</span>
+            <span className="text-[10px] text-white/60">Torre de Controle</span>
+          </div>
         </div>
       </div>
-    </header>
+    </nav>
   )
 }

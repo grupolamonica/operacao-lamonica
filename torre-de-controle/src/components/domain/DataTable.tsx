@@ -34,7 +34,7 @@ export function DataTable<T extends { id: string }>({
   const table = useReactTable({
     data,
     columns,
-    getRowId: (row) => row.id,  // CRITICAL — RESEARCH Pitfall 8
+    getRowId: (row) => row.id,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -44,14 +44,33 @@ export function DataTable<T extends { id: string }>({
   })
 
   return (
-    <div className="bg-card rounded-lg border border-border overflow-hidden">
+    <div
+      className="bg-card overflow-hidden"
+      style={{
+        borderRadius: '1rem',
+        boxShadow: '0 0 2rem 0 rgba(136, 152, 170, 0.15)',
+        border: 'none',
+      }}
+    >
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map(hg => (
-              <TableRow key={hg.id}>
+              <TableRow key={hg.id} style={{ borderBottom: '1px solid var(--border)' }}>
                 {hg.headers.map(h => (
-                  <TableHead key={h.id} className="text-xs font-semibold text-foreground uppercase tracking-wide bg-secondary">
+                  <TableHead
+                    key={h.id}
+                    className="px-4 py-3"
+                    style={{
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.08em',
+                      color: 'var(--muted-foreground)',
+                      opacity: 0.7,
+                      background: 'transparent',
+                    }}
+                  >
                     {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
                   </TableHead>
                 ))}
@@ -61,7 +80,10 @@ export function DataTable<T extends { id: string }>({
           <TableBody>
             {table.getRowModel().rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={columns.length} className="text-center text-sm text-muted-foreground py-8">
+                <TableCell
+                  colSpan={columns.length}
+                  className="text-center text-sm text-muted-foreground py-8"
+                >
                   {emptyMessage}
                 </TableCell>
               </TableRow>
@@ -71,13 +93,30 @@ export function DataTable<T extends { id: string }>({
                   key={row.id}
                   onClick={() => onRowClick?.(row.original)}
                   className={cn(
-                    'border-b border-border',
                     onRowClick && 'cursor-pointer',
-                    row.id === selectedId ? 'bg-primary/10 hover:bg-primary/15' : 'hover:bg-accent',
                   )}
+                  style={{
+                    borderBottom: '1px solid var(--border)',
+                    background: row.id === selectedId ? 'rgba(94,114,228,0.08)' : undefined,
+                    transition: 'background 0.15s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (row.id !== selectedId) {
+                      e.currentTarget.style.background = 'var(--accent)'
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (row.id !== selectedId) {
+                      e.currentTarget.style.background = ''
+                    }
+                  }}
                 >
                   {row.getVisibleCells().map(cell => (
-                    <TableCell key={cell.id} className="text-sm">
+                    <TableCell
+                      key={cell.id}
+                      className="px-4 py-3 text-sm"
+                      style={{ color: 'var(--foreground)' }}
+                    >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
@@ -89,15 +128,28 @@ export function DataTable<T extends { id: string }>({
       </div>
 
       {table.getPageCount() > 1 && (
-        <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-secondary/40">
+        <div
+          className="flex items-center justify-between px-4 py-3"
+          style={{ borderTop: '1px solid var(--border)' }}
+        >
           <span className="text-xs text-muted-foreground">
             Página {table.getState().pagination.pageIndex + 1} de {table.getPageCount()} ({data.length} registros)
           </span>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+            >
               <ChevronLeft className="h-3.5 w-3.5" />
             </Button>
-            <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+            >
               <ChevronRight className="h-3.5 w-3.5" />
             </Button>
           </div>

@@ -1,46 +1,54 @@
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700&display=swap');
 @import "tailwindcss";
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* shadcn base — light theme (Argon-aligned oklch values) */
-  --background: oklch(0.982 0.004 210.0);       /* #f7fafc */
-  --foreground: oklch(0.265 0.065 265.0);        /* #32325d */
-  --card: oklch(1 0 0);                           /* white */
-  --card-foreground: oklch(0.265 0.065 265.0);
+  color-scheme: light;
+  --background: oklch(0.980 0.002 252.0);
+  --foreground: oklch(0.540 0.030 250.0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.355 0.060 252.0);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.265 0.065 265.0);
-  --primary: oklch(0.485 0.224 258.6);            /* #0f62fe */
+  --popover-foreground: oklch(0.355 0.060 252.0);
+  --primary: oklch(0.545 0.194 266.5);
   --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.265 0.065 265.0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.620 0.010 265.0);  /* #95959e */
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.265 0.065 265.0);
-  --destructive: oklch(0.605 0.235 12.0);         /* #f5365c */
-  --border: oklch(0.910 0.005 265.0);             /* #e3e3e3 approx */
-  --input: oklch(0.910 0.005 265.0);
-  --ring: oklch(0.485 0.224 258.6);
-  --radius: 0.5rem;
+  --secondary: oklch(0.625 0.035 250.0);
+  --secondary-foreground: oklch(1 0 0);
+  --muted: oklch(0.980 0.002 252.0);
+  --muted-foreground: oklch(0.540 0.030 250.0);
+  --accent: oklch(0.960 0.005 252.0);
+  --accent-foreground: oklch(0.355 0.060 252.0);
+  --destructive: oklch(0.605 0.235 12.0);
+  --border: oklch(0.900 0.005 252.0);
+  --input: oklch(0.900 0.005 252.0);
+  --ring: oklch(0.545 0.194 266.5);
+  --radius: 1rem;
 
   /* Argon semantic tokens */
-  --success: oklch(0.745 0.168 160.0);           /* #2dce89 */
-  --warning: oklch(0.705 0.195 38.0);            /* #fb6340 */
-  --danger: oklch(0.605 0.235 12.0);             /* #f5365c */
-  --info: oklch(0.810 0.145 205.0);              /* #11cdef */
+  --success: oklch(0.745 0.168 160.0);
+  --warning: oklch(0.705 0.195 38.0);
+  --danger: oklch(0.605 0.235 12.0);
+  --info: oklch(0.760 0.145 205.0);
 
-  /* Sidebar dark navy — independente do tema global */
-  --sidebar: #1a1a2e;
-  --sidebar-foreground: #8892b0;
-  --sidebar-primary: #0f62fe;
+  /* App background */
+  --app-background: oklch(0.980 0.002 252.0);
+
+  /* Dark band */
+  --dark-band: linear-gradient(310deg, #212229 0%, #212529 100%);
+  --dark-band-bg: #212529;
+
+  /* Sidebar — light theme: white floating */
+  --sidebar: #ffffff;
+  --sidebar-foreground: #67748e;
+  --sidebar-primary: #5e72e4;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: rgba(255, 255, 255, 0.08);
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: rgba(255, 255, 255, 0.08);
-  --sidebar-ring: #0f62fe;
+  --sidebar-accent: rgba(94, 114, 228, 0.1);
+  --sidebar-accent-foreground: #5e72e4;
+  --sidebar-border: rgba(0, 0, 0, 0.05);
+  --sidebar-ring: #5e72e4;
 
-  /* Status colors — paired bg + fg tokens (Argon palette) */
+  /* Status colors — paired bg + fg tokens */
   --status-no-prazo: oklch(0.745 0.168 160.0);
   --status-no-prazo-bg: oklch(0.745 0.168 160.0 / 0.15);
   --status-no-prazo-fg: oklch(0.400 0.120 160.0);
@@ -53,9 +61,6 @@
   --status-sem-sinal: oklch(0.620 0.010 265.0);
   --status-sem-sinal-bg: oklch(0.620 0.010 265.0 / 0.15);
   --status-sem-sinal-fg: oklch(0.420 0.010 265.0);
-
-  /* App background */
-  --app-background: oklch(0.971 0.005 210.0);    /* #f4f6f9 approx */
 }
 
 @theme inline {
@@ -114,7 +119,7 @@
   --radius-xl: calc(var(--radius) + 4px);
 
   /* Typography */
-  --font-sans: "Segoe UI", -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+  --font-sans: "Open Sans", -apple-system, BlinkMacSystemFont, sans-serif;
   --text-display: 2.5rem;
   --text-heading: 2rem;
   --text-subheading: 1.5rem;
@@ -123,45 +128,85 @@
   --text-tiny: 0.75rem;
 
   /* Shadows */
-  --shadow-sm: 0 1px 3px oklch(0 0 0 / 0.08);
-  --shadow-md: 0 4px 6px oklch(0 0 0 / 0.10), 0 1px 3px oklch(0 0 0 / 0.06);
-  --shadow-lg: 0 10px 25px oklch(0 0 0 / 0.15), 0 4px 10px oklch(0 0 0 / 0.08);
-  --shadow-xl: 0 20px 40px oklch(0 0 0 / 0.20), 0 8px 20px oklch(0 0 0 / 0.10);
+  --shadow-sm: 0 0.3125rem 0.625rem 0 rgba(0, 0, 0, 0.12);
+  --shadow-md: 0 0.25rem 0.375rem -0.0625rem rgba(20, 20, 20, 0.12), 0 0.125rem 0.25rem -0.0625rem rgba(20, 20, 20, 0.07);
+  --shadow-lg: 0 8px 26px -4px rgba(20, 20, 20, 0.15), 0 8px 9px -5px rgba(20, 20, 20, 0.06);
+  --shadow-card: 0 0 2rem 0 rgba(136, 152, 170, 0.15);
 }
 
 * { border-color: var(--border); }
 
 html, body, #root { height: 100%; }
-body { background: var(--app-background); color: var(--foreground); font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, "Inter", sans-serif; }
+
+body {
+  background: var(--app-background);
+  color: var(--foreground);
+  font-family: "Open Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+}
 
 .dark {
-  --background: oklch(0.145 0.025 265.0);       /* #1a1a2e dark navy */
-  --foreground: oklch(0.985 0 0);               /* white text */
-  --card: oklch(0.185 0.025 265.0);             /* #262641 */
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.185 0.025 265.0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.485 0.224 258.6);           /* same blue */
+  color-scheme: dark;
+  --background: oklch(0.195 0.005 252.0);
+  --foreground: oklch(0.900 0.005 252.0);
+  --card: oklch(0.240 0.030 252.0);
+  --card-foreground: oklch(0.900 0.005 252.0);
+  --popover: oklch(0.240 0.030 252.0);
+  --popover-foreground: oklch(0.900 0.005 252.0);
+  --primary: oklch(0.545 0.194 266.5);
   --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.220 0.020 265.0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.220 0.020 265.0);
-  --muted-foreground: oklch(0.720 0.015 265.0); /* #b0b0c3 */
-  --accent: oklch(0.265 0.020 265.0);
-  --accent-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.280 0.020 252.0);
+  --secondary-foreground: oklch(0.850 0.005 252.0);
+  --muted: oklch(0.280 0.020 252.0);
+  --muted-foreground: oklch(0.680 0.025 252.0);
+  --accent: oklch(0.300 0.025 252.0);
+  --accent-foreground: oklch(0.900 0.005 252.0);
   --destructive: oklch(0.605 0.235 12.0);
-  --border: oklch(0.265 0.020 265.0);           /* #3a3a52 */
-  --input: oklch(0.265 0.020 265.0);
-  --ring: oklch(0.485 0.224 258.6);
+  --border: oklch(0.300 0.020 252.0);
+  --input: oklch(0.300 0.020 252.0);
+  --ring: oklch(0.545 0.194 266.5);
   --app-background: oklch(0.145 0.025 265.0);
 
-  /* Sidebar dark vars (keep Argon dark navy) */
+  /* Sidebar dark stays navy */
   --sidebar: #1a1a2e;
   --sidebar-foreground: #8892b0;
-  --sidebar-primary: #0f62fe;
+  --sidebar-primary: #5e72e4;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: rgba(255, 255, 255, 0.08);
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: rgba(255, 255, 255, 0.08);
-  --sidebar-ring: #0f62fe;
+  --sidebar-ring: #5e72e4;
+}
+
+/* Argon card override */
+.argon-card {
+  border-radius: 1rem;
+  box-shadow: 0 0 2rem 0 rgba(136, 152, 170, 0.15);
+  border: none;
+}
+.dark .argon-card {
+  box-shadow: 0 0 2rem 0 rgba(0, 0, 0, 0.3);
+}
+
+/* Gradient button classes */
+.btn-gradient-primary {
+  background-image: linear-gradient(310deg, #5e72e4 0%, #825ee4 100%);
+  color: white;
+  font-weight: 700;
+  box-shadow: 0 4px 6px rgba(50, 50, 93, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
+  border: none;
+}
+.btn-gradient-primary:hover {
+  box-shadow: 0 7px 14px rgba(50, 50, 93, 0.1), 0 3px 6px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+.btn-gradient-dark {
+  background-image: linear-gradient(310deg, #212229 0%, #212529 100%);
+  color: white;
+  font-weight: 700;
+  box-shadow: 0 4px 6px rgba(50, 50, 93, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
+  border: none;
+}
+.btn-gradient-dark:hover {
+  box-shadow: 0 7px 14px rgba(50, 50, 93, 0.1), 0 3px 6px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
 }
