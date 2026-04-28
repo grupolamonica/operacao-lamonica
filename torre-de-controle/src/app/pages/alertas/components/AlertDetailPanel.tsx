@@ -22,7 +22,7 @@ export function AlertDetailPanel({ alert, onClose }: Props) {
       onClose={onClose}
       footer={
         <div className="flex flex-col gap-2">
-          <Button size="sm" className="w-full bg-[#0f62fe] hover:bg-[#0353d9] text-xs gap-2" onClick={handle('assumir')}>
+          <Button size="sm" className="w-full text-xs gap-2" onClick={handle('assumir')}>
             <Hand className="h-3.5 w-3.5" /> Assumir alerta
           </Button>
           <div className="grid grid-cols-2 gap-2">
@@ -35,7 +35,7 @@ export function AlertDetailPanel({ alert, onClose }: Props) {
             <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={handle('escalar')}>
               <ArrowUpCircle className="h-3.5 w-3.5" /> Escalar alerta
             </Button>
-            <Button size="sm" variant="outline" className="text-xs gap-1.5 text-green-700 border-green-300 hover:bg-green-50" onClick={handle('resolver')}>
+            <Button size="sm" variant="success" className="text-xs gap-1.5" onClick={handle('resolver')}>
               <CheckCircle2 className="h-3.5 w-3.5" /> Marcar como resolvido
             </Button>
           </div>
@@ -45,10 +45,16 @@ export function AlertDetailPanel({ alert, onClose }: Props) {
       <div className="space-y-4">
         <div className="flex items-center gap-2 flex-wrap">
           <SeverityBadge severity={alert.severity} size="md" />
-          <span className="inline-flex items-center rounded-full bg-gray-100 text-gray-700 px-2 py-0.5 text-xs font-medium capitalize">
+          <span
+            className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize"
+            style={{ backgroundColor: 'var(--status-sem-sinal-bg)', color: 'var(--status-sem-sinal-fg)' }}
+          >
             {alert.status.replace('_', ' ')}
           </span>
-          <span className="inline-flex items-center rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-xs font-medium">
+          <span
+            className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+            style={{ backgroundColor: 'color-mix(in oklch, var(--primary) 15%, transparent)', color: 'var(--primary)' }}
+          >
             {alert.source}
           </span>
         </div>
@@ -63,12 +69,12 @@ export function AlertDetailPanel({ alert, onClose }: Props) {
         <Separator />
 
         <div>
-          <h4 className="text-xs font-semibold text-gray-900 mb-2 uppercase tracking-wide">Detalhes</h4>
-          <div className="space-y-2 text-xs text-gray-700">
+          <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Detalhes</h4>
+          <div className="space-y-2 text-xs text-muted-foreground">
             <Row label="Entrega/Rota" value={`${alert.tripCode} · ${alert.routeCode}`} />
             <Row label="Cliente"       value={alert.clientName} />
-            {alert.delayMinutes !== undefined && <Row label="Desvio ETA" value={`+${alert.delayMinutes} min`} highlight="text-red-600" />}
-            {alert.deviationKm !== undefined  && <Row label="Desvio rota" value={`${alert.deviationKm.toFixed(1)} km`} highlight="text-orange-600" />}
+            {alert.delayMinutes !== undefined && <Row label="Desvio ETA" value={`+${alert.delayMinutes} min`} highlight="text-danger" />}
+            {alert.deviationKm !== undefined  && <Row label="Desvio rota" value={`${alert.deviationKm.toFixed(1)} km`} highlight="text-warning" />}
             {alert.lat && alert.lng && <Row label="Local" value={`${alert.lat.toFixed(4)}, ${alert.lng.toFixed(4)}`} mono />}
             <Row label="Descrição" value={alert.description} />
           </div>
@@ -77,12 +83,12 @@ export function AlertDetailPanel({ alert, onClose }: Props) {
         <Separator />
 
         <div>
-          <h4 className="text-xs font-semibold text-gray-900 mb-2 uppercase tracking-wide">Motorista</h4>
+          <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Motorista</h4>
           <div className="flex items-center gap-3">
             <DriverAvatar name={alert.driverName} photoUrl={alert.driverPhoto} size="md" />
             <div className="min-w-0">
-              <p className="text-sm font-medium text-gray-900">{alert.driverName}</p>
-              <p className="text-xs text-gray-500 font-mono">{alert.plate}</p>
+              <p className="text-sm font-medium text-foreground">{alert.driverName}</p>
+              <p className="text-xs text-muted-foreground font-mono">{alert.plate}</p>
             </div>
           </div>
         </div>
@@ -90,9 +96,9 @@ export function AlertDetailPanel({ alert, onClose }: Props) {
         {alert.slaDeadline && (
           <>
             <Separator />
-            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-yellow-700">Prazo SLA da tratativa</p>
-              <p className="text-sm text-yellow-900 mt-0.5">{formatDate(alert.slaDeadline, 'dd/MM HH:mm')} ({formatRelative(alert.slaDeadline)})</p>
+            <div className="rounded-md p-3" style={{ backgroundColor: 'var(--status-em-risco-bg)', borderColor: 'var(--status-em-risco-fg)', border: '1px solid' }}>
+              <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--status-em-risco-fg)' }}>Prazo SLA da tratativa</p>
+              <p className="text-sm mt-0.5 text-foreground">{formatDate(alert.slaDeadline, 'dd/MM HH:mm')} ({formatRelative(alert.slaDeadline)})</p>
             </div>
           </>
         )}
@@ -104,8 +110,8 @@ export function AlertDetailPanel({ alert, onClose }: Props) {
 function Field({ label, value, capitalize }: { label: string; value: string; capitalize?: boolean }) {
   return (
     <div>
-      <p className="text-[10px] text-gray-500 uppercase tracking-wide">{label}</p>
-      <p className={`text-sm font-medium text-gray-900 ${capitalize ? 'capitalize' : ''}`}>{value}</p>
+      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</p>
+      <p className={`text-sm font-medium text-foreground ${capitalize ? 'capitalize' : ''}`}>{value}</p>
     </div>
   )
 }
@@ -113,8 +119,8 @@ function Field({ label, value, capitalize }: { label: string; value: string; cap
 function Row({ label, value, highlight, mono }: { label: string; value: string; highlight?: string; mono?: boolean }) {
   return (
     <div className="flex items-start justify-between gap-3">
-      <span className="text-gray-500 shrink-0">{label}</span>
-      <span className={`text-right ${highlight ?? 'text-gray-900'} ${mono ? 'font-mono' : ''}`}>{value}</span>
+      <span className="text-muted-foreground shrink-0">{label}</span>
+      <span className={`text-right ${highlight ?? 'text-foreground'} ${mono ? 'font-mono' : ''}`}>{value}</span>
     </div>
   )
 }

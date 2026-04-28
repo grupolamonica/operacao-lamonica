@@ -23,19 +23,19 @@ const navItems = [
 export function AppSidebar() {
   return (
     <Sidebar collapsible="icon" className="border-r-0">
-      <SidebarHeader className="bg-[#1a1a2e]">
+      <SidebarHeader className="bg-sidebar">
         <div className="flex items-center gap-2 px-3 py-4">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[#0f62fe]">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-sidebar-primary">
             <Antenna className="h-5 w-5 text-white" />
           </div>
           <div className="flex flex-col leading-tight group-data-[collapsible=icon]:hidden">
             <span className="text-[11px] font-bold tracking-widest text-white">TORRE DE CONTROLE</span>
-            <span className="text-[10px] tracking-widest text-[#0f62fe]">DE ENTREGAS</span>
+            <span className="text-[10px] tracking-widest text-sidebar-primary">DE ENTREGAS</span>
           </div>
         </div>
       </SidebarHeader>
 
-      <SidebarContent className="bg-[#1a1a2e]">
+      <SidebarContent className="bg-sidebar">
         <SidebarGroup>
           <SidebarMenu>
             {navItems.map(({ to, label, icon: Icon, ...rest }) => {
@@ -48,8 +48,8 @@ export function AppSidebar() {
                         asChild
                         isActive={isActive}
                         className={cn(
-                          'text-[#8892b0] hover:bg-white/8 hover:text-white',
-                          'data-[active=true]:bg-[#0f62fe] data-[active=true]:text-white'
+                          'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                          'data-[active=true]:bg-sidebar-primary data-[active=true]:text-sidebar-primary-foreground'
                         )}
                       >
                         <span className="flex items-center gap-3 w-full">
@@ -71,9 +71,9 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="bg-[#1a1a2e]">
+      <SidebarFooter className="bg-sidebar">
         <button
-          className="flex items-center gap-2 px-3 py-2 text-xs text-[#8892b0] hover:text-white"
+          className="flex items-center gap-2 px-3 py-2 text-xs text-sidebar-foreground hover:text-sidebar-accent-foreground"
         >
           <ChevronLeft className="h-4 w-4" />
           <span className="group-data-[collapsible=icon]:hidden">Recolher menu</span>

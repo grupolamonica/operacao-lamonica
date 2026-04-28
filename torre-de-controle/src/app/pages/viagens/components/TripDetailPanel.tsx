@@ -24,7 +24,7 @@ export function TripDetailPanel({ trip, onClose }: Props) {
       onClose={onClose}
       footer={
         <div className="flex gap-2">
-          <Button size="sm" className="flex-1 bg-[#0f62fe] hover:bg-[#0353d9] text-xs gap-1.5"><Eye className="h-3.5 w-3.5" /> Ver detalhes</Button>
+          <Button size="sm" className="flex-1 text-xs gap-1.5"><Eye className="h-3.5 w-3.5" /> Ver detalhes</Button>
           <Button size="sm" variant="outline" className="text-xs gap-1.5"><Pencil className="h-3.5 w-3.5" /> Editar</Button>
           <Button size="sm" variant="outline" className="text-xs gap-1.5"><CalendarClock className="h-3.5 w-3.5" /> Reagendar</Button>
         </div>
@@ -33,7 +33,7 @@ export function TripDetailPanel({ trip, onClose }: Props) {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <StatusBadge status={trip.slaStatus} size="md" />
-          <span className="text-xs text-gray-500">Prioridade: <strong className="text-gray-900 capitalize">{trip.priority}</strong></span>
+          <span className="text-xs text-muted-foreground">Prioridade: <strong className="text-foreground capitalize">{trip.priority}</strong></span>
         </div>
 
         <MapPlaceholder height={160} showLegend={false} />
@@ -50,8 +50,8 @@ export function TripDetailPanel({ trip, onClose }: Props) {
         </div>
 
         <div>
-          <h4 className="text-xs font-semibold text-gray-900 mb-2 uppercase tracking-wide">Linha do tempo</h4>
-          {events.length > 0 ? <TripTimeline events={events} /> : <p className="text-xs text-gray-500">Sem eventos registrados.</p>}
+          <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Linha do tempo</h4>
+          {events.length > 0 ? <TripTimeline events={events} /> : <p className="text-xs text-muted-foreground">Sem eventos registrados.</p>}
         </div>
       </div>
     </SidePanelLayout>
@@ -61,8 +61,8 @@ export function TripDetailPanel({ trip, onClose }: Props) {
 function Metric({ label, value }: { label: string; value: string | number }) {
   return (
     <div>
-      <p className="text-[10px] text-gray-500 uppercase tracking-wide">{label}</p>
-      <p className="text-sm font-medium text-gray-900 truncate">{value}</p>
+      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</p>
+      <p className="text-sm font-medium text-foreground truncate">{value}</p>
     </div>
   )
 }

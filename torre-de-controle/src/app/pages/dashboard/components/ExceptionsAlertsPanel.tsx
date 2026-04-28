@@ -13,10 +13,10 @@ export function ExceptionsAlertsPanel() {
     .slice(0, 5)
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
+    <div className="bg-card border border-border rounded-lg p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-900">Exceções e alertas</h3>
-        <span className="text-xs text-gray-500">{alerts.length} abertos</span>
+        <h3 className="text-sm font-semibold text-foreground">Exceções e alertas</h3>
+        <span className="text-xs text-muted-foreground">{alerts.length} abertos</span>
       </div>
       <div className="space-y-2">
         {top.map(a => (

@@ -8,8 +8,8 @@ export function TorreDeControlePage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-2xl font-bold text-gray-900">Torre de Controle</h1>
-        <p className="text-sm text-gray-500">Fila priorizada de incidentes e operação ativa</p>
+        <h1 className="text-2xl font-bold text-foreground">Torre de Controle</h1>
+        <p className="text-sm text-muted-foreground">Fila priorizada de incidentes e operação ativa</p>
       </header>
 
       <TorreKPIRow />

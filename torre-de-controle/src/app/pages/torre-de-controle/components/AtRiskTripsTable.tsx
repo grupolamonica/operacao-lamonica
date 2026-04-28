@@ -11,8 +11,8 @@ const columns: ColumnDef<Trip>[] = [
     id: 'trip', header: 'Viagem',
     cell: ({ row }) => (
       <div>
-        <p className="text-sm font-mono font-medium text-gray-900">{row.original.code}</p>
-        <p className="text-xs text-gray-500">{row.original.clientName}</p>
+        <p className="text-sm font-mono font-medium text-foreground">{row.original.code}</p>
+        <p className="text-xs text-muted-foreground">{row.original.clientName}</p>
       </div>
     ),
   },
@@ -22,20 +22,20 @@ const columns: ColumnDef<Trip>[] = [
       <div className="flex items-center gap-2">
         <DriverAvatar name={row.original.driverName} size="sm" />
         <div>
-          <p className="text-sm text-gray-900 truncate">{row.original.driverName}</p>
-          <p className="text-xs text-gray-500 font-mono">{row.original.plate}</p>
+          <p className="text-sm text-foreground truncate">{row.original.driverName}</p>
+          <p className="text-xs text-muted-foreground font-mono">{row.original.plate}</p>
         </div>
       </div>
     ),
   },
   {
     id: 'eta', header: 'ETA',
-    cell: ({ row }) => <span className="text-sm tabular-nums">{formatTime(row.original.eta)}</span>,
+    cell: ({ row }) => <span className="text-sm tabular-nums text-foreground">{formatTime(row.original.eta)}</span>,
   },
   {
     id: 'window', header: 'Janela',
     cell: ({ row }) => (
-      <span className="text-xs tabular-nums text-gray-600">
+      <span className="text-xs tabular-nums text-muted-foreground">
         {formatTime(row.original.windowStart)}–{formatTime(row.original.windowEnd)}
       </span>
     ),
@@ -44,7 +44,7 @@ const columns: ColumnDef<Trip>[] = [
     id: 'desvio', header: 'Desvio ETA',
     cell: ({ row }) => {
       const diff = minutesBetween(row.original.windowEnd, row.original.eta)
-      const color = diff > 0 ? 'text-red-600' : diff > -10 ? 'text-orange-600' : 'text-gray-500'
+      const color = diff > 0 ? 'text-danger' : diff > -10 ? 'text-warning' : 'text-muted-foreground'
       return (
         <span className={`text-sm font-medium tabular-nums ${color}`}>
           {diff > 0 ? `+${diff}` : diff} min
@@ -67,8 +67,8 @@ export function AtRiskTripsTable() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-base font-semibold text-gray-900">Viagens em maior risco</h3>
-        <span className="text-xs text-gray-500">{atRisk.length} viagens</span>
+        <h3 className="text-base font-semibold text-foreground">Viagens em maior risco</h3>
+        <span className="text-xs text-muted-foreground">{atRisk.length} viagens</span>
       </div>
       <DataTable
         data={atRisk}

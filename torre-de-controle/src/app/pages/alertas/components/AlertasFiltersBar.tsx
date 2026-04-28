@@ -28,7 +28,7 @@ export function AlertasFiltersBar({ filters, onChange }: Props) {
     onChange({ ...filters, [key]: value })
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+    <div className="bg-card border border-border rounded-lg p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
       <Filter label="Tipo de alerta">
         <Select value={filters.type ?? '__all'} onValueChange={(v) => set('type', v === '__all' ? undefined : v as AlertType)}>
           <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
@@ -87,7 +87,7 @@ export function AlertasFiltersBar({ filters, onChange }: Props) {
 function Filter({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
-      <Label className="text-[10px] uppercase tracking-wide text-gray-500">{label}</Label>
+      <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</Label>
       {children}
     </div>
   )

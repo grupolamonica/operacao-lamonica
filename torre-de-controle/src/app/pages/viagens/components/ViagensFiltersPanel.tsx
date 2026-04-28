@@ -20,16 +20,16 @@ export function ViagensFiltersPanel({ filters, onChange }: Props) {
     onChange({ ...filters, [key]: value })
 
   return (
-    <aside className="bg-white border border-gray-200 rounded-lg p-4 space-y-4 sticky top-0">
+    <aside className="bg-card border border-border rounded-lg p-4 space-y-4 sticky top-0">
       <div>
-        <h3 className="text-sm font-semibold text-gray-900">Filtros</h3>
-        <p className="text-xs text-gray-500">Refinar por critérios</p>
+        <h3 className="text-sm font-semibold text-foreground">Filtros</h3>
+        <p className="text-xs text-muted-foreground">Refinar por critérios</p>
       </div>
 
       <div className="space-y-1.5">
         <Label className="text-xs">Motorista (busca)</Label>
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
             placeholder="Nome do motorista"
             value={filters.driverName ?? ''}
@@ -104,7 +104,7 @@ export function ViagensFiltersPanel({ filters, onChange }: Props) {
 
       <button
         onClick={() => onChange({})}
-        className="text-xs text-[#0f62fe] hover:underline"
+        className="text-xs text-primary hover:underline"
       >
         Limpar filtros
       </button>

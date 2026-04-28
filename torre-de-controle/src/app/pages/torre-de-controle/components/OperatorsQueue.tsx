@@ -16,10 +16,11 @@ const operators: Operator[] = [
   { id: 'op-005', name: 'Eduarda Pinto', status: 'offline',   activeAlerts: 0 },
 ]
 
+// Status dot colors — semantic constants, same in both themes
 const dotMap = {
-  available: 'bg-[#2ecc71]',
-  busy:      'bg-[#f39c12]',
-  offline:   'bg-[#95a5a6]',
+  available: 'bg-[#2dce89]',
+  busy:      'bg-[#fb6340]',
+  offline:   'bg-[#95959e]',
 } as const
 
 const labelMap = {
@@ -30,8 +31,8 @@ const labelMap = {
 
 export function OperatorsQueue() {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
-      <h3 className="text-sm font-semibold text-gray-900">Fila de operadores</h3>
+    <div className="bg-card border border-border rounded-lg p-4 space-y-3">
+      <h3 className="text-sm font-semibold text-foreground">Fila de operadores</h3>
       <ul className="space-y-2">
         {operators.map(op => {
           const initials = op.name.split(' ').slice(0, 2).map(n => n[0]).join('')
@@ -39,21 +40,21 @@ export function OperatorsQueue() {
             <li key={op.id} className="flex items-center gap-3 py-1.5">
               <div className="relative">
                 <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-gray-200 text-gray-700 text-xs">{initials}</AvatarFallback>
+                  <AvatarFallback className="bg-secondary text-foreground text-xs">{initials}</AvatarFallback>
                 </Avatar>
                 <span
                   className={cn(
-                    'absolute bottom-0 right-0 h-2 w-2 rounded-full border-2 border-white',
+                    'absolute bottom-0 right-0 h-2 w-2 rounded-full border-2 border-card',
                     dotMap[op.status],
                   )}
                 />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-gray-900 truncate">{op.name}</p>
-                <p className="text-xs text-gray-500">{labelMap[op.status]}</p>
+                <p className="text-sm text-foreground truncate">{op.name}</p>
+                <p className="text-xs text-muted-foreground">{labelMap[op.status]}</p>
               </div>
               {op.activeAlerts > 0 && (
-                <span className="text-[10px] font-bold bg-[#0f62fe] text-white rounded-full px-2 py-0.5">
+                <span className="text-[10px] font-bold bg-primary text-primary-foreground rounded-full px-2 py-0.5">
                   {op.activeAlerts}
                 </span>
               )}

@@ -17,8 +17,8 @@ export function AlertasPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-2xl font-bold text-gray-900">Alertas</h1>
-        <p className="text-sm text-gray-500">Lista priorizada e tratativas</p>
+        <h1 className="text-2xl font-bold text-foreground">Alertas</h1>
+        <p className="text-sm text-muted-foreground">Lista priorizada e tratativas</p>
       </header>
 
       <AlertasKPIRow />

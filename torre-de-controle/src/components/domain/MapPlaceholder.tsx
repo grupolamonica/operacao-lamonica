@@ -12,7 +12,7 @@ export function MapPlaceholder({ height = 400, showLegend = true }: Props) {
 
   return (
     <div
-      className="relative rounded-lg overflow-hidden border border-gray-200"
+      className="relative rounded-lg overflow-hidden border border-border"
       style={{ height, background: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)' }}
     >
       <div className="absolute inset-0 flex items-center justify-center">
@@ -23,12 +23,12 @@ export function MapPlaceholder({ height = 400, showLegend = true }: Props) {
         </div>
       </div>
 
-      <div className="absolute top-3 right-3 flex bg-white rounded-md shadow-sm overflow-hidden text-xs">
+      <div className="absolute top-3 right-3 flex bg-card rounded-md shadow-sm overflow-hidden text-xs">
         <button
           onClick={() => setMode('mapa')}
           className={cn(
-            'px-3 py-1.5 flex items-center gap-1.5',
-            mode === 'mapa' ? 'bg-[#0f62fe] text-white' : 'text-gray-700 hover:bg-gray-50',
+            'px-3 py-1.5 flex items-center gap-1.5 transition-colors',
+            mode === 'mapa' ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-accent',
           )}
         >
           <MapIcon className="h-3 w-3" /> Mapa
@@ -36,8 +36,8 @@ export function MapPlaceholder({ height = 400, showLegend = true }: Props) {
         <button
           onClick={() => setMode('satelite')}
           className={cn(
-            'px-3 py-1.5 flex items-center gap-1.5',
-            mode === 'satelite' ? 'bg-[#0f62fe] text-white' : 'text-gray-700 hover:bg-gray-50',
+            'px-3 py-1.5 flex items-center gap-1.5 transition-colors',
+            mode === 'satelite' ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-accent',
           )}
         >
           <Satellite className="h-3 w-3" /> Satélite
@@ -45,11 +45,12 @@ export function MapPlaceholder({ height = 400, showLegend = true }: Props) {
       </div>
 
       {showLegend && (
-        <div className="absolute bottom-3 left-3 bg-white rounded-md shadow-sm px-3 py-2 text-xs space-y-1">
-          <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#2ecc71]" /> No prazo</div>
-          <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#f39c12]" /> Em risco</div>
-          <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#e74c3c]" /> Atrasado</div>
-          <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#95a5a6]" /> Sem sinal</div>
+        <div className="absolute bottom-3 left-3 bg-card rounded-md shadow-sm px-3 py-2 text-xs space-y-1">
+          {/* Status dot colors — semantic constants, same in both themes */}
+          <div className="flex items-center gap-2 text-foreground"><span className="h-2.5 w-2.5 rounded-full bg-[#2dce89]" /> No prazo</div>
+          <div className="flex items-center gap-2 text-foreground"><span className="h-2.5 w-2.5 rounded-full bg-[#fb6340]" /> Em risco</div>
+          <div className="flex items-center gap-2 text-foreground"><span className="h-2.5 w-2.5 rounded-full bg-[#f5365c]" /> Atrasado</div>
+          <div className="flex items-center gap-2 text-foreground"><span className="h-2.5 w-2.5 rounded-full bg-[#95959e]" /> Sem sinal</div>
         </div>
       )}
     </div>

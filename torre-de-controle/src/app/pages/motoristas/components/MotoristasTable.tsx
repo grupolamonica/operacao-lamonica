@@ -12,28 +12,28 @@ import { formatDuration } from '@/lib/formatters'
 import { DriverDetailPanel } from './DriverDetailPanel'
 import type { Driver, DriverFilters, DriverStatus, DocStatus } from '@/data/types'
 
-const statusLabel: Record<DriverStatus, { label: string; classes: string }> = {
-  available:    { label: 'Disponível',    classes: 'bg-green-100 text-green-700' },
-  on_route:     { label: 'Em rota',        classes: 'bg-blue-100 text-blue-700' },
-  unavailable:  { label: 'Indisponível',   classes: 'bg-gray-100 text-gray-600' },
+const statusLabel: Record<DriverStatus, { label: string; style: React.CSSProperties }> = {
+  available:    { label: 'Disponível',    style: { backgroundColor: 'var(--status-no-prazo-bg)',  color: 'var(--status-no-prazo-fg)' } },
+  on_route:     { label: 'Em rota',       style: { backgroundColor: 'color-mix(in oklch, var(--primary) 15%, transparent)', color: 'var(--primary)' } },
+  unavailable:  { label: 'Indisponível',  style: { backgroundColor: 'var(--status-sem-sinal-bg)', color: 'var(--status-sem-sinal-fg)' } },
 }
 
 function delayColor(min: number) {
-  if (min <= 0) return 'text-green-600'
-  if (min < 10) return 'text-yellow-600'
-  return 'text-red-600'
+  if (min <= 0) return 'text-success'
+  if (min < 10) return 'text-warning'
+  return 'text-danger'
 }
 
-function scoreColor(score: number) {
-  if (score >= 90) return 'bg-green-100 text-green-700'
-  if (score >= 80) return 'bg-yellow-100 text-yellow-700'
-  return 'bg-red-100 text-red-700'
+function scoreStyle(score: number): React.CSSProperties {
+  if (score >= 90) return { backgroundColor: 'var(--status-no-prazo-bg)', color: 'var(--status-no-prazo-fg)' }
+  if (score >= 80) return { backgroundColor: 'var(--status-em-risco-bg)', color: 'var(--status-em-risco-fg)' }
+  return { backgroundColor: 'var(--status-atrasado-bg)', color: 'var(--status-atrasado-fg)' }
 }
 
 const docIconByStatus: Record<DocStatus, { Icon: typeof FileCheck2; color: string }> = {
-  valido:         { Icon: FileCheck2,  color: 'text-green-600' },
-  vence_em_breve: { Icon: FileWarning, color: 'text-yellow-600' },
-  vencido:        { Icon: FileX2,      color: 'text-red-600' },
+  valido:         { Icon: FileCheck2,  color: 'text-success' },
+  vence_em_breve: { Icon: FileWarning, color: 'text-warning' },
+  vencido:        { Icon: FileX2,      color: 'text-danger' },
 }
 
 const columns: ColumnDef<Driver>[] = [
@@ -43,8 +43,8 @@ const columns: ColumnDef<Driver>[] = [
       <div className="flex items-center gap-3">
         <DriverAvatar name={row.original.name} status={row.original.status} size="md" />
         <div className="min-w-0">
-          <p className="text-sm font-medium text-gray-900 truncate">{row.original.name}</p>
-          <p className="text-xs text-gray-500 font-mono">{row.original.plate} · {row.original.vehicleType}</p>
+          <p className="text-sm font-medium text-foreground truncate">{row.original.name}</p>
+          <p className="text-xs text-muted-foreground font-mono">{row.original.plate} · {row.original.vehicleType}</p>
         </div>
       </div>
     ),
@@ -53,17 +53,17 @@ const columns: ColumnDef<Driver>[] = [
     id: 'status', header: 'Disponibilidade',
     cell: ({ row }) => {
       const c = statusLabel[row.original.status]
-      return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${c.classes}`}>{c.label}</span>
+      return <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium" style={c.style}>{c.label}</span>
     },
   },
-  { accessorKey: 'deliveriesToday', header: 'Entregas hoje', cell: (i) => <span className="text-sm tabular-nums">{i.getValue<number>()}</span> },
+  { accessorKey: 'deliveriesToday', header: 'Entregas hoje', cell: (i) => <span className="text-sm tabular-nums text-foreground">{i.getValue<number>()}</span> },
   {
     id: 'delay', header: 'Atraso médio',
     cell: ({ row }) => <span className={`text-sm font-medium tabular-nums ${delayColor(row.original.avgDelayMinutes)}`}>{row.original.avgDelayMinutes >= 0 ? '+' : ''}{formatDuration(Math.abs(row.original.avgDelayMinutes))}</span>,
   },
   {
     id: 'score', header: 'Score',
-    cell: ({ row }) => <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${scoreColor(row.original.operationalScore)}`}>{row.original.operationalScore}</span>,
+    cell: ({ row }) => <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium tabular-nums" style={scoreStyle(row.original.operationalScore)}>{row.original.operationalScore}</span>,
   },
   {
     id: 'docs', header: 'Documentos',
@@ -76,12 +76,12 @@ const columns: ColumnDef<Driver>[] = [
       </div>
     ),
   },
-  { accessorKey: 'address', header: 'Localização', cell: (i) => <span className="text-xs text-gray-600 truncate">{i.getValue<string>()}</span> },
+  { accessorKey: 'address', header: 'Localização', cell: (i) => <span className="text-xs text-muted-foreground truncate">{i.getValue<string>()}</span> },
   {
     id: 'actions', header: '', size: 40,
     cell: () => (
-      <button className="p-1 rounded hover:bg-gray-100" onClick={(e) => e.stopPropagation()}>
-        <MoreVertical className="h-4 w-4 text-gray-500" />
+      <button className="p-1 rounded hover:bg-accent text-muted-foreground" onClick={(e) => e.stopPropagation()}>
+        <MoreVertical className="h-4 w-4" />
       </button>
     ),
   },
@@ -98,7 +98,7 @@ export function MotoristasTable() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Buscar motorista, placa ou código..."
             value={filters.search ?? ''}

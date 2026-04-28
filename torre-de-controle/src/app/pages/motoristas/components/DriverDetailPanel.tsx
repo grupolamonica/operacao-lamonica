@@ -10,15 +10,15 @@ import { cn } from '@/lib/utils'
 import type { Driver, DocStatus } from '@/data/types'
 
 const docConfig: Record<DocStatus, { Icon: typeof FileCheck2; color: string; label: string }> = {
-  valido:         { Icon: FileCheck2,  color: 'text-green-600',  label: 'Válido' },
-  vence_em_breve: { Icon: FileWarning, color: 'text-yellow-600', label: 'Vence em breve' },
-  vencido:        { Icon: FileX2,      color: 'text-red-600',    label: 'Vencido' },
+  valido:         { Icon: FileCheck2,  color: 'text-success',  label: 'Válido' },
+  vence_em_breve: { Icon: FileWarning, color: 'text-warning',  label: 'Vence em breve' },
+  vencido:        { Icon: FileX2,      color: 'text-danger',   label: 'Vencido' },
 }
 
 const statusBadge = {
-  available:   { label: 'Disponível',   classes: 'bg-green-100 text-green-700' },
-  on_route:    { label: 'Em rota',       classes: 'bg-blue-100 text-blue-700' },
-  unavailable: { label: 'Indisponível',  classes: 'bg-gray-100 text-gray-600' },
+  available:   { label: 'Disponível',   style: { backgroundColor: 'var(--status-no-prazo-bg)',  color: 'var(--status-no-prazo-fg)' } },
+  on_route:    { label: 'Em rota',      style: { backgroundColor: 'var(--color-primary, #0f62fe)', color: '#ffffff' } },
+  unavailable: { label: 'Indisponível', style: { backgroundColor: 'var(--status-sem-sinal-bg)', color: 'var(--status-sem-sinal-fg)' } },
 } as const
 
 interface Props {
@@ -45,12 +45,17 @@ export function DriverDetailPanel({ driver, onClose }: Props) {
         <div className="flex items-start gap-3">
           <DriverAvatar name={driver.name} photoUrl={driver.photoUrl} status={driver.status} size="lg" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900">{driver.name}</p>
-            <p className="text-xs text-gray-500 font-mono">{driver.plate} · {driver.vehicleType}</p>
-            <p className="text-xs text-gray-500 mt-1">{driver.base}</p>
+            <p className="text-sm font-medium text-foreground">{driver.name}</p>
+            <p className="text-xs text-muted-foreground font-mono">{driver.plate} · {driver.vehicleType}</p>
+            <p className="text-xs text-muted-foreground mt-1">{driver.base}</p>
             <div className="flex items-center gap-2 mt-2">
-              <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium', sb.classes)}>{sb.label}</span>
-              <span className="text-xs text-gray-500">Score: <strong className="text-gray-900 tabular-nums">{driver.operationalScore}</strong></span>
+              <span
+                className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
+                style={sb.style}
+              >
+                {sb.label}
+              </span>
+              <span className="text-xs text-muted-foreground">Score: <strong className="text-foreground tabular-nums">{driver.operationalScore}</strong></span>
             </div>
           </div>
         </div>
@@ -64,7 +69,7 @@ export function DriverDetailPanel({ driver, onClose }: Props) {
         <Separator />
 
         <div>
-          <h4 className="text-xs font-semibold text-gray-900 mb-2 uppercase tracking-wide">Conformidade e documentos</h4>
+          <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Conformidade e documentos</h4>
           <ul className="space-y-2">
             {driver.documents.map(doc => {
               const { Icon, color, label } = docConfig[doc.status]
@@ -72,8 +77,8 @@ export function DriverDetailPanel({ driver, onClose }: Props) {
                 <li key={doc.type} className="flex items-center gap-2 text-xs">
                   <Icon className={cn('h-4 w-4', color)} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-gray-900">{doc.type}</p>
-                    <p className="text-gray-500">{label} · validade {formatDate(doc.expiresAt, 'dd/MM/yyyy')}</p>
+                    <p className="text-foreground">{doc.type}</p>
+                    <p className="text-muted-foreground">{label} · validade {formatDate(doc.expiresAt, 'dd/MM/yyyy')}</p>
                   </div>
                 </li>
               )
@@ -84,27 +89,27 @@ export function DriverDetailPanel({ driver, onClose }: Props) {
         <Separator />
 
         <div>
-          <h4 className="text-xs font-semibold text-gray-900 mb-2 uppercase tracking-wide">Localização atual</h4>
+          <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Localização atual</h4>
           <MapPlaceholder height={140} showLegend={false} />
-          <p className="text-xs text-gray-600 mt-2">{driver.address}</p>
-          <p className="text-[10px] text-gray-400 font-mono mt-0.5">{driver.lat.toFixed(4)}, {driver.lng.toFixed(4)}</p>
+          <p className="text-xs text-muted-foreground mt-2">{driver.address}</p>
+          <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{driver.lat.toFixed(4)}, {driver.lng.toFixed(4)}</p>
         </div>
 
         <Separator />
 
         <div>
-          <h4 className="text-xs font-semibold text-gray-900 mb-2 uppercase tracking-wide">Últimas viagens</h4>
+          <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Últimas viagens</h4>
           {recent.length === 0 ? (
-            <p className="text-xs text-gray-500">Sem viagens recentes.</p>
+            <p className="text-xs text-muted-foreground">Sem viagens recentes.</p>
           ) : (
             <ul className="space-y-2">
               {recent.map(t => (
-                <li key={t.id} className="flex items-center justify-between text-xs border-b border-gray-100 pb-1.5 last:border-0">
+                <li key={t.id} className="flex items-center justify-between text-xs border-b border-border pb-1.5 last:border-0">
                   <div className="min-w-0">
-                    <p className="font-mono text-gray-900">{t.code}</p>
-                    <p className="text-gray-500 truncate">{t.clientName} · {t.destination}</p>
+                    <p className="font-mono text-foreground">{t.code}</p>
+                    <p className="text-muted-foreground truncate">{t.clientName} · {t.destination}</p>
                   </div>
-                  <span className="text-[10px] text-gray-500 shrink-0 ml-2">{t.departedAt ? formatDate(t.departedAt, 'dd/MM HH:mm') : '—'}</span>
+                  <span className="text-[10px] text-muted-foreground shrink-0 ml-2">{t.departedAt ? formatDate(t.departedAt, 'dd/MM HH:mm') : '—'}</span>
                 </li>
               ))}
             </ul>

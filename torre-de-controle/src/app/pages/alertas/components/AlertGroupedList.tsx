@@ -6,9 +6,9 @@ import { cn } from '@/lib/utils'
 import type { Alert, AlertSeverity } from '@/data/types'
 
 const groupConfig: Record<AlertSeverity, { label: string; Icon: typeof AlertCircle; color: string }> = {
-  critico: { label: 'Críticos', Icon: AlertCircle,    color: 'text-red-600' },
-  medio:   { label: 'Médios',   Icon: AlertTriangle,  color: 'text-yellow-600' },
-  baixo:   { label: 'Baixos',   Icon: Info,           color: 'text-green-600' },
+  critico: { label: 'Críticos', Icon: AlertCircle,    color: 'text-danger' },
+  medio:   { label: 'Médios',   Icon: AlertTriangle,  color: 'text-warning' },
+  baixo:   { label: 'Baixos',   Icon: Info,           color: 'text-success' },
 }
 
 interface Props {
@@ -34,23 +34,23 @@ export function AlertGroupedList({ alerts }: Props) {
         const Chev = isOpen ? ChevronDown : ChevronRight
 
         return (
-          <div key={sev} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+          <div key={sev} className="bg-card border border-border rounded-lg overflow-hidden">
             <button
               onClick={() => setOpen({ ...open, [sev]: !isOpen })}
-              className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50"
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-accent transition-colors"
             >
               <div className="flex items-center gap-2">
-                <Chev className="h-4 w-4 text-gray-500" />
+                <Chev className="h-4 w-4 text-muted-foreground" />
                 <cfg.Icon className={cn('h-5 w-5', cfg.color)} />
-                <span className="text-sm font-semibold text-gray-900">{cfg.label}</span>
-                <span className="text-xs text-gray-500">({list.length})</span>
+                <span className="text-sm font-semibold text-foreground">{cfg.label}</span>
+                <span className="text-xs text-muted-foreground">({list.length})</span>
               </div>
             </button>
 
             {isOpen && (
-              <div className="px-3 pb-3 space-y-2 border-t border-gray-100 pt-2">
+              <div className="px-3 pb-3 space-y-2 border-t border-border pt-2">
                 {list.length === 0 ? (
-                  <p className="text-sm text-gray-500 text-center py-4">Nenhum alerta neste grupo.</p>
+                  <p className="text-sm text-muted-foreground text-center py-4">Nenhum alerta neste grupo.</p>
                 ) : (
                   list.map(a => (
                     <AlertItem

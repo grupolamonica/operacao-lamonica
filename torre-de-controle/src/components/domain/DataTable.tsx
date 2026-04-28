@@ -44,14 +44,14 @@ export function DataTable<T extends { id: string }>({
   })
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+    <div className="bg-card rounded-lg border border-border overflow-hidden">
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map(hg => (
               <TableRow key={hg.id}>
                 {hg.headers.map(h => (
-                  <TableHead key={h.id} className="text-xs font-semibold text-gray-600 uppercase tracking-wide bg-gray-50">
+                  <TableHead key={h.id} className="text-xs font-semibold text-foreground uppercase tracking-wide bg-secondary">
                     {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
                   </TableHead>
                 ))}
@@ -61,7 +61,7 @@ export function DataTable<T extends { id: string }>({
           <TableBody>
             {table.getRowModel().rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={columns.length} className="text-center text-sm text-gray-500 py-8">
+                <TableCell colSpan={columns.length} className="text-center text-sm text-muted-foreground py-8">
                   {emptyMessage}
                 </TableCell>
               </TableRow>
@@ -71,8 +71,9 @@ export function DataTable<T extends { id: string }>({
                   key={row.id}
                   onClick={() => onRowClick?.(row.original)}
                   className={cn(
+                    'border-b border-border',
                     onRowClick && 'cursor-pointer',
-                    row.id === selectedId ? 'bg-blue-50 hover:bg-blue-100' : 'hover:bg-gray-50',
+                    row.id === selectedId ? 'bg-primary/10 hover:bg-primary/15' : 'hover:bg-accent',
                   )}
                 >
                   {row.getVisibleCells().map(cell => (
@@ -88,8 +89,8 @@ export function DataTable<T extends { id: string }>({
       </div>
 
       {table.getPageCount() > 1 && (
-        <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50/40">
-          <span className="text-xs text-gray-500">
+        <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-secondary/40">
+          <span className="text-xs text-muted-foreground">
             Página {table.getState().pagination.pageIndex + 1} de {table.getPageCount()} ({data.length} registros)
           </span>
           <div className="flex gap-2">

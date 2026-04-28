@@ -1,10 +1,11 @@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
 
+// Status dot colors use Argon palette hex — these are SVG/inline contexts, CSS vars not available
 const statusDot = {
-  available:    'bg-[#2ecc71]',
-  on_route:     'bg-[#0f62fe]',
-  unavailable:  'bg-[#95a5a6]',
+  available:    'bg-[#2dce89]',
+  on_route:     'bg-primary',
+  unavailable:  'bg-[#95959e]',
 } as const
 
 type DriverStatus = keyof typeof statusDot
@@ -24,11 +25,11 @@ export function DriverAvatar({ name, photoUrl, status, size = 'md' }: Props) {
     <div className="relative inline-block">
       <Avatar className={sizeMap[size]}>
         {photoUrl && <AvatarImage src={photoUrl} alt={name} />}
-        <AvatarFallback className="bg-gray-200 text-gray-700 text-xs">{initials}</AvatarFallback>
+        <AvatarFallback className="bg-secondary text-foreground text-xs">{initials}</AvatarFallback>
       </Avatar>
       {status && (
         <span className={cn(
-          'absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white',
+          'absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-card',
           statusDot[status],
         )} />
       )}

@@ -12,8 +12,8 @@ export function ViagensPage() {
     <div className="space-y-5">
       <header className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Viagens</h1>
-          <p className="text-sm text-gray-500">Lista completa com filtros e detalhamento</p>
+          <h1 className="text-2xl font-bold text-foreground">Viagens</h1>
+          <p className="text-sm text-muted-foreground">Lista completa com filtros e detalhamento</p>
         </div>
       </header>
 

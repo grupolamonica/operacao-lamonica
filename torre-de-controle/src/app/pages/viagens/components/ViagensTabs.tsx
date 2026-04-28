@@ -22,9 +22,9 @@ export function ViagensTabs() {
 
   return (
     <Tabs value={activeTripsTab} onValueChange={(v) => setActiveTripsTab(v as typeof activeTripsTab)}>
-      <TabsList className="bg-white border border-gray-200">
+      <TabsList className="bg-card border border-border">
         {tabConfig.map(t => (
-          <TabsTrigger key={t.id} value={t.id} className="data-[state=active]:bg-[#0f62fe] data-[state=active]:text-white">
+          <TabsTrigger key={t.id} value={t.id} className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             {t.label}
             <span className="ml-2 text-xs opacity-80 tabular-nums">({counts[t.id]})</span>
           </TabsTrigger>

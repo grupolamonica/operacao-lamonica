@@ -8,8 +8,8 @@ export function DashboardPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard Operacional</h1>
-        <p className="text-sm text-gray-500">Visão geral em tempo real da operação</p>
+        <h1 className="text-2xl font-bold text-foreground">Dashboard Operacional</h1>
+        <p className="text-sm text-muted-foreground">Visão geral em tempo real da operação</p>
       </header>
 
       <DashboardKPIRow />
