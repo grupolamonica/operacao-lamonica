@@ -1,11 +1,5 @@
-import { Button } from '@/components/ui/button'
-
+// App.tsx is no longer used — router.tsx + RouterProvider in main.tsx replaces it.
+// Kept as empty export to avoid breaking any lingering imports.
 export default function App() {
-  return (
-    <div className="p-6 space-y-4">
-      <h1 className="text-2xl font-bold">Torre de Controle — bootstrap OK</h1>
-      <p className="text-sm text-gray-500">Vite 5 + React 18 + Tailwind v4 + shadcn ready.</p>
-      <Button>Smoke test button</Button>
-    </div>
-  )
+  return null
 }
