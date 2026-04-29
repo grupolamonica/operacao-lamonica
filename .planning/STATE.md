@@ -55,8 +55,14 @@ progress:
 | 1b | 02 | ~15min | 9 | 40 |
 | 1b | 03 | ~10min | 7 | 1 |
 
+## Quick Tasks Completed
+
+| ID | Slug | Date | Commit | Description |
+|----|------|------|--------|-------------|
+| 260429-csm | viagens-filter-refactor | 2026-04-29 | 0531d97 | Replace sidebar filters + status tabs with inline toolbar matching Motoristas pattern |
+
 ## Last Session
 
-- **Timestamp:** 2026-04-28T19:10:00Z
-- **Stopped at:** Completed 1b-03-page-integration
+- **Timestamp:** 2026-04-29T00:00:00Z
+- **Stopped at:** Quick task 260429-csm complete — viagens filter refactor
 - **Resume file:** None
