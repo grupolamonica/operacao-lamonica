@@ -26,18 +26,17 @@ export function AlertasPage() {
 
       <AlertasFiltersBar filters={filters} onChange={setFilters} />
 
-      <div
-        className="transition-[padding] duration-300"
-        style={{ paddingRight: isOpen ? '460px' : 0 }}
-      >
-        <AlertGroupedList alerts={alerts} />
-      </div>
+      <div className="flex gap-5 items-start">
+        <div className="flex-1 min-w-0">
+          <AlertGroupedList alerts={alerts} />
+        </div>
 
-      {isOpen && selected && (
-        <FixedPanel width={440}>
-          <AlertDetailPanel alert={selected} onClose={() => setSelectedAlertId(null)} />
-        </FixedPanel>
-      )}
+        {isOpen && selected && (
+          <FixedPanel width={440}>
+            <AlertDetailPanel alert={selected} onClose={() => setSelectedAlertId(null)} />
+          </FixedPanel>
+        )}
+      </div>
     </div>
   )
 }

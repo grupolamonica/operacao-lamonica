@@ -1,5 +1,4 @@
 import { X } from 'lucide-react'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 
 interface Props {
@@ -12,7 +11,7 @@ interface Props {
 
 export function SidePanelLayout({ title, subtitle, onClose, children, footer }: Props) {
   return (
-    <div className="flex flex-col h-full bg-card border border-border rounded-lg overflow-hidden shadow-lg">
+    <div className="flex flex-col bg-card border border-border rounded-lg shadow-lg">
       <div className="flex items-start justify-between p-4 shrink-0 border-b border-border">
         <div className="min-w-0">
           <h3 className="text-base font-semibold text-foreground truncate">{title}</h3>
@@ -26,9 +25,9 @@ export function SidePanelLayout({ title, subtitle, onClose, children, footer }: 
           <X className="h-4 w-4" />
         </button>
       </div>
-      <ScrollArea className="flex-1 p-4">
+      <div className="p-4">
         {children}
-      </ScrollArea>
+      </div>
       {footer && (
         <>
           <Separator />

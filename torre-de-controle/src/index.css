@@ -5,7 +5,7 @@
 
 :root {
   color-scheme: light;
-  --background: oklch(0.980 0.002 252.0);
+  --background: oklch(0.962 0.007 247.0);
   --foreground: oklch(0.540 0.030 250.0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.355 0.060 252.0);
@@ -32,7 +32,7 @@
   --info: oklch(0.760 0.145 205.0);
 
   /* App background */
-  --app-background: oklch(0.980 0.002 252.0);
+  --app-background: oklch(0.962 0.007 247.0);
 
   /* Dark band */
   --dark-band: linear-gradient(310deg, #212229 0%, #212529 100%);
@@ -144,8 +144,15 @@ body {
   font-family: "Open Sans", -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
+.panel-scroll::-webkit-scrollbar { width: 4px; }
+.panel-scroll::-webkit-scrollbar-track { background: transparent; }
+.panel-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.panel-scroll::-webkit-scrollbar-thumb:hover { background: var(--muted-foreground); }
+
 .dark {
   color-scheme: dark;
+  --dark-band: linear-gradient(310deg, #141727 0%, #3A416F 100%);
+  --dark-band-bg: #141727;
   --background: oklch(0.195 0.005 252.0);
   --foreground: oklch(0.900 0.005 252.0);
   --card: oklch(0.240 0.030 252.0);

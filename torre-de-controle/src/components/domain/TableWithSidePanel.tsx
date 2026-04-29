@@ -27,11 +27,8 @@ export function TableWithSidePanel<T extends { id: string }>({
   }, [data, selectedItem, onSelect])
 
   return (
-    <>
-      <div
-        className="transition-[padding] duration-300"
-        style={{ paddingRight: isOpen ? `${clampedWidth + 20}px` : 0 }}
-      >
+    <div className="flex gap-4 items-start">
+      <div className="flex-1 min-w-0">
         <DataTable
           data={data}
           columns={columns}
@@ -46,6 +43,6 @@ export function TableWithSidePanel<T extends { id: string }>({
           {renderPanel(selectedItem)}
         </FixedPanel>
       )}
-    </>
+    </div>
   )
 }
