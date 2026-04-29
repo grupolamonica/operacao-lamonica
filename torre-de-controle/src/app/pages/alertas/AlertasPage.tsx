@@ -3,6 +3,7 @@ import { AlertasKPIRow } from './components/AlertasKPIRow'
 import { AlertasFiltersBar } from './components/AlertasFiltersBar'
 import { AlertGroupedList } from './components/AlertGroupedList'
 import { AlertDetailPanel } from './components/AlertDetailPanel'
+import { FixedPanel } from '@/components/domain/FixedPanel'
 import { useAlerts, useAlert } from '@/hooks/useAlerts'
 import { useUIStore } from '@/stores/useUIStore'
 import type { AlertFilters } from '@/data/types'
@@ -16,9 +17,9 @@ export function AlertasPage() {
 
   return (
     <div className="space-y-5">
-      <header>
-        <h1 className="text-2xl font-bold text-foreground">Alertas</h1>
-        <p className="text-sm text-muted-foreground">Lista priorizada e tratativas</p>
+      <header className="pb-4">
+        <h1 className="text-2xl font-bold text-white">Alertas</h1>
+        <p className="text-sm text-white/70">Lista priorizada e tratativas</p>
       </header>
 
       <AlertasKPIRow />
@@ -26,20 +27,17 @@ export function AlertasPage() {
       <AlertasFiltersBar filters={filters} onChange={setFilters} />
 
       <div
-        className="grid transition-all duration-300 ease-in-out"
-        style={{
-          gridTemplateColumns: isOpen ? '1fr 440px' : '1fr 0px',
-          gap: isOpen ? '20px' : '0px',
-        }}
+        className="transition-[padding] duration-300"
+        style={{ paddingRight: isOpen ? '460px' : 0 }}
       >
-        <div className="overflow-hidden min-w-0">
-          <AlertGroupedList alerts={alerts} />
-        </div>
-
-        <div className="overflow-hidden transition-all duration-300" style={{ width: isOpen ? '440px' : '0px' }}>
-          {selected && <AlertDetailPanel alert={selected} onClose={() => setSelectedAlertId(null)} />}
-        </div>
+        <AlertGroupedList alerts={alerts} />
       </div>
+
+      {isOpen && selected && (
+        <FixedPanel width={440}>
+          <AlertDetailPanel alert={selected} onClose={() => setSelectedAlertId(null)} />
+        </FixedPanel>
+      )}
     </div>
   )
 }
