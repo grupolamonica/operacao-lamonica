@@ -5,7 +5,6 @@ import { TableWithSidePanel } from '@/components/domain/TableWithSidePanel'
 import { StatusBadge } from '@/components/domain/StatusBadge'
 import { DriverAvatar } from '@/components/domain/DriverAvatar'
 import { ProgressBar } from '@/components/domain/ProgressBar'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -18,17 +17,15 @@ import type { Trip, TripFilters, TripStatus, Priority, SlaStatus } from '@/data/
 const priorityDot = { alta: 'bg-[#f5365c]', media: 'bg-[#fb6340]', baixa: 'bg-[#2dce89]' } as const
 
 const columns: ColumnDef<Trip>[] = [
-  { id: 'select', header: '', size: 40, cell: () => <Checkbox onClick={(e) => e.stopPropagation()} /> },
   {
     id: 'code', header: 'Código',
     cell: ({ row }) => (
       <div className="flex items-center gap-2">
-        <span className={`h-2 w-2 rounded-full ${priorityDot[row.original.priority]}`} />
+        <span className={`h-2 w-2 rounded-full shrink-0 ${priorityDot[row.original.priority]}`} />
         <span className="text-sm font-mono font-medium text-foreground">{row.original.code}</span>
       </div>
     ),
   },
-  { accessorKey: 'clientName', header: 'Cliente', cell: (i) => <span className="text-sm text-foreground">{i.getValue<string>()}</span> },
   {
     id: 'driver', header: 'Motorista',
     cell: ({ row }) => (
@@ -41,13 +38,8 @@ const columns: ColumnDef<Trip>[] = [
       </div>
     ),
   },
-  { accessorKey: 'origin',      header: 'Origem',  cell: (i) => <span className="text-xs text-muted-foreground truncate">{i.getValue<string>()}</span> },
-  { accessorKey: 'destination', header: 'Destino', cell: (i) => <span className="text-xs text-muted-foreground truncate">{i.getValue<string>()}</span> },
-  {
-    id: 'window', header: 'Janela',
-    cell: ({ row }) => <span className="text-xs tabular-nums text-muted-foreground">{formatTime(row.original.windowStart)}–{formatTime(row.original.windowEnd)}</span>,
-  },
-  { id: 'eta', header: 'ETA', cell: ({ row }) => <span className="text-sm tabular-nums text-foreground">{formatTime(row.original.eta)}</span> },
+  { accessorKey: 'clientName', header: 'Cliente', cell: (i) => <span className="text-sm text-foreground truncate">{i.getValue<string>()}</span> },
+  { id: 'eta', header: 'ETA', size: 70, cell: ({ row }) => <span className="text-sm tabular-nums text-foreground">{formatTime(row.original.eta)}</span> },
   { id: 'status', header: 'Status', cell: ({ row }) => <StatusBadge status={row.original.slaStatus} /> },
   {
     id: 'progress', header: 'Progresso', size: 120,

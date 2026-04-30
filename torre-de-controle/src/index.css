@@ -151,8 +151,8 @@ body {
 
 .dark {
   color-scheme: dark;
-  --dark-band: linear-gradient(310deg, #141727 0%, #3A416F 100%);
-  --dark-band-bg: #141727;
+  --dark-band: linear-gradient(310deg, #07070f 0%, #0e0e1f 100%);
+  --dark-band-bg: #07070f;
   --background: oklch(0.195 0.005 252.0);
   --foreground: oklch(0.900 0.005 252.0);
   --card: oklch(0.240 0.030 252.0);
@@ -173,14 +173,14 @@ body {
   --ring: oklch(0.545 0.194 266.5);
   --app-background: oklch(0.145 0.025 265.0);
 
-  /* Sidebar dark stays navy */
-  --sidebar: #1a1a2e;
-  --sidebar-foreground: #8892b0;
+  /* Sidebar dark — premium black */
+  --sidebar: #09090e;
+  --sidebar-foreground: #7d8599;
   --sidebar-primary: #5e72e4;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: rgba(255, 255, 255, 0.08);
+  --sidebar-accent: rgba(255, 255, 255, 0.07);
   --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-border: rgba(255, 255, 255, 0.06);
   --sidebar-ring: #5e72e4;
 }
 
