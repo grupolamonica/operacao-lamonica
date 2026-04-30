@@ -2,21 +2,22 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: active
-stopped_at: Phase 01b UAT complete — all 12 tests passed
-last_updated: "2026-04-30T12:00:00Z"
+status: unknown
+stopped_at: Completed 02-02-PLAN.md — Drizzle schema 9 entities
+last_updated: "2026-04-30T20:10:04.918Z"
 progress:
   total_phases: 6
-  completed_phases: 2
-  total_plans: 9
-  completed_plans: 9
+  completed_phases: 0
+  total_plans: 6
+  completed_plans: 7
+  percent: 100
 ---
 
 ## Current Position
 
 - **Phase:** 02-backend-core-auth-api-foundation
 - **Plan:** — (planning next)
-- **Stopped at:** Phase 01b UAT complete — advancing to Phase 2 planning
+- **Stopped at:** Completed 02-02-PLAN.md — Drizzle schema 9 entities
 
 ## Decisions
 
@@ -40,6 +41,7 @@ progress:
 - Status dot hex colors (#2dce89/#fb6340/#f5365c/#95959e) are allowlisted — constant across themes by design
 - SparklineChart uses key={isDark} to force Chart.js re-mount on theme change
 - success/info button variants added to shadcn CVA config
+- Extra driver columns (email, base, deliveriesToday, avgDelayMinutes, lat, lng, address) added beyond ARCHITECTURE.md — required by frontend types.ts Driver interface
 
 ## Performance Metrics
 
@@ -54,6 +56,7 @@ progress:
 | 1b | 01 | ~15min | 4 | 3 |
 | 1b | 02 | ~15min | 9 | 40 |
 | 1b | 03 | ~10min | 7 | 1 |
+| Phase 02-backend-core-auth-api-foundation P02 | 11min | 4 tasks | 12 files |
 
 ## Quick Tasks Completed
 
@@ -65,4 +68,4 @@ progress:
 
 - **Timestamp:** 2026-04-29T00:00:00Z
 - **Stopped at:** Quick task 260429-csm complete — viagens filter refactor
-- **Resume file:** --resume-file
+- **Resume file:** None
