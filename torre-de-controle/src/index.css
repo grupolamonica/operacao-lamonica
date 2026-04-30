@@ -11,7 +11,7 @@
   --card-foreground: oklch(0.355 0.060 252.0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.355 0.060 252.0);
-  --primary: oklch(0.545 0.194 266.5);
+  --primary: oklch(0.420 0.190 263.0);
   --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.625 0.035 250.0);
   --secondary-foreground: oklch(1 0 0);
@@ -22,7 +22,7 @@
   --destructive: oklch(0.605 0.235 12.0);
   --border: oklch(0.900 0.005 252.0);
   --input: oklch(0.900 0.005 252.0);
-  --ring: oklch(0.545 0.194 266.5);
+  --ring: oklch(0.420 0.190 263.0);
   --radius: 1rem;
 
   /* Argon semantic tokens */
@@ -34,19 +34,19 @@
   /* App background */
   --app-background: oklch(0.962 0.007 247.0);
 
-  /* Dark band */
-  --dark-band: linear-gradient(310deg, #212229 0%, #212529 100%);
-  --dark-band-bg: #212529;
+  /* Dark band — light theme: premium navy */
+  --dark-band: linear-gradient(310deg, #0d2055 0%, #1a4fc4 100%);
+  --dark-band-bg: #0d2055;
 
-  /* Sidebar — light theme: white floating */
+  /* Sidebar — light theme: white floating, navy accent */
   --sidebar: #ffffff;
   --sidebar-foreground: #67748e;
-  --sidebar-primary: #5e72e4;
+  --sidebar-primary: #1a4fc4;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: rgba(94, 114, 228, 0.1);
-  --sidebar-accent-foreground: #5e72e4;
+  --sidebar-accent: rgba(26, 79, 196, 0.08);
+  --sidebar-accent-foreground: #1a4fc4;
   --sidebar-border: rgba(0, 0, 0, 0.05);
-  --sidebar-ring: #5e72e4;
+  --sidebar-ring: #1a4fc4;
 
   /* Status colors — paired bg + fg tokens */
   --status-no-prazo: oklch(0.745 0.168 160.0);

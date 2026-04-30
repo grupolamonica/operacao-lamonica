@@ -11,7 +11,7 @@ interface Props {
 
 export function SidePanelLayout({ title, subtitle, onClose, children, footer }: Props) {
   return (
-    <div className="flex flex-col bg-card border border-border rounded-lg shadow-lg">
+    <div className="flex flex-col bg-card rounded-lg shadow-lg">
       <div className="flex items-start justify-between p-4 shrink-0 border-b border-border">
         <div className="min-w-0">
           <h3 className="text-base font-semibold text-foreground truncate">{title}</h3>

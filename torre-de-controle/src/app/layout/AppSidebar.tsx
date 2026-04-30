@@ -48,7 +48,7 @@ export function AppSidebar() {
             width: '36px',
             height: '36px',
             borderRadius: '0.75rem',
-            background: 'linear-gradient(310deg, #5e72e4 0%, #825ee4 100%)',
+            background: 'linear-gradient(310deg, #0d2055 0%, #1a4fc4 100%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -115,7 +115,7 @@ export function AppSidebar() {
                     cursor: 'pointer',
                     transition: 'all 0.15s ease',
                     background: isActive
-                      ? 'linear-gradient(310deg, #5e72e4 0%, #825ee4 100%)'
+                      ? 'linear-gradient(310deg, #0d2055 0%, #1a4fc4 100%)'
                       : 'transparent',
                   }}
                   onMouseEnter={(e) => {
