@@ -1,0 +1,161 @@
+import { and, eq, gte, ilike, or, sql, inArray } from 'drizzle-orm'
+import { db } from '../../db/client'
+import { alerts } from '../../db/schema/alerts'
+import { treatments } from '../../db/schema/treatments'
+import { trips } from '../../db/schema/trips'
+import { clients } from '../../db/schema/clients'
+import { routes } from '../../db/schema/routes'
+
+export type AlertFilters = {
+  severity?:   'critico'|'medio'|'baixo'
+  status?:     'aberto'|'em_tratativa'|'resolvido'
+  type?:       string
+  clientName?: string
+  routeCode?:  string
+  assignedTo?: string
+  period?:     'today'|'7d'|'30d'
+  search?:     string
+}
+
+function periodCutoff(p?: string): Date | null {
+  if (!p) return null
+  const d = new Date()
+  if (p === 'today') { d.setHours(0, 0, 0, 0); return d }
+  if (p === '7d')    { d.setDate(d.getDate() - 7);  return d }
+  if (p === '30d')   { d.setDate(d.getDate() - 30); return d }
+  return null
+}
+
+export async function listAlerts(f: AlertFilters) {
+  const conditions = []
+  if (f.severity)   conditions.push(eq(alerts.severity, f.severity))
+  if (f.status)     conditions.push(eq(alerts.status, f.status))
+  if (f.type)       conditions.push(eq(alerts.type, f.type))
+  if (f.assignedTo) conditions.push(eq(alerts.assignedTo, f.assignedTo))
+  const cutoff = periodCutoff(f.period)
+  if (cutoff) conditions.push(gte(alerts.occurredAt, cutoff))
+
+  if (f.clientName || f.routeCode) {
+    const tripConditions = []
+    if (f.clientName) {
+      const [c] = await db.select({ id: clients.id }).from(clients).where(eq(clients.name, f.clientName)).limit(1)
+      tripConditions.push(c ? eq(trips.clientId, c.id) : sql`false`)
+    }
+    if (f.routeCode) {
+      const [r] = await db.select({ id: routes.id }).from(routes).where(eq(routes.code, f.routeCode)).limit(1)
+      tripConditions.push(r ? eq(trips.routeId, r.id) : sql`false`)
+    }
+    const matchingTrips = await db.select({ id: trips.id }).from(trips).where(and(...tripConditions))
+    if (matchingTrips.length === 0) {
+      conditions.push(sql`false`)
+    } else {
+      conditions.push(inArray(alerts.tripId, matchingTrips.map(t => t.id)))
+    }
+  }
+
+  if (f.search) {
+    conditions.push(or(
+      ilike(alerts.title, `%${f.search}%`),
+      ilike(alerts.description, `%${f.search}%`),
+    )!)
+  }
+
+  const where = conditions.length ? and(...conditions) : undefined
+
+  const rows = await db.query.alerts.findMany({
+    where,
+    with: {
+      trip:    { columns: { code: true } },
+      driver:  { columns: { id: true, name: true, photoUrl: true } },
+      vehicle: { columns: { plate: true } },
+    },
+    orderBy: (a, { desc }) => [desc(a.occurredAt)],
+    limit: 500,
+  })
+
+  const tripIds = [...new Set(rows.map(r => r.tripId).filter((x): x is string => !!x))]
+  const tripRows = tripIds.length
+    ? await db.query.trips.findMany({
+        where: (t, { inArray }) => inArray(t.id, tripIds),
+        with: { client: { columns: { name: true } }, route: { columns: { code: true } } },
+      })
+    : []
+  const tripMap = new Map(tripRows.map(t => [t.id, t]))
+
+  return rows.map(r => {
+    const trip = r.tripId ? tripMap.get(r.tripId) : undefined
+    return {
+      id:           r.id,
+      type:         r.type,
+      severity:     r.severity,
+      status:       r.status,
+      tripId:       r.tripId ?? '',
+      tripCode:     r.trip?.code ?? '',
+      driverId:     r.driverId ?? '',
+      driverName:   r.driver?.name ?? '',
+      driverPhoto:  r.driver?.photoUrl ?? undefined,
+      plate:        r.vehicle?.plate ?? '',
+      clientName:   trip?.client?.name ?? '',
+      routeCode:    trip?.route?.code ?? '',
+      title:        r.title,
+      description:  r.description ?? '',
+      source:       r.source ?? 'GPS',
+      lat:          r.lat ? Number(r.lat) : undefined,
+      lng:          r.lng ? Number(r.lng) : undefined,
+      delayMinutes: r.delayMinutes ?? undefined,
+      deviationKm:  r.deviationKm ? Number(r.deviationKm) : undefined,
+      occurredAt:   r.occurredAt,
+      slaDeadline:  r.slaDeadline ?? undefined,
+      assignedTo:   r.assignedTo ?? undefined,
+      resolvedAt:   r.resolvedAt ?? undefined,
+    }
+  })
+}
+
+export async function assignAlert(alertId: string, userId: string) {
+  const [updated] = await db.update(alerts)
+    .set({ assignedTo: userId, status: 'em_tratativa' })
+    .where(eq(alerts.id, alertId))
+    .returning()
+  return updated ?? null
+}
+
+export async function addTreatment(alertId: string, operatorId: string, body: { actionType?: string; notes?: string; outcome?: string }) {
+  const alertRow = await db.query.alerts.findFirst({ where: eq(alerts.id, alertId) })
+  if (!alertRow) return null
+  const [t] = await db.insert(treatments).values({
+    alertId,
+    tripId:     alertRow.tripId,
+    operatorId,
+    actionType: body.actionType,
+    notes:      body.notes,
+    outcome:    body.outcome,
+  }).returning()
+  return t
+}
+
+export async function resolveAlert(alertId: string) {
+  const [r] = await db.update(alerts)
+    .set({ status: 'resolvido', resolvedAt: new Date() })
+    .where(eq(alerts.id, alertId))
+    .returning()
+  return r ?? null
+}
+
+export async function getAlertStats() {
+  const all = await db.select().from(alerts)
+  const startToday = new Date(); startToday.setHours(0, 0, 0, 0)
+  const criticos       = all.filter(a => a.severity === 'critico' && a.status !== 'resolvido').length
+  const abertos        = all.filter(a => a.status === 'aberto').length
+  const resolvidosHoje = all.filter(a => a.resolvedAt && a.resolvedAt >= startToday).length
+  const closed   = all.filter(a => a.status === 'resolvido' && a.slaDeadline && a.resolvedAt)
+  const onTime   = closed.filter(a => a.resolvedAt! <= a.slaDeadline!).length
+  const slaPct   = closed.length ? Math.round((onTime / closed.length) * 100) : 100
+
+  return {
+    criticos:       { count: criticos },
+    abertos:        { count: abertos },
+    resolvidosHoje: { count: resolvidosHoje },
+    slaTratativas:  { pct: slaPct },
+  }
+}
