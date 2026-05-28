@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: in-progress
-stopped_at: Phase 06 Plan 01 (Wave 0 scaffold) complete — deps + 3 schemas + libs ready
-last_updated: "2026-05-28T20:50:00.000Z"
+status: unknown
+stopped_at: Completed 06-03-PLAN.md — users/thresholds/gps-providers backend RBAC (Wave 1)
+last_updated: "2026-05-28T20:35:49.418Z"
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 14
-  completed_plans: 13
-  percent: 93
+  completed_plans: 14
+  percent: 100
 ---
 
 ## Current Position
@@ -18,7 +18,7 @@ progress:
 - **Phase:** 06-insights-polish-deploy — IN PROGRESS (Wave 0 complete, Wave 1+2 ready in parallel)
 - **Completed Plan:** 06-01 (Wave 0 scaffold — deps + 3 new schemas + Sentry/VAPID/scrub libs)
 - **Next Plans (parallel):** Wave 1 (06-02 Insights / 06-03 Exports / 06-04 Push / 06-05 Config) + Wave 2 (06-06 Frontend Polish)
-- **Stopped at:** Phase 06 Plan 01 (Wave 0 scaffold) complete — deps + 3 schemas + libs ready
+- **Stopped at:** Completed 06-03-PLAN.md — users/thresholds/gps-providers backend RBAC (Wave 1)
 - **Known issues:**
   - Elysia 1.4.28: POST routes with body schemas fail when loaded as plugins. Workaround: inline routes in index.ts.
   - Stale processes on port 3000 can mask route changes. Always kill all bun processes before testing.
@@ -56,6 +56,9 @@ progress:
 - Phase 6 Wave 0: Sentry init NOT wired in api/src/index.ts yet — lib scaffolded, side-effect activation deferred to 06-04 + 06-07
 - Phase 6 Wave 0: drizzle-kit push NOT executed — schema applied via plan 06-08 against production Railway DB with --strict --verbose
 - Phase 6 Wave 0: torre-de-controle/.gitignore added `!.env.example` exception so example file is tracked
+- 06-03: Two-sub-plugin RBAC pattern (readPlugin authGuard + writePlugin requireRole) combined via .use() — avoids forcing admin on GET endpoints
+- 06-03: writePlugin must chain .use(authGuard).use(requireRole).group() — Elysia 1.4 scope inference loses user derive through requireRole wrapper otherwise
+- 06-03: passwordHash and apiKey masked at service projection layer (single project() helper) — no select * leak risk
 
 ## Performance Metrics
 
@@ -72,6 +75,7 @@ progress:
 | 1b | 03 | ~10min | 7 | 1 |
 | Phase 02-backend-core-auth-api-foundation P02 | 11min | 4 tasks | 12 files |
 | 06 | 01 | ~18min | 2 | 21 |
+| Phase 06-insights-polish-deploy P03 | 9min | 2 tasks | 6 files |
 
 ## Quick Tasks Completed
 
