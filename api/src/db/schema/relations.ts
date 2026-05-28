@@ -8,6 +8,7 @@ import { treatments } from './treatments'
 import { clients } from './clients'
 import { routes } from './routes'
 import { users } from './users'
+import { pushSubscriptions } from './push-subscriptions'
 
 export const driversRelations = relations(drivers, ({ many }) => ({
   documents: many(driverDocuments),
@@ -58,6 +59,11 @@ export const treatmentsRelations = relations(treatments, ({ one }) => ({
 }))
 
 export const usersRelations = relations(users, ({ many }) => ({
-  assignedAlerts: many(alerts),
-  treatments:     many(treatments),
+  assignedAlerts:    many(alerts),
+  treatments:        many(treatments),
+  pushSubscriptions: many(pushSubscriptions),
+}))
+
+export const pushSubscriptionsRelations = relations(pushSubscriptions, ({ one }) => ({
+  user: one(users, { fields: [pushSubscriptions.userId], references: [users.id] }),
 }))

@@ -3,6 +3,7 @@ import { db } from '../client'
 import {
   users, clients, routes, drivers, driverDocuments, vehicles, trips, alerts,
 } from '../schema'
+import { alertThresholds } from '../schema/alert-thresholds'
 
 const FIRST_NAMES = ['Carlos', 'Lucas', 'Pedro', 'Rafael', 'Tiago', 'Marcos', 'Felipe',
   'Gustavo', 'André', 'Bruno', 'Diego', 'Eduardo', 'Fabio', 'Henrique', 'Igor',
@@ -186,6 +187,16 @@ async function seed() {
   })
   await db.insert(alerts).values(alertRows)
   console.log(`[seed] alerts: ${alertRows.length}`)
+
+  // Phase 6 / CONTEXT D-19: seed default alert engine thresholds.
+  // Idempotent via onConflictDoNothing — re-running seed never clobbers
+  // values that an admin may have edited via the Configurações UI.
+  await db.insert(alertThresholds).values([
+    { type: 'atraso_critico_minutes', value: 30 },
+    { type: 'desvio_km_threshold',    value: 2  },
+    { type: 'stop_duration_minutes',  value: 15 },
+  ]).onConflictDoNothing()
+  console.log('[seed] alert_thresholds: 3 defaults')
 
   console.log('[seed] complete')
   process.exit(0)

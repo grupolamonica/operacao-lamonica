@@ -8,4 +8,8 @@ export * from './trips'
 export * from './alerts'
 export * from './treatments'
 export * from './geofences'
+// Phase 6 / Wave 0 — Insights+Polish+Deploy auxiliary tables
+export * from './push-subscriptions'
+export * from './alert-thresholds'
+export * from './gps-providers'
 export * from './relations'
