@@ -1,7 +1,8 @@
 import { AlertItem } from '@/components/domain/AlertItem'
 import { useAlerts } from '@/hooks/useAlerts'
+import { cn } from '@/lib/utils'
 
-export function OperationalQueue() {
+export function OperationalQueue({ className }: { className?: string }) {
   const { data: openAlerts } = useAlerts({ status: 'aberto' })
   const queue = [...openAlerts].sort((a, b) => {
     const sev: Record<string, number> = { critico: 0, medio: 1, baixo: 2 }
@@ -12,12 +13,12 @@ export function OperationalQueue() {
   const handleCall = (id: string) => console.log('call', id)
 
   return (
-    <div className="bg-card border border-border rounded-lg p-4 space-y-3">
-      <div className="flex items-center justify-between">
+    <div className={cn('bg-card border border-border rounded-lg p-4 flex flex-col', className)}>
+      <div className="flex items-center justify-between flex-shrink-0 pb-3">
         <h3 className="text-sm font-semibold text-foreground">Fila operacional</h3>
         <span className="text-xs text-muted-foreground">{queue.length} pendentes</span>
       </div>
-      <div className="space-y-2 max-h-[480px] overflow-y-auto">
+      <div className="flex-1 min-h-0 space-y-2 overflow-y-auto">
         {queue.map(a => (
           <AlertItem
             key={a.id}

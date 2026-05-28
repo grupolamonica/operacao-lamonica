@@ -1,50 +1,37 @@
+import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
-import { mockAlerts } from '@/data/mocks'
+import { api } from '@/lib/api'
 import type { Alert, AlertFilters } from '@/data/types'
 
-interface UseAlertsReturn {
-  data: Alert[]
-  isLoading: false
-  isError: false
-  error: null
-  refetch: () => void
+export function useAlerts(filters?: AlertFilters) {
+  const q = useQuery({
+    queryKey: ['alerts', filters],
+    queryFn: async () => {
+      const { data, error } = await api.api.alerts.get({ query: (filters ?? {}) as any })
+      if (error) throw new Error((error.value as any)?.error ?? 'Failed to fetch alerts')
+      return (data ?? []) as Alert[]
+    },
+  })
+  return {
+    data:      q.data ?? [],
+    isLoading: q.isLoading,
+    isError:   q.isError,
+    error:     q.error,
+    refetch:   q.refetch,
+  }
 }
 
-export function useAlerts(filters?: AlertFilters): UseAlertsReturn {
-  const data = useMemo(() => {
-    if (!filters) return mockAlerts
-    return mockAlerts.filter(a =>
-      (!filters.severity   || a.severity   === filters.severity) &&
-      (!filters.status     || a.status     === filters.status) &&
-      (!filters.type       || a.type       === filters.type) &&
-      (!filters.clientName || a.clientName === filters.clientName) &&
-      (!filters.routeCode  || a.routeCode  === filters.routeCode) &&
-      (!filters.assignedTo || a.assignedTo === filters.assignedTo) &&
-      (!filters.search     || (
-        a.title.toLowerCase().includes(filters.search.toLowerCase()) ||
-        a.driverName.toLowerCase().includes(filters.search.toLowerCase()) ||
-        a.plate.toLowerCase().includes(filters.search.toLowerCase()) ||
-        a.tripCode.toLowerCase().includes(filters.search.toLowerCase())
-      ))
-    )
-  }, [filters])
-
-  return { data, isLoading: false, isError: false, error: null, refetch: () => {} }
+export function useAlert(id: string | null) {
+  const { data: all } = useAlerts()
+  const data = useMemo(() => id ? all.find(a => a.id === id) ?? null : null, [id, all])
+  return { data, isLoading: false as const, isError: false as const, error: null, refetch: () => {} }
 }
 
-export function useAlert(id: string | null): { data: Alert | null; isLoading: false; isError: false; error: null; refetch: () => void } {
-  const data = useMemo(() => id ? mockAlerts.find(a => a.id === id) ?? null : null, [id])
-  return { data, isLoading: false, isError: false, error: null, refetch: () => {} }
-}
-
-export function useAlertsBySeverity(): {
-  critico: Alert[]
-  medio: Alert[]
-  baixo: Alert[]
-} {
+export function useAlertsBySeverity() {
+  const { data } = useAlerts()
   return useMemo(() => ({
-    critico: mockAlerts.filter(a => a.severity === 'critico'),
-    medio:   mockAlerts.filter(a => a.severity === 'medio'),
-    baixo:   mockAlerts.filter(a => a.severity === 'baixo'),
-  }), [])
+    critico: data.filter(a => a.severity === 'critico'),
+    medio:   data.filter(a => a.severity === 'medio'),
+    baixo:   data.filter(a => a.severity === 'baixo'),
+  }), [data])
 }

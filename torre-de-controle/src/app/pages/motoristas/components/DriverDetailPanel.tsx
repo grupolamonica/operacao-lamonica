@@ -1,7 +1,7 @@
 import { Phone, MessageSquare, Mail, FileCheck2, FileX2, FileWarning } from 'lucide-react'
 import { SidePanelLayout } from '@/components/domain/SidePanelLayout'
 import { DriverAvatar } from '@/components/domain/DriverAvatar'
-import { MapPlaceholder } from '@/components/domain/MapPlaceholder'
+import { LiveMap } from '@/components/domain/LiveMap'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { useTrips } from '@/hooks/useTrips'
@@ -90,7 +90,7 @@ export function DriverDetailPanel({ driver, onClose }: Props) {
 
         <div>
           <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Localização atual</h4>
-          <MapPlaceholder height={140} showLegend={false} />
+          <LiveMap height={140} showLegend={false} />
           <p className="text-xs text-muted-foreground mt-2">{driver.address}</p>
           <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{driver.lat.toFixed(4)}, {driver.lng.toFixed(4)}</p>
         </div>

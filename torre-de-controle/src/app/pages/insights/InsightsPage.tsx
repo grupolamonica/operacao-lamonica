@@ -4,14 +4,14 @@ import { Card } from '@/components/ui/card'
 export function InsightsPage() {
   return (
     <div className="space-y-5">
-      <header className="flex items-start gap-3">
+      <header className="pb-4 flex items-start gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Insights</h1>
-          <p className="text-sm text-muted-foreground">Analytics, tendências de SLA e ranking operacional</p>
+          <h1 className="text-2xl font-bold text-white">Insights</h1>
+          <p className="text-sm text-white/70">Analytics, tendências de SLA e ranking operacional</p>
         </div>
         <span
           className="ml-auto inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium"
-          style={{ backgroundColor: 'oklch(0.95 0.04 300)', color: 'oklch(0.45 0.15 300)' }}
+          style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.85)' }}
         >
           <Construction className="h-3.5 w-3.5" /> Disponível em Phase 6
         </span>

@@ -65,17 +65,13 @@ export function AtRiskTripsTable() {
   )
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-base font-semibold text-foreground">Viagens em maior risco</h3>
-        <span className="text-xs text-muted-foreground">{atRisk.length} viagens</span>
-      </div>
-      <DataTable
-        data={atRisk}
-        columns={columns}
-        pageSize={10}
-        emptyMessage="Nenhuma viagem em risco no momento."
-      />
-    </div>
+    <DataTable
+      data={atRisk}
+      columns={columns}
+      pageSize={10}
+      emptyMessage="Nenhuma viagem em risco no momento."
+      title="Viagens em maior risco"
+      subtitle={`${atRisk.length} viagens`}
+    />
   )
 }

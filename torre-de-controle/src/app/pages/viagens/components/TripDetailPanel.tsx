@@ -1,6 +1,6 @@
 import { Eye, Pencil, CalendarClock } from 'lucide-react'
 import { SidePanelLayout } from '@/components/domain/SidePanelLayout'
-import { MapPlaceholder } from '@/components/domain/MapPlaceholder'
+import { LiveMap } from '@/components/domain/LiveMap'
 import { TripTimeline } from '@/components/domain/TripTimeline'
 import { StatusBadge } from '@/components/domain/StatusBadge'
 import { Button } from '@/components/ui/button'
@@ -36,7 +36,7 @@ export function TripDetailPanel({ trip, onClose }: Props) {
           <span className="text-xs text-muted-foreground">Prioridade: <strong className="text-foreground capitalize">{trip.priority}</strong></span>
         </div>
 
-        <MapPlaceholder height={160} showLegend={false} />
+        <LiveMap height={160} showLegend={false} />
 
         <div className="grid grid-cols-2 gap-3 text-xs">
           <Metric label="Origem" value={trip.origin} />

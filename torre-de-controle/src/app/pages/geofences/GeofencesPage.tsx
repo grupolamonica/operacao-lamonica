@@ -4,14 +4,14 @@ import { Card } from '@/components/ui/card'
 export function GeofencesPage() {
   return (
     <div className="space-y-5">
-      <header className="flex items-start gap-3">
+      <header className="pb-4 flex items-start gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Geofences</h1>
-          <p className="text-sm text-muted-foreground">Zonas geográficas, eventos de entrada/saída e alertas territoriais</p>
+          <h1 className="text-2xl font-bold text-white">Geofences</h1>
+          <p className="text-sm text-white/70">Zonas geográficas, eventos de entrada/saída e alertas territoriais</p>
         </div>
         <span
           className="ml-auto inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium"
-          style={{ backgroundColor: 'color-mix(in oklch, var(--primary) 15%, transparent)', color: 'var(--primary)' }}
+          style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.85)' }}
         >
           <Construction className="h-3.5 w-3.5" /> Disponível em Phase 5
         </span>

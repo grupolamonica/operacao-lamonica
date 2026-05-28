@@ -94,50 +94,51 @@ export function MotoristasTable() {
   const { data: selected } = useDriver(selectedDriverId)
   const bases = ['CD São Paulo', 'CD Guarulhos', 'CD Campinas']
 
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar motorista, placa ou código..."
-            value={filters.search ?? ''}
-            onChange={(e) => setFilters({ ...filters, search: e.target.value || undefined })}
-            className="pl-9 h-9 text-sm"
-          />
-        </div>
-
-        <Select value={filters.status ?? '__all'} onValueChange={(v) => setFilters({ ...filters, status: v === '__all' ? undefined : v as DriverStatus })}>
-          <SelectTrigger className="h-9 w-[160px] text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all">Todos status</SelectItem>
-            <SelectItem value="available">Disponível</SelectItem>
-            <SelectItem value="on_route">Em rota</SelectItem>
-            <SelectItem value="unavailable">Indisponível</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Select value={filters.base ?? '__all'} onValueChange={(v) => setFilters({ ...filters, base: v === '__all' ? undefined : v })}>
-          <SelectTrigger className="h-9 w-[160px] text-xs"><SelectValue placeholder="Base" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all">Todas bases</SelectItem>
-            {bases.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}
-          </SelectContent>
-        </Select>
-
-        <Button variant="outline" size="sm" className="h-9 gap-2 text-xs"><ArrowUpDown className="h-3.5 w-3.5" /> Ordenar</Button>
-        <Button variant="outline" size="sm" className="h-9 gap-2 text-xs"><Filter className="h-3.5 w-3.5" /> Filtros</Button>
-        <Button variant="outline" size="sm" className="h-9 gap-2 text-xs"><Download className="h-3.5 w-3.5" /> Exportar</Button>
+  const toolbar = (
+    <div className="flex items-center gap-3">
+      <div className="relative w-56 shrink-0">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Buscar motorista, placa ou código..."
+          value={filters.search ?? ''}
+          onChange={(e) => setFilters({ ...filters, search: e.target.value || undefined })}
+          className="pl-9 h-9 text-sm"
+        />
       </div>
 
-      <TableWithSidePanel
-        data={drivers}
-        columns={columns}
-        selectedItem={selected}
-        onSelect={(d) => setSelectedDriverId(d?.id ?? null)}
-        renderPanel={(d) => <DriverDetailPanel driver={d} onClose={() => setSelectedDriverId(null)} />}
-        panelWidth={400}
-      />
+      <Select value={filters.status ?? '__all'} onValueChange={(v) => setFilters({ ...filters, status: v === '__all' ? undefined : v as DriverStatus })}>
+        <SelectTrigger className="h-9 w-[160px] text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__all">Todos status</SelectItem>
+          <SelectItem value="available">Disponível</SelectItem>
+          <SelectItem value="on_route">Em rota</SelectItem>
+          <SelectItem value="unavailable">Indisponível</SelectItem>
+        </SelectContent>
+      </Select>
+
+      <Select value={filters.base ?? '__all'} onValueChange={(v) => setFilters({ ...filters, base: v === '__all' ? undefined : v })}>
+        <SelectTrigger className="h-9 w-[160px] text-xs"><SelectValue placeholder="Base" /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__all">Todas bases</SelectItem>
+          {bases.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+        </SelectContent>
+      </Select>
+
+      <Button variant="outline" size="sm" className="h-9 gap-2 text-xs"><ArrowUpDown className="h-3.5 w-3.5" /> Ordenar</Button>
+      <Button variant="outline" size="sm" className="h-9 gap-2 text-xs"><Filter className="h-3.5 w-3.5" /> Filtros</Button>
+      <Button variant="outline" size="sm" className="h-9 gap-2 text-xs"><Download className="h-3.5 w-3.5" /> Exportar</Button>
     </div>
+  )
+
+  return (
+    <TableWithSidePanel
+      data={drivers}
+      columns={columns}
+      selectedItem={selected}
+      onSelect={(d) => setSelectedDriverId(d?.id ?? null)}
+      renderPanel={(d) => <DriverDetailPanel driver={d} onClose={() => setSelectedDriverId(null)} />}
+      panelWidth={400}
+      toolbar={toolbar}
+    />
   )
 }

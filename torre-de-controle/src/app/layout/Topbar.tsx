@@ -24,10 +24,9 @@ export function Topbar() {
       style={{ background: 'transparent' }}
       className="flex items-center justify-between px-6 py-3"
     >
-      {/* Left: breadcrumb + page title */}
+      {/* Left: breadcrumb only */}
       <div>
         <p className="text-white/60 text-xs mb-0 leading-none">Páginas / {currentPage}</p>
-        <h6 className="text-white font-bold text-sm mb-0 mt-0.5 leading-none">{currentPage}</h6>
       </div>
 
       {/* Right: actions */}

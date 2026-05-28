@@ -11,11 +11,12 @@ interface Props<T extends { id: string }> {
   renderPanel: (item: T) => React.ReactNode
   panelWidth?: number   // clamped: min 320 / max 520 / default 400
   pageSize?: number
+  toolbar?: React.ReactNode
 }
 
 export function TableWithSidePanel<T extends { id: string }>({
   data, columns, selectedItem, onSelect, renderPanel,
-  panelWidth = 400, pageSize,
+  panelWidth = 400, pageSize, toolbar,
 }: Props<T>) {
   const clampedWidth = Math.min(520, Math.max(320, panelWidth))
   const isOpen = selectedItem !== null
@@ -35,6 +36,7 @@ export function TableWithSidePanel<T extends { id: string }>({
           onRowClick={(row) => onSelect(row.id === selectedItem?.id ? null : row)}
           selectedId={selectedItem?.id ?? null}
           pageSize={pageSize}
+          toolbar={toolbar}
         />
       </div>
 

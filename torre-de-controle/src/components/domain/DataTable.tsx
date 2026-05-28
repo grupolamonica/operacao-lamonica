@@ -22,11 +22,15 @@ interface DataTableProps<T extends { id: string }> {
   selectedId?: string | null
   pageSize?: number
   emptyMessage?: string
+  title?: string
+  subtitle?: string
+  toolbar?: React.ReactNode
 }
 
 export function DataTable<T extends { id: string }>({
   data, columns, onRowClick, selectedId, pageSize = 20,
   emptyMessage = 'Nenhum resultado encontrado.',
+  title, subtitle, toolbar,
 }: DataTableProps<T>) {
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize })
@@ -45,13 +49,26 @@ export function DataTable<T extends { id: string }>({
 
   return (
     <div
-      className="bg-card overflow-hidden"
+      className="bg-card overflow-hidden w-full"
       style={{
         borderRadius: '1rem',
         boxShadow: '0 0 2rem 0 rgba(136, 152, 170, 0.15)',
         border: 'none',
       }}
     >
+      {(title || subtitle) && (
+        <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
+          {title && <h3 className="text-sm font-semibold text-foreground">{title}</h3>}
+          {subtitle && <span className="text-xs text-muted-foreground">{subtitle}</span>}
+        </div>
+      )}
+      {toolbar && (
+        <div style={{ overflowX: 'auto', borderBottom: '1px solid var(--border)', width: '100%' }}>
+          <div style={{ padding: '0.75rem 1rem', width: 'max-content' }}>
+            {toolbar}
+          </div>
+        </div>
+      )}
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>
@@ -97,7 +114,7 @@ export function DataTable<T extends { id: string }>({
                   )}
                   style={{
                     borderBottom: '1px solid var(--border)',
-                    background: row.id === selectedId ? 'rgba(94,114,228,0.08)' : undefined,
+                    background: row.id === selectedId ? 'rgba(26,79,196,0.08)' : undefined,
                     transition: 'background 0.15s ease',
                   }}
                   onMouseEnter={(e) => {

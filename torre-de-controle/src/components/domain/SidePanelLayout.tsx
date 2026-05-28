@@ -31,7 +31,7 @@ export function SidePanelLayout({ title, subtitle, onClose, children, footer }: 
       {footer && (
         <>
           <Separator />
-          <div className="p-4 shrink-0 bg-secondary/40">{footer}</div>
+          <div className="p-4 shrink-0">{footer}</div>
         </>
       )}
     </div>

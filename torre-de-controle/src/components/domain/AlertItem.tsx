@@ -32,7 +32,7 @@ export function AlertItem({ alert, onAssume, onCall, onClick, selected, variant 
     <div
       onClick={() => onClick?.(alert.id)}
       className={cn(
-        'flex items-start gap-3 p-3 rounded-md border transition-colors',
+        'flex items-start gap-3 p-3 rounded-md border transition-colors overflow-hidden',
         selected
           ? 'border-primary/40 bg-primary/10'
           : 'border-border bg-card hover:bg-accent',
