@@ -1,7 +1,7 @@
 import { Elysia } from 'elysia'
 import { cors } from '@elysiajs/cors'
 import { swagger } from '@elysiajs/swagger'
-import { eq } from 'drizzle-orm'
+import { eq, and } from 'drizzle-orm'
 
 import { logger } from './lib/logger'
 import { db } from './db/client'
@@ -17,11 +17,52 @@ import { vehiclesPlugin } from './modules/vehicles/vehicles.plugin'
 import { dashboardPlugin } from './modules/dashboard/dashboard.plugin'
 import { wsPlugin } from './modules/ws/ws.plugin'
 import { processAlertDetection } from './jobs/alert-inline'
+import { sql, desc } from 'drizzle-orm'
+import { geofences, geofenceEvents } from './db/schema/geofences'
 
 const PORT = Number(process.env.PORT ?? 3000)
 const FRONTEND_URL = process.env.FRONTEND_URL ?? 'http://localhost:5173'
 const TELEMETRY_API_KEY = process.env.TELEMETRY_API_KEY ?? 'dev-telemetry-key'
 const POSITIONS_CHANNEL = 'positions:update'
+
+async function checkGeofences(vehicleId: string, lat: number, lng: number): Promise<void> {
+  const point = `POINT(${lng} ${lat})`
+  const inside = await db.execute(sql`
+    SELECT id, name, type FROM geofences
+    WHERE is_active = true AND geom IS NOT NULL
+      AND ST_Contains(geom, ST_GeomFromText(${point}, 4326))
+  `) as Array<{ id: string; name: string; type: string }>
+
+  const trip = await db.query.trips.findFirst({
+    where: and(eq(trips.vehicleId, vehicleId), eq(trips.status, 'in_progress')),
+    columns: { id: true },
+  })
+
+  for (const fence of (inside as any[]).filter(f => f?.id)) {
+    const recent = await db.execute(sql`
+      SELECT id FROM geofence_events
+      WHERE geofence_id = ${fence.id} AND vehicle_id = ${vehicleId}
+        AND event_type = 'entry' AND occurred_at > NOW() - INTERVAL '5 minutes'
+      LIMIT 1
+    `)
+    if ((recent as any[]).length > 0) continue
+
+    await db.insert(geofenceEvents).values({
+      geofenceId: fence.id, vehicleId,
+      tripId: trip?.id, eventType: 'entry',
+      lat: String(lat), lng: String(lng),
+    })
+
+    if (fence.type === 'zona_restrita' || fence.type === 'zona_perigo') {
+      await redis.publish('alerts:new', JSON.stringify({
+        type: 'alert:new', severity: fence.type === 'zona_perigo' ? 'critico' : 'medio',
+        alertType: 'entrou_geofence', vehicleId, tripId: trip?.id,
+        title: `Entrada em zona — ${fence.name}`,
+      }))
+    }
+    logger.info({ geofenceId: fence.id, vehicleId, name: fence.name }, 'geofence entry')
+  }
+}
 
 async function computeSlaStatus(vehicleId: string): Promise<string> {
   const trip = await db.query.trips.findFirst({
@@ -50,7 +91,8 @@ export const app = new Elysia()
         { name: 'alerts',    description: 'Alertas + tratativas' },
         { name: 'vehicles',  description: 'Frota' },
         { name: 'dashboard', description: 'KPIs agregados (Redis cache)' },
-        { name: 'telemetry', description: 'GPS ingest + posições em tempo real' },
+        { name: 'telemetry',  description: 'GPS ingest + posições em tempo real' },
+        { name: 'geofences', description: 'Zonas geográficas + entrada/saída via PostGIS' },
       ],
     },
   }))
@@ -62,6 +104,19 @@ export const app = new Elysia()
     logger.error({ code, error: msg }, 'unhandled error')
     set.status = 500
     return { error: 'Internal server error' }
+  })
+  // Geofences — inlined BEFORE auth plugins to avoid authGuard derive leak (Elysia 1.4.28)
+  .get('/api/geofences', async ({ set }) => {
+    try { return db.select().from(geofences).orderBy(desc(geofences.createdAt)) }
+    catch (e: any) { set.status = 500; return { error: e.message } }
+  })
+  .get('/api/geofences/:id', async ({ params, set }) => {
+    const [f] = await db.select().from(geofences).where(eq(geofences.id, params.id))
+    if (!f) { set.status = 404; return { error: 'Not found' } }
+    return f
+  })
+  .get('/api/geofences/:id/events', async ({ params }) => {
+    return db.select().from(geofenceEvents).where(eq(geofenceEvents.geofenceId, params.id)).orderBy(desc(geofenceEvents.occurredAt)).limit(100)
   })
   .use(authPlugin)
   .use(tripsPlugin)
@@ -89,6 +144,9 @@ export const app = new Elysia()
       logger.error({ error: e.message }, 'alert detection error')
     )
 
+    // Geofence spatial check (fire-and-forget — PostGIS)
+    checkGeofences(vehicleId, lat, lng).catch(e => logger.error({ error: e.message }, 'geofence check error'))
+
     logger.debug({ vehicleId, lat, lng, slaStatus }, 'telemetry ingested')
     return { ok: true, slaStatus }
   })
@@ -96,6 +154,40 @@ export const app = new Elysia()
     const keys = await redis.keys('vehicle:*:position')
     const positions = await Promise.all(keys.map(async k => { const p = await redis.hgetall(k); return p && Object.keys(p).length > 0 ? p : null }))
     return positions.filter(Boolean)
+  })
+  // Geofences write routes — after plugins so body parsing works correctly
+  .post('/api/geofences', async ({ body, set }) => {
+    const b = body as any
+    if (!b?.name) { set.status = 400; return { error: 'name required' } }
+    const [fence] = await db.insert(geofences).values({
+      name: b.name, type: b.type ?? 'zona_restrita', color: b.color ?? '#ef4444',
+      coordinates: b.coordinates, description: b.description,
+    }).returning()
+    const coords = (b.coordinates as number[][][])[0]!.map(([lng, lat]: number[]) => `${lng} ${lat}`).join(',')
+    const wkt = 'POLYGON((' + coords + '))'
+    await db.execute(sql`UPDATE geofences SET geom = ST_GeomFromText(${wkt}, 4326) WHERE id = ${fence.id}`)
+    return fence
+  })
+  .patch('/api/geofences/:id', async ({ params, body, set }) => {
+    const b = body as any
+    const updates: Record<string, unknown> = { updatedAt: new Date() }
+    if (b?.name !== undefined) updates.name = b.name
+    if (b?.type !== undefined) updates.type = b.type
+    if (b?.color !== undefined) updates.color = b.color
+    if (b?.isActive !== undefined) updates.isActive = b.isActive
+    if (b?.description !== undefined) updates.description = b.description
+    if (b?.coordinates !== undefined) updates.coordinates = b.coordinates
+    const [f] = await db.update(geofences).set(updates as any).where(eq(geofences.id, params.id)).returning()
+    if (!f) { set.status = 404; return { error: 'Not found' } }
+    if (b?.coordinates) {
+      const coords = (b.coordinates as number[][][])[0]!.map(([lng, lat]: number[]) => `${lng} ${lat}`).join(',')
+      await db.execute(sql`UPDATE geofences SET geom = ST_GeomFromText(${'POLYGON((' + coords + '))'}, 4326) WHERE id = ${f.id}`)
+    }
+    return f
+  })
+  .delete('/api/geofences/:id', async ({ params, set }) => {
+    await db.delete(geofences).where(eq(geofences.id, params.id))
+    set.status = 204; return ''
   })
   .listen(PORT, () => {
     logger.info({ port: PORT, frontendUrl: FRONTEND_URL }, 'torre-api listening')
