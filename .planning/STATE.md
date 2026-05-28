@@ -2,26 +2,28 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-stopped_at: Phase 06 plans verified — 8 plans approved across 5 waves
-last_updated: "2026-05-28T20:01:11.451Z"
+status: in-progress
+stopped_at: Phase 06 Plan 01 (Wave 0 scaffold) complete — deps + 3 schemas + libs ready
+last_updated: "2026-05-28T20:50:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 14
-  completed_plans: 11
-  percent: 79
+  completed_plans: 13
+  percent: 93
 ---
 
 ## Current Position
 
-- **Phase:** 05-geofences — COMPLETE
-- **Next Phase:** 06-insights-polish-deploy (analytics, CSV export, CI/CD, Railway deploy)
-- **Stopped at:** Phase 06 plans verified — 8 plans approved across 5 waves
+- **Phase:** 06-insights-polish-deploy — IN PROGRESS (Wave 0 complete, Wave 1+2 ready in parallel)
+- **Completed Plan:** 06-01 (Wave 0 scaffold — deps + 3 new schemas + Sentry/VAPID/scrub libs)
+- **Next Plans (parallel):** Wave 1 (06-02 Insights / 06-03 Exports / 06-04 Push / 06-05 Config) + Wave 2 (06-06 Frontend Polish)
+- **Stopped at:** Phase 06 Plan 01 (Wave 0 scaffold) complete — deps + 3 schemas + libs ready
 - **Known issues:**
   - Elysia 1.4.28: POST routes with body schemas fail when loaded as plugins. Workaround: inline routes in index.ts.
   - Stale processes on port 3000 can mask route changes. Always kill all bun processes before testing.
   - BullMQ connection silently fails in Bun 1.3.13 — alert engine uses inline await.
+  - Bun IS installed locally (1.3.13 on PATH) — prior phase notes saying "Bun NOT installed" are stale; Docker fallback unnecessary.
 
 ## Decisions
 
@@ -46,6 +48,14 @@ progress:
 - SparklineChart uses key={isDark} to force Chart.js re-mount on theme change
 - success/info button variants added to shadcn CVA config
 - Extra driver columns (email, base, deliveriesToday, avgDelayMinutes, lat, lng, address) added beyond ARCHITECTURE.md — required by frontend types.ts Driver interface
+- Phase 6 Wave 0: web-push@3.6.7 + @sentry/node@10.55.0 + @sentry/react@10.55.0 + react-hook-form@7.76.1 + zod@4.4.3 pinned exactly (no caret)
+- Phase 6 Wave 0: shared `scrubRecursive` mirror between api/src/lib/scrub.ts and torre-de-controle/src/lib/scrub.ts (17 SCRUB_KEYS, depth 8, Bearer regex)
+- Phase 6 Wave 0: notification_preferences JSONB nullable on users — backend reads default fallback when NULL
+- Phase 6 Wave 0: push_subscriptions.endpoint UNIQUE + user_id FK CASCADE + idx_push_subscriptions_user_id
+- Phase 6 Wave 0: alert_thresholds key-value style (type=PK varchar(50), value INT) — seeds atraso_critico=30/desvio_km=2/stop_duration=15 idempotently
+- Phase 6 Wave 0: Sentry init NOT wired in api/src/index.ts yet — lib scaffolded, side-effect activation deferred to 06-04 + 06-07
+- Phase 6 Wave 0: drizzle-kit push NOT executed — schema applied via plan 06-08 against production Railway DB with --strict --verbose
+- Phase 6 Wave 0: torre-de-controle/.gitignore added `!.env.example` exception so example file is tracked
 
 ## Performance Metrics
 
@@ -61,6 +71,7 @@ progress:
 | 1b | 02 | ~15min | 9 | 40 |
 | 1b | 03 | ~10min | 7 | 1 |
 | Phase 02-backend-core-auth-api-foundation P02 | 11min | 4 tasks | 12 files |
+| 06 | 01 | ~18min | 2 | 21 |
 
 ## Quick Tasks Completed
 
@@ -70,6 +81,6 @@ progress:
 
 ## Last Session
 
-- **Timestamp:** 2026-04-29T00:00:00Z
-- **Stopped at:** Quick task 260429-csm complete — viagens filter refactor
-- **Resume file:** --resume-file
+- **Timestamp:** 2026-05-28T20:50:00Z
+- **Stopped at:** Phase 06 Plan 01 (Wave 0 scaffold) complete — commits 8e77a06 + de732d0
+- **Resume file:** None
