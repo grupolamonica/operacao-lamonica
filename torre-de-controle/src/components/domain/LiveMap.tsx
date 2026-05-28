@@ -3,7 +3,7 @@ import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { Map as MapIcon, Satellite, Wifi, WifiOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { useVehiclePositions, usePositionsStore } from '@/hooks/useVehiclePositions'
+import { usePositionsStore } from '@/hooks/useVehiclePositions'
 
 const SLA_COLORS: Record<string, string> = {
   no_prazo: '#2dce89',
@@ -31,8 +31,9 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
   const markersRef   = useRef<Map<string, maplibregl.Marker>>(new Map())
   const [mode, setMode]   = useState<'mapa' | 'satelite'>('mapa')
 
-  useVehiclePositions()
-  const { positions, connected } = usePositionsStore()
+  // Read from global positions store (WS connection managed in AppLayout)
+  const positions = usePositionsStore(s => s.positions)
+  const connected = usePositionsStore(s => s.connected)
 
   // Init map
   useEffect(() => {

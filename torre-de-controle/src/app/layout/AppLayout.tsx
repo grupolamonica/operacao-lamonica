@@ -1,8 +1,11 @@
 import { Outlet } from 'react-router-dom'
 import { AppSidebar } from './AppSidebar'
 import { Topbar } from './Topbar'
+import { useVehiclePositions } from '@/hooks/useVehiclePositions'
 
 export function AppLayout() {
+  // Single WS connection for the entire app — must be here, not inside individual map components
+  useVehiclePositions()
   return (
     <div className="relative flex h-full" style={{ background: 'var(--app-background)' }}>
       {/* Full-width dark top band — absolute, scrolls with content, covers full width */}

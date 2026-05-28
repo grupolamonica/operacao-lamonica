@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef } from 'react'
 import { create } from 'zustand'
 
 export type VehiclePosition = {
@@ -32,49 +32,47 @@ export const usePositionsStore = create<PositionsStore>((set) => ({
 const WS_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:3000')
   .replace(/^http/, 'ws') + '/ws/vehicles'
 
+// Manages the WebSocket connection singleton — call once per app, not per component.
+// Read positions via usePositionsStore(s => s.positions) directly.
 export function useVehiclePositions() {
-  const wsRef       = useRef<WebSocket | null>(null)
-  const retryRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const { setPosition, setConnected } = usePositionsStore()
-
-  const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return
-
-    const ws = new WebSocket(WS_URL)
-    wsRef.current = ws
-
-    ws.onopen = () => {
-      setConnected(true)
-      // keepalive ping every 25s
-      const ping = setInterval(() => ws.readyState === WebSocket.OPEN && ws.send('ping'), 25_000)
-      ws.addEventListener('close', () => clearInterval(ping))
-    }
-
-    ws.onmessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data as string)
-        if (msg.type === 'position:update') {
-          setPosition(msg.data as VehiclePosition)
-        }
-      } catch { /* ignore malformed */ }
-    }
-
-    ws.onclose = () => {
-      setConnected(false)
-      // Reconnect after 3s
-      retryRef.current = setTimeout(connect, 3000)
-    }
-
-    ws.onerror = () => ws.close()
-  }, [setPosition, setConnected])
+  const wsRef    = useRef<WebSocket | null>(null)
+  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
+    function connect() {
+      if (wsRef.current?.readyState === WebSocket.OPEN) return
+
+      const ws = new WebSocket(WS_URL)
+      wsRef.current = ws
+
+      ws.onopen = () => {
+        usePositionsStore.getState().setConnected(true)
+        const ping = setInterval(() => ws.readyState === WebSocket.OPEN && ws.send('ping'), 25_000)
+        ws.addEventListener('close', () => clearInterval(ping))
+      }
+
+      ws.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data as string)
+          if (msg.type === 'position:update') {
+            usePositionsStore.getState().setPosition(msg.data as VehiclePosition)
+          }
+        } catch { /* ignore malformed */ }
+      }
+
+      ws.onclose = () => {
+        usePositionsStore.getState().setConnected(false)
+        retryRef.current = setTimeout(connect, 3000)
+      }
+
+      ws.onerror = () => ws.close()
+    }
+
     connect()
     return () => {
       retryRef.current && clearTimeout(retryRef.current)
       wsRef.current?.close()
+      wsRef.current = null
     }
-  }, [connect])
-
-  return usePositionsStore(s => ({ positions: s.positions, connected: s.connected }))
+  }, []) // empty deps — connect once on mount
 }
