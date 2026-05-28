@@ -3,21 +3,21 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: active
-stopped_at: Completed 02-06-PLAN.md — App composition, smoke test PASSED. Phase 02 COMPLETE. Awaiting human checkpoint (Swagger UI browser verify).
+stopped_at: Phase 03 complete — telemetry, WS hub, GPS simulator, MapLibre, Eden Treaty, Auth all delivered and smoke-tested.
 last_updated: "2026-05-28T00:00:00.000Z"
 progress:
   total_phases: 6
-  completed_phases: 2
-  total_plans: 6
-  completed_plans: 13
-  percent: 33
+  completed_phases: 3
+  total_plans: 10
+  completed_plans: 17
+  percent: 50
 ---
 
 ## Current Position
 
-- **Phase:** 02-backend-core-auth-api-foundation — COMPLETE (all 6 plans done)
-- **Next Phase:** 03-map-realtime (Mapbox + WebSocket + GPS simulator)
-- **Stopped at:** Phase 02 complete. Human checkpoint Task 3 of Plan 06 pending browser verification.
+- **Phase:** 03-map-realtime — COMPLETE
+- **Next Phase:** 04-alert-engine (BullMQ workers, real-time alert detection)
+- **Stopped at:** Phase 03 complete. Human checkpoint: open browser, login at localhost:5173, start docker compose up, run `bun run sim` to see vehicles moving on MapLibre map.
 
 ## Decisions
 
