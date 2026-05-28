@@ -16,6 +16,7 @@ import { alertsPlugin } from './modules/alerts/alerts.plugin'
 import { vehiclesPlugin } from './modules/vehicles/vehicles.plugin'
 import { dashboardPlugin } from './modules/dashboard/dashboard.plugin'
 import { wsPlugin } from './modules/ws/ws.plugin'
+import { processAlertDetection } from './jobs/alert-inline'
 
 const PORT = Number(process.env.PORT ?? 3000)
 const FRONTEND_URL = process.env.FRONTEND_URL ?? 'http://localhost:5173'
@@ -82,6 +83,12 @@ export const app = new Elysia()
     if (vehicle.driverId) await db.update(drivers).set({ lat: String(lat), lng: String(lng) }).where(eq(drivers.id, vehicle.driverId))
     const slaStatus = await computeSlaStatus(vehicleId)
     await redis.publish(POSITIONS_CHANNEL, JSON.stringify({ ...pos, slaStatus, lat, lng }))
+
+    // Alert detection (inline async, ~50ms overhead)
+    await processAlertDetection(vehicleId, lat, lng, Number(speed ?? 0), capturedAt ?? new Date().toISOString()).catch(e =>
+      logger.error({ error: e.message }, 'alert detection error')
+    )
+
     logger.debug({ vehicleId, lat, lng, slaStatus }, 'telemetry ingested')
     return { ok: true, slaStatus }
   })

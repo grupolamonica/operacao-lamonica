@@ -1,11 +1,23 @@
+import { useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { AppSidebar } from './AppSidebar'
 import { Topbar } from './Topbar'
-import { useVehiclePositions } from '@/hooks/useVehiclePositions'
+import { useVehiclePositions, usePositionsStore } from '@/hooks/useVehiclePositions'
 
 export function AppLayout() {
-  // Single WS connection for the entire app — must be here, not inside individual map components
   useVehiclePositions()
+  const queryClient   = useQueryClient()
+  const newAlertCount = usePositionsStore(s => s.newAlertCount)
+
+  // Invalidate alerts query when new alert arrives so the list auto-refreshes
+  useEffect(() => {
+    if (newAlertCount > 0) {
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
+      queryClient.invalidateQueries({ queryKey: ['alerts-kpis'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard-kpis'] })
+    }
+  }, [newAlertCount, queryClient])
   return (
     <div className="relative flex h-full" style={{ background: 'var(--app-background)' }}>
       {/* Full-width dark top band — absolute, scrolls with content, covers full width */}

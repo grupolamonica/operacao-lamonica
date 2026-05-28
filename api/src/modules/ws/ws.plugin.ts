@@ -12,6 +12,7 @@ const subscriber = new Redis(process.env.REDIS_URL, {
 })
 
 const POSITIONS_CHANNEL = 'positions:update'
+const ALERTS_CHANNEL    = 'alerts:new'
 
 // Connected WebSocket clients
 const clients = new Set<{ send: (msg: string) => void; id: string }>()
@@ -21,13 +22,13 @@ let subscribed = false
 async function ensureSubscribed() {
   if (subscribed) return
   await subscriber.connect().catch(() => {})
-  await subscriber.subscribe(POSITIONS_CHANNEL)
+  await subscriber.subscribe(POSITIONS_CHANNEL, ALERTS_CHANNEL)
   subscriber.on('message', (channel, message) => {
-    if (channel !== POSITIONS_CHANNEL) return
-    const dead: typeof clients extends Set<infer T> ? T[] : never[] = []
+    const eventType = channel === POSITIONS_CHANNEL ? 'position:update' : 'alert:new'
+    const dead: Array<{ send: (msg: string) => void; id: string }> = []
     for (const client of clients) {
       try {
-        client.send(JSON.stringify({ type: 'position:update', data: JSON.parse(message) }))
+        client.send(JSON.stringify({ type: eventType, data: JSON.parse(message) }))
       } catch {
         dead.push(client)
       }

@@ -16,13 +16,19 @@ type PositionsStore = {
   setPosition: (pos: VehiclePosition) => void
   connected: boolean
   setConnected: (v: boolean) => void
+  newAlertCount: number
+  incrementAlerts: () => void
+  clearAlerts: () => void
 }
 
 export const usePositionsStore = create<PositionsStore>((set) => ({
-  positions:    new Map(),
-  connected:    false,
-  setConnected: (v) => set({ connected: v }),
-  setPosition:  (pos) => set(s => {
+  positions:       new Map(),
+  connected:       false,
+  newAlertCount:   0,
+  setConnected:    (v) => set({ connected: v }),
+  incrementAlerts: () => set(s => ({ newAlertCount: s.newAlertCount + 1 })),
+  clearAlerts:     () => set({ newAlertCount: 0 }),
+  setPosition:     (pos) => set(s => {
     const next = new Map(s.positions)
     next.set(pos.vehicleId, pos)
     return { positions: next }
@@ -56,6 +62,8 @@ export function useVehiclePositions() {
           const msg = JSON.parse(e.data as string)
           if (msg.type === 'position:update') {
             usePositionsStore.getState().setPosition(msg.data as VehiclePosition)
+          } else if (msg.type === 'alert:new') {
+            usePositionsStore.getState().incrementAlerts()
           }
         } catch { /* ignore malformed */ }
       }

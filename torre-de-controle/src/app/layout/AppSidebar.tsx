@@ -3,6 +3,7 @@ import {
   LayoutDashboard, Radio, Truck, Users, MapPin,
   AlertTriangle, BarChart3, Settings, Antenna,
 } from 'lucide-react'
+import { usePositionsStore } from '@/hooks/useVehiclePositions'
 
 const navItems = [
   { to: '/dashboard',         label: 'Dashboard',          icon: LayoutDashboard },
@@ -10,12 +11,15 @@ const navItems = [
   { to: '/viagens',           label: 'Viagens',            icon: Truck },
   { to: '/motoristas',        label: 'Motoristas',         icon: Users },
   { to: '/geofences',         label: 'Geofences',          icon: MapPin },
-  { to: '/alertas',           label: 'Alertas',            icon: AlertTriangle, badge: 12 },
+  { to: '/alertas',           label: 'Alertas',            icon: AlertTriangle },
   { to: '/insights',          label: 'Insights',           icon: BarChart3 },
   { to: '/configuracoes',     label: 'Configurações',      icon: Settings },
 ] as const
 
 export function AppSidebar() {
+  const newAlertCount = usePositionsStore(s => s.newAlertCount)
+  const clearAlerts   = usePositionsStore(s => s.clearAlerts)
+
   return (
     <nav
       style={{
@@ -97,12 +101,14 @@ export function AppSidebar() {
           Menu
         </p>
 
-        {navItems.map(({ to, label, icon: Icon, ...rest }) => {
-          const badge = 'badge' in rest ? rest.badge : undefined
+        {navItems.map(({ to, label, icon: Icon }) => {
+          // Real-time alert badge — clear on click
+          const badge = to === '/alertas' && newAlertCount > 0 ? newAlertCount : undefined
           return (
             <NavLink
               key={to}
               to={to}
+              onClick={() => to === '/alertas' && clearAlerts()}
               style={{ textDecoration: 'none', display: 'block', margin: '1px 8px' }}
             >
               {({ isActive }) => (
