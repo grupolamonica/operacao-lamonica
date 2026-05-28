@@ -1,0 +1,24 @@
+{
+  "project_code": "TDE",
+  "project_title": "Torre de Controle de Entregas",
+  "response_language": "pt-BR",
+  "researcher_model": "sonnet",
+  "planner_model": "opus",
+  "checker_model": "sonnet",
+  "research_enabled": true,
+  "plan_checker_enabled": true,
+  "nyquist_validation_enabled": false,
+  "commit_docs": false,
+  "text_mode": false,
+  "workflow": {
+    "tdd_mode": false,
+    "discuss_mode": "discuss",
+    "security_enforcement": true,
+    "security_asvs_level": "1",
+    "security_block_on": "high",
+    "ui_phase": true,
+    "ui_safety_gate": false,
+    "pattern_mapper": true,
+    "auto_advance": false
+  }
+}
