@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import maplibregl from 'maplibre-gl'
+import * as maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { MapPin, Plus, Trash2, Loader2, MousePointer, CheckCircle, XCircle } from 'lucide-react'
 import { Card } from '@/components/ui/card'

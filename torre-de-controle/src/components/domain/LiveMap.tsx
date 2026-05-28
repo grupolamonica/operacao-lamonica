@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import maplibregl from 'maplibre-gl'
+import * as maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { Map as MapIcon, Satellite, Wifi, WifiOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
