@@ -9,6 +9,8 @@ import { driversPlugin } from './modules/drivers/drivers.plugin'
 import { alertsPlugin } from './modules/alerts/alerts.plugin'
 import { vehiclesPlugin } from './modules/vehicles/vehicles.plugin'
 import { dashboardPlugin } from './modules/dashboard/dashboard.plugin'
+import { telemetryPlugin } from './modules/telemetry/telemetry.plugin'
+import { wsPlugin } from './modules/ws/ws.plugin'
 
 const PORT = Number(process.env.PORT ?? 3000)
 const FRONTEND_URL = process.env.FRONTEND_URL ?? 'http://localhost:5173'
@@ -37,6 +39,7 @@ export const app = new Elysia()
         { name: 'alerts',    description: 'Alertas + tratativas' },
         { name: 'vehicles',  description: 'Frota' },
         { name: 'dashboard', description: 'KPIs agregados (Redis cache)' },
+        { name: 'telemetry', description: 'GPS ingest + posições em tempo real' },
       ],
     },
   }))
@@ -59,6 +62,8 @@ export const app = new Elysia()
   .use(alertsPlugin)
   .use(vehiclesPlugin)
   .use(dashboardPlugin)
+  .use(telemetryPlugin)
+  .use(wsPlugin)
   .listen(PORT, () => {
     logger.info({ port: PORT, frontendUrl: FRONTEND_URL }, 'torre-api listening')
   })
