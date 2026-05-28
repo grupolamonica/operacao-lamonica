@@ -3,21 +3,22 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: active
-stopped_at: Phase 03 complete — telemetry, WS hub, GPS simulator, MapLibre, Eden Treaty, Auth all delivered and smoke-tested.
+stopped_at: Phase 04 complete — alert engine (stop/delay detection), WS broadcast, sidebar badge. Fixed Zustand infinite loop.
 last_updated: "2026-05-28T00:00:00.000Z"
 progress:
   total_phases: 6
-  completed_phases: 3
-  total_plans: 10
-  completed_plans: 17
-  percent: 50
+  completed_phases: 4
+  total_plans: 12
+  completed_plans: 19
+  percent: 67
 ---
 
 ## Current Position
 
-- **Phase:** 03-map-realtime — COMPLETE
-- **Next Phase:** 04-alert-engine (BullMQ workers, real-time alert detection)
-- **Stopped at:** Phase 03 complete. Human checkpoint: open browser, login at localhost:5173, start docker compose up, run `bun run sim` to see vehicles moving on MapLibre map.
+- **Phase:** 04-alert-engine — COMPLETE
+- **Next Phase:** 05-geofences (PostGIS, geofence CRUD, draw on map, entry/exit detection)
+- **Stopped at:** Phase 04 complete. Smoke tested: 14 vehicles, alert detection working, real-time badge in sidebar.
+- **Known limitation:** BullMQ queue connection silently fails in Bun 1.3.13 — alert engine uses inline await instead. Works correctly.
 
 ## Decisions
 
