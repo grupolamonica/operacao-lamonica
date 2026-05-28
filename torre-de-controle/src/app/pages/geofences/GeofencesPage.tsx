@@ -1,12 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-// @ts-ignore — mapbox-gl-draw types work with maplibre-gl v4
-import MapboxDraw from '@mapbox/mapbox-gl-draw'
-import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css'
-import { MapPin, Plus, Trash2, Loader2 } from 'lucide-react'
+import { MapPin, Plus, Trash2, Loader2, MousePointer, CheckCircle, XCircle } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { useGeofences, useCreateGeofence, useDeleteGeofence } from '@/hooks/useGeofences'
+import type { Geofence } from '@/hooks/useGeofences'
+import { cn } from '@/lib/utils'
 
 const FENCE_TYPES = [
   { value: 'zona_restrita', label: 'Zona Restrita',  color: '#ef4444' },
@@ -16,137 +15,165 @@ const FENCE_TYPES = [
 ]
 
 export function GeofencesPage() {
-  const containerRef  = useRef<HTMLDivElement>(null)
-  const mapRef        = useRef<maplibregl.Map | null>(null)
-  const drawRef       = useRef<MapboxDraw | null>(null)
-  const initRef       = useRef(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const mapRef       = useRef<maplibregl.Map | null>(null)
+  const initRef      = useRef(false)
+  const markersRef   = useRef<maplibregl.Marker[]>([])
 
-  const [newName, setNewName]   = useState('')
-  const [newType, setNewType]   = useState('zona_restrita')
-  const [drawing, setDrawing]   = useState(false)
-  const [pendingGeo, setPendingGeo] = useState<number[][][] | null>(null)
+  const [isDrawing, setIsDrawing]     = useState(false)
+  const [drawPoints, setDrawPoints]   = useState<[number, number][]>([])
+  const [newName, setNewName]         = useState('')
+  const [newType, setNewType]         = useState('zona_restrita')
 
   const { data: fences, isLoading } = useGeofences()
   const createMutation = useCreateGeofence()
   const deleteMutation = useDeleteGeofence()
 
-  // Init map + draw
+  // Map cursor effect when drawing
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    map.getCanvas().style.cursor = isDrawing ? 'crosshair' : ''
+  }, [isDrawing])
+
+  // Handle map clicks to collect polygon vertices
+  const handleMapClick = useCallback((e: maplibregl.MapMouseEvent) => {
+    if (!isDrawing) return
+    const { lng, lat } = e.lngLat
+    setDrawPoints(prev => [...prev, [lng, lat]])
+  }, [isDrawing])
+
+  // Init map
   useEffect(() => {
     if (initRef.current || !containerRef.current) return
     initRef.current = true
 
     const map = new maplibregl.Map({
-      container: containerRef.current,
-      style:     'https://tiles.openfreemap.org/styles/liberty',
-      center:    [-46.6333, -23.5505],
-      zoom:      10,
+      container:          containerRef.current,
+      style:              'https://tiles.openfreemap.org/styles/liberty',
+      center:             [-46.6333, -23.5505],
+      zoom:               10,
       attributionControl: false,
     })
-
     map.addControl(new maplibregl.NavigationControl(), 'top-left')
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right')
 
-    // @ts-ignore
-    const draw = new MapboxDraw({
-      displayControlsDefault: false,
-      controls: { polygon: true, trash: true },
-    })
-
-    // @ts-ignore
-    map.addControl(draw)
-    drawRef.current = draw
-
     map.on('load', () => {
       map.resize()
-
-      // Render existing geofences on load
       renderGeofences(map)
     })
 
-    map.on('draw.create', (e: any) => {
-      const feature = e.features[0]
-      if (feature?.geometry?.type === 'Polygon') {
-        setPendingGeo(feature.geometry.coordinates)
-        setDrawing(true)
-      }
-    })
-
-    map.on('draw.update', (e: any) => {
-      const feature = e.features[0]
-      if (feature?.geometry?.type === 'Polygon') {
-        setPendingGeo(feature.geometry.coordinates)
-      }
-    })
-
+    map.on('click', handleMapClick)
     mapRef.current = map
 
     return () => {
       initRef.current = false
-      mapRef.current = null
-      drawRef.current = null
+      map.off('click', handleMapClick)
       map.remove()
+      mapRef.current = null
     }
-  }, [])
+  }, [handleMapClick])
 
-  // Re-render geofences when list changes
+  // Re-render when click handler or fences change
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    map.off('click', handleMapClick)
+    map.on('click', handleMapClick)
+  }, [handleMapClick])
+
+  // Update geofence overlays when fences change
   useEffect(() => {
     const map = mapRef.current
     if (!map || !map.isStyleLoaded()) return
     renderGeofences(map)
   }, [fences])
 
-  function renderGeofences(map: maplibregl.Map) {
-    // Remove existing geofence layers
-    if (map.getLayer('geofences-fill')) map.removeLayer('geofences-fill')
-    if (map.getLayer('geofences-line')) map.removeLayer('geofences-line')
-    if (map.getSource('geofences')) map.removeSource('geofences')
+  // Draw preview markers for current polygon points
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    markersRef.current.forEach(m => m.remove())
+    markersRef.current = []
 
-    const geojson = {
-      type: 'FeatureCollection' as const,
-      features: fences.map(f => ({
+    if (isDrawing && drawPoints.length > 0) {
+      drawPoints.forEach(([lng, lat], i) => {
+        const el = document.createElement('div')
+        el.style.cssText = `width:8px;height:8px;border-radius:50%;background:${i === 0 ? '#0f62fe' : '#64748b'};border:2px solid white;`
+        const marker = new maplibregl.Marker({ element: el }).setLngLat([lng, lat]).addTo(map)
+        markersRef.current.push(marker)
+      })
+
+      // Update or add preview polygon source
+      const coords = [...drawPoints]
+      if (coords.length >= 3) {
+        const closed = [...coords, coords[0]!]
+        const geojson: GeoJSON.GeoJSON = {
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            properties: {},
+            geometry: { type: 'Polygon', coordinates: [closed] },
+          }],
+        }
+        if (map.getSource('draw-preview')) {
+          (map.getSource('draw-preview') as maplibregl.GeoJSONSource).setData(geojson)
+        } else {
+          map.addSource('draw-preview', { type: 'geojson', data: geojson })
+          map.addLayer({ id: 'draw-fill', type: 'fill', source: 'draw-preview', paint: { 'fill-color': '#0f62fe', 'fill-opacity': 0.15 } })
+          map.addLayer({ id: 'draw-line', type: 'line', source: 'draw-preview', paint: { 'line-color': '#0f62fe', 'line-width': 2, 'line-dasharray': [2, 2] } })
+        }
+      }
+    } else {
+      if (map.getLayer('draw-fill')) map.removeLayer('draw-fill')
+      if (map.getLayer('draw-line')) map.removeLayer('draw-line')
+      if (map.getSource('draw-preview')) map.removeSource('draw-preview')
+    }
+  }, [isDrawing, drawPoints])
+
+  function renderGeofences(map: maplibregl.Map) {
+    if (map.getLayer('fences-fill')) map.removeLayer('fences-fill')
+    if (map.getLayer('fences-line')) map.removeLayer('fences-line')
+    if (map.getLayer('fences-label')) map.removeLayer('fences-label')
+    if (map.getSource('fences')) map.removeSource('fences')
+
+    const geojson: GeoJSON.GeoJSON = {
+      type: 'FeatureCollection',
+      features: fences.filter(f => f.isActive).map(f => ({
         type: 'Feature' as const,
-        properties: { id: f.id, name: f.name, color: f.color, type: f.type },
+        properties: { id: f.id, name: f.name, color: f.color },
         geometry: { type: 'Polygon' as const, coordinates: f.coordinates },
       })),
     }
-
-    map.addSource('geofences', { type: 'geojson', data: geojson })
-    map.addLayer({
-      id: 'geofences-fill',
-      type: 'fill',
-      source: 'geofences',
-      paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.15 },
-    })
-    map.addLayer({
-      id: 'geofences-line',
-      type: 'line',
-      source: 'geofences',
-      paint: { 'line-color': ['get', 'color'], 'line-width': 2 },
-    })
+    map.addSource('fences', { type: 'geojson', data: geojson })
+    map.addLayer({ id: 'fences-fill', type: 'fill', source: 'fences', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.15 } })
+    map.addLayer({ id: 'fences-line', type: 'line', source: 'fences', paint: { 'line-color': ['get', 'color'], 'line-width': 2 } })
   }
 
-  async function handleCreate() {
-    if (!pendingGeo || !newName.trim()) return
+  function cancelDraw() {
+    setIsDrawing(false)
+    setDrawPoints([])
+    setNewName('')
+  }
+
+  async function saveFence() {
+    if (drawPoints.length < 3 || !newName.trim()) return
+    const closed = [...drawPoints, drawPoints[0]!]
     const typeInfo = FENCE_TYPES.find(t => t.value === newType)!
     await createMutation.mutateAsync({
       name:        newName.trim(),
       type:        newType,
       color:       typeInfo.color,
-      coordinates: pendingGeo,
+      coordinates: [closed],
     })
-    setNewName('')
-    setPendingGeo(null)
-    setDrawing(false)
-    drawRef.current?.deleteAll()
+    cancelDraw()
   }
 
   return (
     <div className="space-y-5">
-      <header className="pb-4 flex items-start gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Geofences</h1>
-          <p className="text-sm text-white/70">Zonas geográficas com detecção PostGIS de entrada/saída</p>
-        </div>
+      <header className="pb-4">
+        <h1 className="text-2xl font-bold text-white">Geofences</h1>
+        <p className="text-sm text-white/70">Zonas geográficas com detecção PostGIS de entrada/saída</p>
       </header>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -154,16 +181,45 @@ export function GeofencesPage() {
         <Card className="xl:col-span-2 overflow-hidden p-0">
           <div className="relative" style={{ height: 480 }}>
             <div ref={containerRef} style={{ position: 'absolute', inset: 0 }} />
-            {drawing && (
+
+            {/* Drawing toolbar */}
+            <div className="absolute top-3 right-3 z-10 flex gap-2">
+              {!isDrawing ? (
+                <button
+                  onClick={() => setIsDrawing(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs shadow"
+                >
+                  <MousePointer className="h-3 w-3" /> Desenhar zona
+                </button>
+              ) : (
+                <>
+                  <span className="flex items-center gap-1 px-2 py-1.5 bg-blue-600 text-white rounded-md text-xs shadow">
+                    <Plus className="h-3 w-3" /> {drawPoints.length} pts
+                  </span>
+                  {drawPoints.length >= 3 && (
+                    <button onClick={saveFence} disabled={!newName.trim() || createMutation.isPending}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded-md text-xs shadow disabled:opacity-50">
+                      <CheckCircle className="h-3 w-3" />
+                      {createMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Salvar'}
+                    </button>
+                  )}
+                  <button onClick={cancelDraw} className="flex items-center gap-1 px-3 py-1.5 bg-card text-foreground rounded-md text-xs shadow border border-border">
+                    <XCircle className="h-3 w-3" /> Cancelar
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Drawing form overlay */}
+            {isDrawing && (
               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10">
                 <div className="bg-card rounded-lg shadow-lg p-3 flex items-center gap-3 text-sm border border-border">
-                  <Plus className="h-4 w-4 text-primary" />
-                  <span className="text-foreground">Polígono desenhado. Salvar como:</span>
                   <input
-                    className="border border-border rounded px-2 py-1 text-xs w-28 bg-background text-foreground"
+                    className="border border-border rounded px-2 py-1 text-xs w-32 bg-background text-foreground"
                     placeholder="Nome da zona"
                     value={newName}
                     onChange={e => setNewName(e.target.value)}
+                    autoFocus
                   />
                   <select
                     className="border border-border rounded px-2 py-1 text-xs bg-background text-foreground"
@@ -172,32 +228,23 @@ export function GeofencesPage() {
                   >
                     {FENCE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
-                  <button
-                    onClick={handleCreate}
-                    disabled={!newName.trim() || createMutation.isPending}
-                    className="px-3 py-1 bg-primary text-primary-foreground rounded text-xs disabled:opacity-50"
-                  >
-                    {createMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Salvar'}
-                  </button>
-                  <button
-                    onClick={() => { setDrawing(false); setPendingGeo(null); drawRef.current?.deleteAll() }}
-                    className="px-3 py-1 bg-muted text-muted-foreground rounded text-xs"
-                  >
-                    Cancelar
-                  </button>
+                  <span className="text-xs text-muted-foreground">Clique no mapa para adicionar pontos</span>
                 </div>
               </div>
             )}
           </div>
           <p className="text-xs text-muted-foreground px-3 py-2">
-            Use o botão de polígono no canto superior esquerdo para desenhar uma zona.
+            {isDrawing
+              ? `${drawPoints.length} pontos desenhados. Mínimo 3 para salvar.`
+              : 'Clique em "Desenhar zona" para criar uma nova geofence.'}
           </p>
         </Card>
 
         {/* Geofence list */}
         <Card className="p-4 space-y-3 overflow-auto max-h-[540px]">
           <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <MapPin className="h-4 w-4 text-primary" /> Zonas cadastradas ({fences.length})
+            <MapPin className="h-4 w-4 text-primary" />
+            Zonas cadastradas ({fences.length})
           </h2>
 
           {isLoading ? (
@@ -207,10 +254,13 @@ export function GeofencesPage() {
               Nenhuma zona cadastrada.<br />Use o mapa para desenhar.
             </p>
           ) : (
-            fences.map(f => {
+            fences.map((f: Geofence) => {
               const typeInfo = FENCE_TYPES.find(t => t.value === f.type)
               return (
-                <div key={f.id} className="flex items-center gap-2 p-2 rounded-md bg-muted/30 border border-border">
+                <div key={f.id} className={cn(
+                  'flex items-center gap-2 p-2 rounded-md border',
+                  f.isActive ? 'bg-muted/30 border-border' : 'bg-muted/10 border-border/50 opacity-60',
+                )}>
                   <span className="h-3 w-3 rounded-full flex-shrink-0" style={{ background: f.color }} />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium text-foreground truncate">{f.name}</p>
