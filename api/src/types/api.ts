@@ -1,1 +1,2 @@
-export type { App } from '../index'
+import { app } from '../index'
+export type App = typeof app
