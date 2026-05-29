@@ -3,22 +3,22 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 07-02-PLAN.md (Wave 1 — ranking types + scoring + golden-sample)
-last_updated: "2026-05-29T19:54:09.548Z"
+stopped_at: Completed 07-03-PLAN.md (Wave 2 — ranking reads + sheets CSV + redis cache)
+last_updated: "2026-05-29T20:13:00.000Z"
 progress:
   total_phases: 11
   completed_phases: 1
   total_plans: 18
-  completed_plans: 21
+  completed_plans: 22
   percent: 100
 ---
 
 ## Current Position
 
-- **Phase:** 07-ranking-backend — IN PROGRESS (Wave 1: 07-01 + 07-02 complete)
-- **Completed Plan:** 07-02 (Wave 1 — ranking types + getRouteBasePoints fonte única + scoring puro portado 1:1 do ride-rank; 16 testes bun verdes incl. golden-sample + NO SHOW; paridade byte-a-byte dos literais de fallback)
-- **Next Plans:** 07-03 (reads: fetchEvaluations/DriverBlocks/Drivers/RouteScores via rankSupabase) + 07-04 (service + endpoints GET /api/ranking/* + checkpoint do service_role)
-- **Stopped at:** Completed 07-02-PLAN.md (Wave 1 — ranking types + scoring + golden-sample)
+- **Phase:** 07-ranking-backend — IN PROGRESS (Wave 1: 07-01 + 07-02 complete · Wave 2: 07-03 complete)
+- **Completed Plan:** 07-03 (Wave 2 — I/O layer: ranking.reads.ts com 5 reads via rankSupabase service_role [evaluations/driver_blocks/evaluation_logs/route_scores/drivers paginado] + ranking.sheets.ts getSheetTrips fetch CSV gviz público + parse SheetTrip[] + cache Redis ranking:sheets:trips EX 60; erro PROPAGA [diverge do source que engolia]; tsc exit 0)
+- **Next Plans:** 07-04 (service de composição + endpoints GET /api/ranking/* atrás do authGuard + checkpoint do service_role real contra ride-rank)
+- **Stopped at:** Completed 07-03-PLAN.md (Wave 2 — ranking reads + sheets CSV + redis cache)
 - **Known issues:**
   - Elysia 1.4.28: POST routes with body schemas fail when loaded as plugins. Workaround: inline routes in index.ts.
   - Stale processes on port 3000 can mask route changes. Always kill all bun processes before testing.
@@ -90,6 +90,14 @@ progress:
 - 07-02: getRouteBasePoints e FONTE UNICA em ranking.routes.ts; scoring importa (sem copia) — anti-drift T-07-13
 - 07-02: paridade byte-a-byte dos literais de fallback — mojibake 'a€"' (x4) em transformTrips/vinculo, em-dash limpo '—' (x3) em no-show, 'Nao atribuido' ASCII (x2); SEM normalizar encoding (Phase 8)
 - 07-02: golden-sample bun test com score_final/pontuacao travados (1+3=4) + NO SHOW score 0 — prova paridade ponta-a-ponta
+- 07-03: I/O layer dividido em 2 módulos — ranking.reads.ts (Supabase) + ranking.sheets.ts (CSV+cache); consumidos pelo service de composição do 07-04
+- 07-03: ranking.reads.ts só LEITURA via rankSupabase (5 tabelas) — insert/upsert/update/delete ausentes (writes são Phase 9); verificado por grep vazio
+- 07-03: fetchDrivers paginado em .range(from, from+999) em loop até página < 1000 — preserva comportamento do ride-rank p/ >1000 motoristas
+- 07-03: getRouteBasePoints NÃO redefinido — só fetchRouteScores lê route_scores; a regra pura segue fonte única em ranking.routes (07-02, anti-drift T-07-13)
+- 07-03: ranking.sheets.ts CSV_URL montado de RANK_SHEET_ID/RANK_SHEET_TAB com fallback público (sheet 1MWTiaXU3HXW.../DBLHHISTORICO); fetch sem credencial
+- 07-03: cache in-memory do source (cachedTrips/fetchPromise) trocado por Redis do Torre (ranking:sheets:trips EX 60) — D-V2 short cache T-07-07
+- 07-03: getSheetTrips PROPAGA erro de fetch (diverge do source que retornava [] silencioso) — endpoint do 07-04 trata; só response.status no throw, nunca o CSV/PII (T-07-06)
+- 07-03: .from('<tabela>') colado na linha do rankSupabase + literal 'EX', 60 inline no redis.set — exigência dos greps line-based do plano (key_links + acceptance)
 
 ## Performance Metrics
 
@@ -112,6 +120,7 @@ progress:
 | 06 | 07 | ~13min | 2 | 12 |
 | Phase 07 P01 | ~12min | 3 tasks | 4 files |
 | Phase 07 P02 | ~12min | 1 tasks | 4 files |
+| Phase 07 P03 | ~12min | 2 tasks | 2 files |
 
 ## Quick Tasks Completed
 
@@ -121,6 +130,6 @@ progress:
 
 ## Last Session
 
-- **Timestamp:** 2026-05-29T19:52:52Z
-- **Stopped at:** Phase 07 Plan 01 (Wave 1 — ranking module setup: @supabase/supabase-js + rankSupabase server-side client + RANK_* envs) complete — commits a3154e9 + 8086c89 + 250e9e7
+- **Timestamp:** 2026-05-29T20:13:00Z
+- **Stopped at:** Phase 07 Plan 03 (Wave 2 — ranking I/O layer: ranking.reads.ts 5 reads via rankSupabase + ranking.sheets.ts getSheetTrips CSV gviz + Redis EX 60) complete — commit fb9254c
 - **Resume file:** None

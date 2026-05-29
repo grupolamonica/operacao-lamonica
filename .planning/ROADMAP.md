@@ -213,9 +213,9 @@ Plans:
 **Plans:** 4 plans
 
 Plans:
-- [ ] 07-01-PLAN.md — Wave 1: setup módulo ranking (dep @supabase/supabase-js + client Supabase ride-rank service_role server-side + envs RANK_*)
-- [ ] 07-02-PLAN.md — Wave 1 (TDD): portar tipos + scoring puro do ride-rank (dataAdapter) + teste de paridade
-- [ ] 07-03-PLAN.md — Wave 2: reads Supabase ride-rank (5 tabelas) + Sheets CSV gviz + cache Redis 60s + getRouteBasePoints
+- [x] 07-01-PLAN.md — Wave 1: setup módulo ranking (dep @supabase/supabase-js + client Supabase ride-rank service_role server-side + envs RANK_*) — **DONE** (a3154e9, 8086c89, 250e9e7)
+- [x] 07-02-PLAN.md — Wave 1 (TDD): portar tipos + scoring puro do ride-rank (dataAdapter) + teste de paridade — **DONE** (c538b54, 16b4752)
+- [x] 07-03-PLAN.md — Wave 2: reads Supabase ride-rank (5 tabelas) + Sheets CSV gviz + cache Redis 60s + getRouteBasePoints — **DONE** (fb9254c)
 - [ ] 07-04-PLAN.md — Wave 3: service de composição (paridade DataContext) + plugin Elysia 5 GET atrás de authGuard + registro index.ts + Eden Treaty App + smoke
 
 ## Phase 8: Ranking — UI 6 abas (design Torre) [ FRONTEND ]
