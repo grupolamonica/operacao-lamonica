@@ -149,7 +149,7 @@ Plans:
 - [x] 06-04-PLAN.md — Wave 2: backend push module (subscribe/unsubscribe/dispatcher) + alert engine hook (alert-inline.ts → dispatchAlertPush) + wire 6 plugins in index.ts + Sentry side-effect init — **DONE** (899f008, 351c1d2)
 - [ ] 06-05-PLAN.md — Wave 3: frontend Insights page (4 Chart.js cards: SLA line, motoristas bar, rotas table, alertas donut) + cross-filter + drill-down + URL range persist
 - [ ] 06-06-PLAN.md — Wave 3: frontend Configurações 4 tabs (Users/Thresholds/Notifications/GpsProviders) + Service Worker + usePushSubscription + RHF+Zod forms
-- [ ] 06-07-PLAN.md — Wave 3: frontend layout refactor SidebarProvider + React.lazy code-splitting + ExportButton wiring (3 pages) + vite.config sentryVitePlugin + manualChunks
+- [x] 06-07-PLAN.md — Wave 3: frontend layout refactor SidebarProvider + React.lazy code-splitting + ExportButton wiring (3 pages) + vite.config sentryVitePlugin + manualChunks — **DONE** (59c2fc9, aaa9bda, e2cd362)
 - [ ] 06-08-PLAN.md — Wave 4: deploy infra (NÃO autônomo) — .github/workflows ci/deploy/lighthouse + railway.json + _redirects + README ## Deploy + .gitignore + BLOCKING first manual drizzle-kit push
 
 ---

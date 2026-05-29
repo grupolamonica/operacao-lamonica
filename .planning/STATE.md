@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 06-06-PLAN.md — Configurações 4 tabs + Service Worker (Wave 3)
-last_updated: "2026-05-29T11:53:01.348Z"
+stopped_at: Completed 06-07-PLAN.md — SidebarProvider layout + lazy routes + ExportButton + Sentry vite plugin (Wave 3)
+last_updated: "2026-05-29T11:53:14.000Z"
 progress:
   total_phases: 6
   completed_phases: 0
@@ -16,9 +16,9 @@ progress:
 ## Current Position
 
 - **Phase:** 06-insights-polish-deploy — IN PROGRESS (Wave 0/1/2 complete, Wave 3 frontend ready)
-- **Completed Plan:** 06-04 (Wave 2 — push module + alert engine push hook + index.ts wires all 6 Phase 6 plugins + Sentry boot side-effect)
-- **Next Plans (Wave 3 frontend):** 06-05 (Insights page) + 06-06 (Configurações 4-tabs + SW + push) + 06-07 (Sidebar refactor + lazy + Sentry Vite)
-- **Stopped at:** Completed 06-06-PLAN.md — Configurações 4 tabs + Service Worker (Wave 3)
+- **Completed Plan:** 06-07 (Wave 3 — frontend layout refactor: SidebarProvider + SidebarInset, 7 lazy route chunks, ExportButton + useExportCsv wired on 3 pages, vite.config sentryVitePlugin + manualChunks)
+- **Next Plans:** Wave 4 deploy (06-08) — Railway backend + Cloudflare Pages frontend + Sentry uploads + CI/CD
+- **Stopped at:** Completed 06-07-PLAN.md — SidebarProvider layout + lazy routes + ExportButton + Sentry vite plugin (Wave 3)
 - **Known issues:**
   - Elysia 1.4.28: POST routes with body schemas fail when loaded as plugins. Workaround: inline routes in index.ts.
   - Stale processes on port 3000 can mask route changes. Always kill all bun processes before testing.
@@ -72,6 +72,15 @@ progress:
 - 06-06: usePushSubscription falls back to GET /api/push/vapid-public-key when VITE_VAPID_PUBLIC_KEY env unset — no build-time secret required
 - 06-06: Service Worker registered with explicit { scope: '/' } at /sw.js — REQUIRED to receive push events on all SPA routes (RESEARCH Pitfall #2)
 - 06-06: useUsers retry:false — admin-only endpoint deterministically 403s for non-admin; single error is enough
+- 06-07: Router lazy() with .then(m => ({ default: m.NamedExport })) adapter — pages use named exports, React.lazy expects default-export module shape
+- 06-07: Dashboard kept eager in entry chunk — most-used route, no Suspense delay on app boot
+- 06-07: SidebarProvider owns sidebar state via React context (open/collapsed) — useUIStore intentionally does NOT mirror it (single source of truth)
+- 06-07: SidebarTrigger lives in Topbar next to breadcrumb + Cmd/Ctrl+B keyboard shortcut (built into SidebarProvider)
+- 06-07: ExportButton placed BOTH in page header (no filters → full export) AND table toolbar (current filters applied) on Viagens/Motoristas; AlertasPage only header (filters live at page level)
+- 06-07: Tratativas export endpoint exists but NO UI button — no dedicated tratativas page (nested in AlertDetailPanel); reachable via direct API URL
+- 06-07: ExportFilters typed as `Record<string, unknown> | object` — domain filter interfaces (TripFilters, AlertFilters, DriverFilters) lack index signature
+- 06-07: vite.config sentryVitePlugin.disable = !process.env.SENTRY_AUTH_TOKEN — local/dev builds never error from missing token; sourcemap: 'hidden' generates maps without //# sourceMappingURL ref
+- 06-07: manualChunks splits react-vendor / chart-vendor / map-vendor / query-vendor — stable named chunks for CDN cache invalidation
 
 ## Performance Metrics
 
@@ -91,6 +100,7 @@ progress:
 | Phase 06-insights-polish-deploy P03 | 9min | 2 tasks | 6 files |
 | 06 | 04 | ~25min | 2 | 5 |
 | Phase 06 P06 | 35min | 2 tasks | 10 files |
+| 06 | 07 | ~13min | 2 | 12 |
 
 ## Quick Tasks Completed
 
@@ -100,6 +110,6 @@ progress:
 
 ## Last Session
 
-- **Timestamp:** 2026-05-29T08:35:00Z
-- **Stopped at:** Phase 06 Plan 04 (Wave 2 — push backend + plugin wiring + Sentry boot) complete — commits 899f008 + 351c1d2
+- **Timestamp:** 2026-05-29T11:53:14Z
+- **Stopped at:** Phase 06 Plan 07 (Wave 3 — SidebarProvider + lazy routes + ExportButton + Sentry vite) complete — commits 59c2fc9 + aaa9bda + e2cd362
 - **Resume file:** None
