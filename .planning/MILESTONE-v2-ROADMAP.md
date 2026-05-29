@@ -8,7 +8,7 @@
 
 ## Decisões travadas (discussão 2026-05-29)
 
-- **D-V2-01 — Acesso aos dados de ranking:** o front do Torre lê **direto do Supabase do ride-rank** (`vrlhfgfyjvkzfnafibnc`). Os serviços TS são **portados** para `torre-de-controle/` e usam um **client Supabase separado** (env próprio). Backend do ranking **fica separado** — não entra na API Elysia do Torre.
+- **D-V2-01 — Acesso aos dados de ranking (PROXY via Elysia):** a API Elysia do Torre ganha um **módulo `ranking`** que guarda a credencial do Supabase do ride-rank (`vrlhfgfyjvkzfnafibnc`, **`service_role` server-side**) e expõe `/api/ranking/*`. O front do Torre consome via **Eden Treaty** (mesmo padrão dos outros módulos, usa o auth-cookie do Torre — sem 2º login). A lógica de scoring (`dataAdapter`) é **portada para o servidor** (TS no Elysia). O **dado** continua externo no Supabase do ride-rank — o Torre só lê/repassa; nada de ranking é migrado pro DB do Torre. *(Atualizado da discussão: escolhido proxy em vez de acesso direto no browser, pra não expor a key e evitar 2º login.)*
 - **D-V2-02 — Fonte das viagens do ranking:** mesma **planilha Google Sheets** que o ride-rank usa hoje (`sheetsService` mantido). *(Prereq: URL + credencial do Sheets.)*
 - **D-V2-03 — Escopo das telas:** **todas as 6 abas** (Ranking, Viagens, Qualidade, Bloqueios, Rotas, Logs) + StatsCards + filtros + modais, **redesenhadas no padrão Torre** (PanelCard, DataTable, Chart.js/Argon — substitui shadcn/Recharts do ride-rank).
 - **D-V2-04 — Cálculo do ranking:** reusar a lógica **client-side** do `dataAdapter.ts` (score = pontos-base da rota + ETA origem/destino; por motorista = soma + ajuste manual; ordena desc). Sem reescrever o algoritmo.
@@ -17,43 +17,43 @@
 
 ## Pré-requisitos (user-setup, bloqueiam execução)
 
-1. **Supabase ride-rank** (`vrlhfgfyjvkzfnafibnc`): `service_role` key **ou** credenciais Supabase Auth — o anon key só expõe a tabela `drivers` (RLS bloqueia evaluations/blocks/route_scores).
-2. **Google Sheets**: URL da planilha de viagens + método de acesso (API key / service account) que o `sheetsService` usa.
+1. **Supabase ride-rank** (`vrlhfgfyjvkzfnafibnc`): **`service_role` key** (Dashboard → Settings → API). Fica **só no servidor** (env do Elysia), nunca no browser. Necessária porque o anon só lê `drivers` (RLS bloqueia o resto).
+2. ~~Google Sheets~~ ✅ **resolvido** — o `sheetsService` busca um **CSV público** (sheet ID `1MWTiaXU3HXW_iVn-n70WSk3o8rcHTRrQP2ac07W9cCU`, tab `DBLHHISTORICO`) via gviz, **sem credencial**. Só confirmar que a planilha continua compartilhada como "qualquer um com o link pode ver".
 
 ---
 
 ## Feature A — Ranking de Motoristas no Torre
 
-### Phase 7 — Ranking: camada de dados (read-only)
-**Goal:** Torre consegue ler e computar o ranking a partir das fontes do ride-rank, sem UI ainda.
+### Phase 7 — Ranking: módulo backend Elysia (read-only)
+**Goal:** a API Elysia do Torre lê e computa o ranking a partir das fontes do ride-rank (Supabase + Sheets CSV), exposto via `/api/ranking/*`.
 **Entregas:**
-- Portar serviços TS para `torre-de-controle/src/features/ranking/services/`: `dataAdapter.ts`, `supabaseService.ts`, `routeScoreService.ts`, `vinculoService.ts`, `sheetsService.ts` + tipos (`Trip`, `Driver`, `Block`, `EvaluationRecord`, ...).
-- Client Supabase separado: `src/features/ranking/lib/rankSupabase.ts` (env `VITE_RANK_SUPABASE_URL` / `VITE_RANK_SUPABASE_ANON_KEY` ou service via proxy).
-- Fonte Google Sheets configurada (env do Sheets).
-- Hook `useRanking()` (TanStack Query) expondo `{ drivers ranked, trips, blocks, routeScores, stats }`.
-**Sucesso:** ranking computado no Torre bate com o app original (paridade de pontuação numa amostra). Build + tsc limpos.
-**Depende de:** Pré-req 1 e 2.
+- Módulo `api/src/modules/ranking/`: client Supabase ride-rank server-side (`@supabase/supabase-js`, `service_role` via env `RANK_SUPABASE_URL`/`RANK_SUPABASE_SERVICE_KEY`).
+- Portar serviços TS pro servidor: `dataAdapter.ts` (scoring `calculateTripScore`/`deriveDrivers`/métricas), `supabaseService.ts` (reads de `evaluations/driver_blocks/route_scores/drivers`), `routeScoreService.ts`, `sheetsService.ts` (fetch do CSV público gviz — sheet ID `1MWTiaXU3HXW...`/`DBLHHISTORICO`, **sem credencial**) + tipos.
+- Endpoints read: `GET /api/ranking/drivers` (ranked + stats), `/trips`, `/blocks`, `/route-scores`, `/stats` — atrás do `authGuard` do Torre. Cache Redis curto (ex 60s) no fetch do Sheets.
+- Tipos exportados via Eden Treaty (`App`) pro front.
+**Sucesso:** `GET /api/ranking/drivers` retorna ranking computado batendo com o app original (paridade numa amostra). `bun tsc` limpo. Smoke test do endpoint.
+**Depende de:** Pré-req 1 (service_role key ride-rank). *(Sheets não precisa credencial.)*
 
 ### Phase 8 — Ranking: UI (6 abas, design Torre)
-**Goal:** rota `/ranking` no Torre com as 6 abas funcionando (leitura).
+**Goal:** rota `/ranking` no Torre com as 6 abas funcionando (leitura), consumindo `/api/ranking/*` via Eden Treaty + TanStack Query.
 **Entregas:**
-- Item "Ranking" no sidebar Argon + rota lazy `/ranking`.
-- Layout com Tabs (shadcn `tabs.tsx` já existe) + `StatsCards` (4 KPIs no padrão KPICard).
+- Item "Ranking" no sidebar Argon flutuante + rota lazy `/ranking`.
+- Hooks `useRanking*()` (Eden Treaty → `/api/ranking/*`, mesmo padrão de `useTrips`).
+- Layout com Tabs (shadcn `tabs.tsx`) + `StatsCards` (4 KPIs no padrão KPICard).
 - Abas: **Ranking** (DataTable ordenável), **Viagens** (DataTable + botão avaliar), **Qualidade** (Chart.js bar + listas), **Bloqueios** (DataTable + ação), **Rotas** (form/tabela), **Logs** (DataTable + diff).
 - Filtros: data (DateRangePicker reuso), vínculo, rota, ocorrência, import de motoristas.
 - Modais `DriverDetails` + `EvaluationForm` (shadcn Dialog + Form já no Torre).
-- Todos os cards via **PanelCard** (padrão v1.0).
+- Todos os cards via **PanelCard** (padrão v1.0). Recharts→Chart.js.
 **Sucesso:** as 6 abas renderizam dados reais no design Torre; filtros funcionam; zero erros console.
 **Depende de:** Phase 7.
 
 ### Phase 9 — Ranking: escrita + auditoria
-**Goal:** operadores avaliam, bloqueiam/desbloqueiam e configuram rotas pela UI do Torre.
+**Goal:** operadores avaliam, bloqueiam/desbloqueiam e configuram rotas pela UI do Torre (writes via `/api/ranking/*` POST/PATCH → Supabase ride-rank).
 **Entregas:**
-- `EvaluationForm` grava em `evaluations` (upsert) + cria `evaluation_logs`.
-- Bloqueio automático NO_SHOW + bloqueio/desbloqueio manual (`driver_blocks`).
-- Config de `route_scores` (CRUD).
-- Aba Logs lendo auditoria.
-- RBAC: escrita só `admin|supervisor|analyst` (D-V2-06).
+- Endpoints write no módulo ranking: `POST /api/ranking/evaluations` (upsert + cria `evaluation_logs`), `POST/DELETE /api/ranking/blocks`, CRUD `/api/ranking/route-scores`.
+- `EvaluationForm` grava avaliação; bloqueio automático NO_SHOW + bloqueio/desbloqueio manual (`driver_blocks`).
+- Aba Logs lendo `evaluation_logs`.
+- RBAC: escrita só `admin|supervisor|analyst` (D-V2-06) via `requireRole` do Torre.
 **Sucesso:** fluxo avaliar→pontuar→bloquear→desbloquear funciona end-to-end; auditoria registra antes/depois.
 **Depende de:** Phase 8.
 

@@ -196,3 +196,36 @@ Plans:
 - 500 veículos enviando posição a cada 10s
 - 50 clientes WS conectados recebendo updates
 - Dashboard com 100 usuários simultâneos
+
+---
+
+# Milestone v2.0 — Ranking de Motoristas + Importação de Frota
+
+> Detalhes completos + decisões travadas em `.planning/MILESTONE-v2-ROADMAP.md`.
+> Porta a feature de ranking do projeto `ride-rank-buddy` para o Torre (proxy via API Elysia,
+> dado externo no Supabase do ride-rank) + importa posições de frota da planilha Viagens.xlsx pro DB do Torre.
+
+## Phase 7: Ranking Backend [ DATA LAYER ]
+**Goal:** API Elysia expõe `/api/ranking/*` lendo do Supabase do ride-rank (service_role server-side) + CSV público do Google Sheets, com o scoring portado pro servidor.
+**Depends on:** service_role key do ride-rank (`vrlhfgfyjvkzfnafibnc`).
+**Success criteria:** `GET /api/ranking/drivers` retorna ranking computado com paridade ao app original; tsc + smoke test ok.
+
+## Phase 8: Ranking — UI 6 abas (design Torre) [ FRONTEND ]
+**Goal:** rota `/ranking` no Torre com 6 abas (Ranking, Viagens, Qualidade, Bloqueios, Rotas, Logs) + StatsCards + filtros, consumindo `/api/ranking/*` via Eden Treaty, no padrão Argon/PanelCard.
+**Depends on:** Phase 7.
+**Success criteria:** 6 abas renderizam dados reais no design Torre; filtros funcionam; zero erros.
+
+## Phase 9: Ranking — Escrita + Auditoria [ WRITE FLOWS ]
+**Goal:** avaliações, bloqueios (auto NO_SHOW + manual), config de rotas e aba Logs via `/api/ranking/*` (writes proxyados pro Supabase ride-rank), RBAC admin|supervisor|analyst.
+**Depends on:** Phase 8.
+**Success criteria:** fluxo avaliar→pontuar→bloquear→desbloquear end-to-end; auditoria registra antes/depois.
+
+## Phase 10: Importação Viagens.xlsx → DB Torre [ INGESTION ]
+**Goal:** endpoint de upload do .xlsx que parseia posição+campos, geocoda (cidade/UF) e salva no DB do Torre (idempotente). Planilha é só fonte de import; futuro consulta de outra forma.
+**Depends on:** —
+**Success criteria:** upload grava ~125 posições geocodadas; re-upload idempotente.
+
+## Phase 11: Mapa — Frota importada [ GEOSPATIAL ]
+**Goal:** camada "frota importada" no LiveMap lendo do DB do Torre, marcadores por status + popup.
+**Depends on:** Phase 10.
+**Success criteria:** mapa mostra os motoristas da planilha geocodados com popup; alterna camadas.
