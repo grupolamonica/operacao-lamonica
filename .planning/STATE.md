@@ -1,24 +1,24 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
+milestone: v2.0
 milestone_name: milestone
 status: unknown
-stopped_at: "Phase 06 DEPLOYED to VPS — stack healthy (Supabase + Redis + backend + frontend via Traefik). Pending: DNS A record torre.grupolamonica.com → 76.13.169.177"
-last_updated: "2026-05-29T14:38:18.355Z"
+stopped_at: Completed 07-02-PLAN.md (Wave 1 — ranking types + scoring + golden-sample)
+last_updated: "2026-05-29T19:53:59.999Z"
 progress:
-  total_phases: 6
+  total_phases: 11
   completed_phases: 1
-  total_plans: 14
-  completed_plans: 19
+  total_plans: 18
+  completed_plans: 21
   percent: 100
 ---
 
 ## Current Position
 
-- **Phase:** 06-insights-polish-deploy — IN PROGRESS (Wave 0/1/2 complete, Wave 3 frontend ready)
-- **Completed Plan:** 06-07 (Wave 3 — frontend layout refactor: SidebarProvider + SidebarInset, 7 lazy route chunks, ExportButton + useExportCsv wired on 3 pages, vite.config sentryVitePlugin + manualChunks)
-- **Next Plans:** Wave 4 deploy (06-08) — Railway backend + Cloudflare Pages frontend + Sentry uploads + CI/CD
-- **Stopped at:** Phase 06 DEPLOYED to VPS — stack healthy (Supabase + Redis + backend + frontend via Traefik). Pending: DNS A record torre.grupolamonica.com → 76.13.169.177
+- **Phase:** 07-ranking-backend — IN PROGRESS (Wave 1: 07-01 complete, 07-02 in RED)
+- **Completed Plan:** 07-01 (Wave 1 — ranking module setup: @supabase/supabase-js@2.106.2 + rankSupabase server-side client for ride-rank externo via service_role + 4 envs RANK_* em .env.example)
+- **Next Plans:** 07-02 (Wave 1, scoring paridade — em TDD-RED), depois 07-03 (reads) + 07-04 (endpoints + checkpoint do service_role)
+- **Stopped at:** Completed 07-02-PLAN.md (Wave 1 — ranking types + scoring + golden-sample)
 - **Known issues:**
   - Elysia 1.4.28: POST routes with body schemas fail when loaded as plugins. Workaround: inline routes in index.ts.
   - Stale processes on port 3000 can mask route changes. Always kill all bun processes before testing.
@@ -81,6 +81,15 @@ progress:
 - 06-07: ExportFilters typed as `Record<string, unknown> | object` — domain filter interfaces (TripFilters, AlertFilters, DriverFilters) lack index signature
 - 06-07: vite.config sentryVitePlugin.disable = !process.env.SENTRY_AUTH_TOKEN — local/dev builds never error from missing token; sourcemap: 'hidden' generates maps without //# sourceMappingURL ref
 - 06-07: manualChunks splits react-vendor / chart-vendor / map-vendor / query-vendor — stable named chunks for CDN cache invalidation
+- 07-01: ranking usa client @supabase/supabase-js@2.106.2 separado (DB EXTERNO ride-rank vrlhfgfyjvkzfnafibnc), NÃO o Drizzle/postgres.js do Torre — DBs distintos (D-V2-01 PROXY)
+- 07-01: rankSupabase usa service_role (não anon) — RLS do ride-rank bloqueia anon em 4 das 5 tabelas; bypass server-side inerente ao proxy (T-07-03 accept, mitigado pelo authGuard no 07-04)
+- 07-01: rankSupabase fail-fast no module-load (espelha redis/client.ts); service_role NUNCA logado, nunca VITE_ (T-07-01); auth persistSession:false/autoRefreshToken:false
+- 07-01: RANK_SUPABASE_SERVICE_KEY fica VAZIO no .env.example + comentário server-side only (T-07-02); valor real só no .env do servidor
+- 07-01: tsc full-project falha em ranking.scoring.test.ts (07-02 em RED, fora de escopo) — registrado em deferred-items.md; tsc excluindo esse arquivo = exit 0
+- 07-02: scoring ranking portado 1:1 de dataAdapter.ts (D-V2-04 — algoritmo reusado, nao reescrito); camada 100% pura sem I/O
+- 07-02: getRouteBasePoints e FONTE UNICA em ranking.routes.ts; scoring importa (sem copia) — anti-drift T-07-13
+- 07-02: paridade byte-a-byte dos literais de fallback — mojibake 'a€"' (x4) em transformTrips/vinculo, em-dash limpo '—' (x3) em no-show, 'Nao atribuido' ASCII (x2); SEM normalizar encoding (Phase 8)
+- 07-02: golden-sample bun test com score_final/pontuacao travados (1+3=4) + NO SHOW score 0 — prova paridade ponta-a-ponta
 
 ## Performance Metrics
 
@@ -101,6 +110,8 @@ progress:
 | 06 | 04 | ~25min | 2 | 5 |
 | Phase 06 P06 | 35min | 2 tasks | 10 files |
 | 06 | 07 | ~13min | 2 | 12 |
+| Phase 07 P01 | ~12min | 3 tasks | 4 files |
+| Phase 07 P02 | ~12min | 1 tasks | 4 files |
 
 ## Quick Tasks Completed
 
@@ -110,6 +121,6 @@ progress:
 
 ## Last Session
 
-- **Timestamp:** 2026-05-29T11:53:14Z
-- **Stopped at:** Phase 06 Plan 07 (Wave 3 — SidebarProvider + lazy routes + ExportButton + Sentry vite) complete — commits 59c2fc9 + aaa9bda + e2cd362
-- **Resume file:** --resume-file
+- **Timestamp:** 2026-05-29T19:52:52Z
+- **Stopped at:** Phase 07 Plan 01 (Wave 1 — ranking module setup: @supabase/supabase-js + rankSupabase server-side client + RANK_* envs) complete — commits a3154e9 + 8086c89 + 250e9e7
+- **Resume file:** None
