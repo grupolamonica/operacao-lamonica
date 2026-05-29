@@ -9,6 +9,7 @@ api/.env.local
 .env.production
 .env.local
 .env.deploy.local
+.deploy-keys/
 api/.env.production
 torre-de-controle/.env.production
 torre-de-controle/.env.local
