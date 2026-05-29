@@ -1,35 +1,43 @@
-import { Settings, Construction } from 'lucide-react'
-import { Card } from '@/components/ui/card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { UsersTab } from './tabs/UsersTab'
+import { AlertThresholdsTab } from './tabs/AlertThresholdsTab'
+import { NotificationsTab } from './tabs/NotificationsTab'
+import { GpsProvidersTab } from './tabs/GpsProvidersTab'
 
+/**
+ * Configurações page — Phase 6, plan 06-06.
+ *
+ * 4 tabs per D-17:
+ *   - Usuários (admin only — CRUD)
+ *   - Alertas (admin only — global thresholds)
+ *   - Notificações (any user — push opt-in + per-severity prefs)
+ *   - Integrações GPS (admin only — provider stubs)
+ *
+ * RBAC is enforced server-side (requireRole('admin')). Client-side hides
+ * write controls based on useAuthStore().user.role; reads remain available
+ * to all authenticated users so they can see existing data.
+ */
 export function ConfiguracoesPage() {
   return (
     <div className="space-y-5">
-      <header className="pb-4 flex items-start gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Configurações</h1>
-          <p className="text-sm text-white/70">Usuários, regras de alerta e integrações</p>
-        </div>
-        <span
-          className="ml-auto inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium"
-          style={{ backgroundColor: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.85)' }}
-        >
-          <Construction className="h-3.5 w-3.5" /> Disponível em Phase 6
-        </span>
+      <header className="pb-4">
+        <h1 className="text-2xl font-bold text-white">Configurações</h1>
+        <p className="text-sm text-white/70">Usuários, regras de alerta, notificações e integrações</p>
       </header>
 
-      <Card className="p-8 text-center bg-card">
-        <Settings className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
-        <h2 className="text-lg font-semibold text-foreground mb-2">Módulo Configurações</h2>
-        <p className="text-sm text-muted-foreground max-w-md mx-auto mb-4">
-          Administração do sistema será entregue progressivamente entre Phase 2 (auth) e Phase 6 (operações).
-        </p>
-        <ul className="text-xs text-muted-foreground space-y-1 max-w-sm mx-auto text-left list-disc list-inside">
-          <li>Usuários e perfis de acesso (Phase 2)</li>
-          <li>Regras de alerta (thresholds configuráveis) (Phase 4)</li>
-          <li>Geofences padrão (Phase 5)</li>
-          <li>Integrações com GPS providers (Phase 6)</li>
-        </ul>
-      </Card>
+      <Tabs defaultValue="users" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="users">Usuários</TabsTrigger>
+          <TabsTrigger value="thresholds">Alertas</TabsTrigger>
+          <TabsTrigger value="notifications">Notificações</TabsTrigger>
+          <TabsTrigger value="gps">Integrações GPS</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="users"><UsersTab /></TabsContent>
+        <TabsContent value="thresholds"><AlertThresholdsTab /></TabsContent>
+        <TabsContent value="notifications"><NotificationsTab /></TabsContent>
+        <TabsContent value="gps"><GpsProvidersTab /></TabsContent>
+      </Tabs>
     </div>
   )
 }
