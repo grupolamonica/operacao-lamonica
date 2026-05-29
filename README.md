@@ -177,3 +177,145 @@ Dribbble: <https://dribbble.com/creativetim>
 TikTok: <https://tiktok.com/@creative.tim>
 
 Instagram: <https://instagram.com/creativetimofficial>
+
+---
+
+## Deploy
+
+Production runs on:
+
+- **Backend (API + PostgreSQL+PostGIS + Redis):** Railway
+- **Frontend (SPA):** Cloudflare Pages
+- **Observability:** Sentry (free tier)
+- **CI/CD:** GitHub Actions (PR → CI; main → deploy)
+
+### Initial setup (one-time)
+
+1. **Railway**
+   - Sign up at https://railway.app, create project `torre-de-controle`
+   - Add plugins: PostgreSQL (run `CREATE EXTENSION IF NOT EXISTS postgis;` once via Query tab), Redis
+   - Connect GitHub repo as API service — `railway.json` configures the build (RAILPACK builder, Bun start)
+   - Set Variables (see env table below)
+
+2. **Cloudflare Pages**
+   - Sign up at https://dash.cloudflare.com
+   - Create Pages project linked to this repo, name `torre-de-controle`
+   - Build command: `cd torre-de-controle && npm ci && npm run build`
+   - Output: `torre-de-controle/dist`
+
+3. **Sentry**
+   - Create 2 projects: `torre-api` (platform: Node.js) + `torre-frontend` (platform: React)
+   - Copy DSNs to env vars (see table)
+   - Set Quota alert at 80% (D-42)
+
+4. **VAPID keys (Web Push)** — generate ONCE locally, never regenerate (invalidates all existing subscriptions):
+
+   ```bash
+   docker compose exec api bunx web-push generate-vapid-keys --json
+   ```
+
+   Persist:
+   - `VAPID_PRIVATE_KEY` → Railway env ONLY (never expose client-side)
+   - `VAPID_PUBLIC_KEY` → Railway env + GH Secret `VITE_VAPID_PUBLIC_KEY`
+   - `VAPID_SUBJECT` → Railway env (e.g., `mailto:admin@torredecontrole.com`)
+
+5. **GitHub Secrets** (Settings → Secrets and variables → Actions):
+
+   | Secret                  | Purpose                                            |
+   | ----------------------- | -------------------------------------------------- |
+   | `DATABASE_URL_PROD`     | Railway PostgreSQL connection string               |
+   | `RAILWAY_TOKEN`         | Railway account token                              |
+   | `RAILWAY_SERVICE_ID`    | Railway API service ID                             |
+   | `CLOUDFLARE_API_TOKEN`  | CF Pages: Edit + Account: Read                     |
+   | `CLOUDFLARE_ACCOUNT_ID` | CF account ID                                      |
+   | `SENTRY_AUTH_TOKEN`     | Sentry auth (project:releases, project:write)      |
+   | `SENTRY_ORG`            | Sentry org slug                                    |
+   | `VITE_API_URL`          | Frontend → Backend public URL                      |
+   | `VITE_SENTRY_DSN`       | torre-frontend Sentry DSN                          |
+   | `VITE_VAPID_PUBLIC_KEY` | Public half of VAPID keypair                       |
+   | `LHCI_GITHUB_APP_TOKEN` | (optional) Lighthouse CI PR comments               |
+
+6. **First schema push** (BLOCKING — must run manually first time per D-37):
+
+   ```bash
+   cd api
+   DATABASE_URL='postgres://...railway...' bunx drizzle-kit push --strict --verbose
+   ```
+
+   Confirm SQL preview shows ONLY additive ops (CREATE TABLE, ADD COLUMN). NEVER use `--force`.
+
+7. **Seed production thresholds** (idempotent — safe to re-run):
+
+   ```bash
+   DATABASE_URL='postgres://...' bun run src/db/seed/index.ts
+   ```
+
+### Environment Variables
+
+#### Backend (Railway service Variables)
+
+| Variable             | Source / Notes                                                |
+| -------------------- | ------------------------------------------------------------- |
+| `DATABASE_URL`       | Auto-injected by Railway PostgreSQL plugin                    |
+| `REDIS_URL`          | Auto-injected by Railway Redis plugin                         |
+| `JWT_SECRET`         | Generate: `openssl rand -hex 32`                              |
+| `JWT_EXPIRES_IN`     | `24h`                                                         |
+| `NODE_ENV`           | `production`                                                  |
+| `PORT`               | Auto-injected by Railway (default 3000)                       |
+| `FRONTEND_URL`       | `https://torre-de-controle.pages.dev` (or custom domain)      |
+| `LOG_LEVEL`          | `info`                                                        |
+| `TELEMETRY_API_KEY`  | Random secret string — rotate from dev key                    |
+| `VAPID_PUBLIC_KEY`   | From `web-push generate-vapid-keys`                           |
+| `VAPID_PRIVATE_KEY`  | From `web-push generate-vapid-keys` — NEVER expose to client  |
+| `VAPID_SUBJECT`      | `mailto:admin@torredecontrole.com`                            |
+| `SENTRY_DSN`         | Sentry → torre-api project → Client Keys                      |
+| `SENTRY_ENVIRONMENT` | `production`                                                  |
+
+#### Frontend (GitHub Actions build env)
+
+| Variable                | Source / Notes                                                |
+| ----------------------- | ------------------------------------------------------------- |
+| `VITE_API_URL`          | Railway API public URL                                        |
+| `VITE_SENTRY_DSN`       | Sentry → torre-frontend project → Client Keys                 |
+| `VITE_VAPID_PUBLIC_KEY` | Public half of VAPID pair (safe to expose)                    |
+| `SENTRY_AUTH_TOKEN`     | Sentry → Auth Tokens (build-time source-maps upload only)     |
+| `SENTRY_ORG`            | Sentry org slug                                               |
+| `SENTRY_PROJECT`        | `torre-frontend`                                              |
+
+### Deploy flow
+
+- **PR to `main`:** `.github/workflows/ci.yml` runs path-filtered lint + typecheck + build + `drizzle-kit push --strict --verbose --dry-run`. Non-blocking Lighthouse check via `lighthouse.yml`.
+- **Push to `main`:** `.github/workflows/deploy.yml` runs:
+  - **Backend** (when `api/**` or `railway.json` changed): `drizzle-kit push --strict --verbose` (HANGS on destructive ops — abort and rework PR) → `railway up`.
+  - **Frontend** (when `torre-de-controle/**` changed): `npm run build` (auto-uploads source maps to Sentry, deletes `.map` files post-upload) → `cloudflare/wrangler-action@v3 pages deploy`.
+
+### Production checklist
+
+- [ ] Railway PostgreSQL PostGIS extension enabled
+- [ ] All Railway env vars set
+- [ ] Cloudflare Pages project created
+- [ ] All GitHub Secrets configured
+- [ ] Sentry projects (torre-api + torre-frontend) created
+- [ ] VAPID keys generated and persisted
+- [ ] First `drizzle-kit push` ran successfully
+- [ ] Seed inserted `alert_thresholds` defaults
+- [ ] Admin user created (via seed or manual SQL)
+- [ ] Backend health check: `curl https://<railway-url>/` returns 200
+- [ ] Frontend loads: visit `https://torre-de-controle.pages.dev/login`
+- [ ] Login works, redirects to `/dashboard`
+- [ ] Sentry receives test error from production
+
+### Operational notes
+
+- **VAPID rotation:** NEVER rotate VAPID keys — all push subscriptions become invalid. If compromised, generate new + notify users to re-opt-in.
+- **Schema changes:** Run `--dry-run` locally first. Review SQL diff in PR. Destructive ops require manual coordination + DB backup. `--force` is forbidden.
+- **Source maps:** Sentry receives them at build time; `.map` files deleted from `dist/` after upload (prevents code leak via CDN).
+- **iOS Safari push:** Users must install as PWA (Add to Home Screen) for push notifications to work. Document in user-facing UI.
+- **Secret rotation:** Use Railway/Cloudflare/GitHub dashboards. Rotate `RAILWAY_TOKEN`, `CLOUDFLARE_API_TOKEN`, `SENTRY_AUTH_TOKEN`, `JWT_SECRET`, `TELEMETRY_API_KEY` at least quarterly. NEVER rotate `VAPID_*`.
+
+### Troubleshooting
+
+- **Drizzle push hangs in CI:** Destructive change detected (per D-37 `--strict` protection). Inspect schema diff via local `--dry-run`; redesign migration to be additive or coordinate manual SQL.
+- **Cloudflare Pages 404 on direct URL:** Check `torre-de-controle/public/_redirects` is deployed (SPA fallback).
+- **Sentry not receiving errors:** Confirm `VITE_SENTRY_DSN` set in GH Secrets + build re-ran; check `SENTRY_AUTH_TOKEN` for source maps (frontend) and `SENTRY_DSN` env (backend Railway).
+- **Railway healthcheck failing:** Verify `/` endpoint returns 200 in backend; adjust `healthcheckPath` in `railway.json` if changed.
