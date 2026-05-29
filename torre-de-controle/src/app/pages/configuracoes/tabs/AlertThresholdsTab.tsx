@@ -29,12 +29,15 @@ import { useAuthStore } from '@/stores/useAuthStore'
  * Form submits all three in parallel; backend cache is invalidated per-key.
  */
 
+// Note: use z.coerce so HTML <input type="number"> string values are converted to numbers at validation time.
+// useForm uses 3-param generics (input, context, output) because zod's coerce produces different input/output types.
 const schema = z.object({
   atrasoCriticoMinutes: z.coerce.number().int().positive().max(300),
   desvioKmThreshold:    z.coerce.number().positive().max(50),
   stopDurationMinutes:  z.coerce.number().int().positive().max(120),
 })
-type FormData = z.infer<typeof schema>
+type FormInput  = z.input<typeof schema>
+type FormOutput = z.output<typeof schema>
 
 export function AlertThresholdsTab() {
   const { user: currentUser } = useAuthStore()
@@ -46,7 +49,7 @@ export function AlertThresholdsTab() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [savedAt,     setSavedAt]     = useState<number | null>(null)
 
-  const form = useForm<FormData>({
+  const form = useForm<FormInput, unknown, FormOutput>({
     resolver: zodResolver(schema),
     defaultValues: { atrasoCriticoMinutes: 30, desvioKmThreshold: 2, stopDurationMinutes: 15 },
   })
@@ -63,7 +66,7 @@ export function AlertThresholdsTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, data['atraso_critico_minutes'], data['desvio_km_threshold'], data['stop_duration_minutes']])
 
-  async function onSubmit(values: FormData) {
+  async function onSubmit(values: FormOutput) {
     setSubmitError(null)
     setSavedAt(null)
     try {
@@ -100,7 +103,8 @@ export function AlertThresholdsTab() {
               <FormItem>
                 <FormLabel>Atraso crítico (min)</FormLabel>
                 <FormControl>
-                  <Input type="number" min={1} max={300} step={1} disabled={!isAdmin} {...field} />
+                  <Input type="number" min={1} max={300} step={1} disabled={!isAdmin}
+                    {...field} value={(field.value ?? '') as string | number} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -109,7 +113,8 @@ export function AlertThresholdsTab() {
               <FormItem>
                 <FormLabel>Desvio de rota (km)</FormLabel>
                 <FormControl>
-                  <Input type="number" min={0.1} max={50} step={0.1} disabled={!isAdmin} {...field} />
+                  <Input type="number" min={0.1} max={50} step={0.1} disabled={!isAdmin}
+                    {...field} value={(field.value ?? '') as string | number} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -118,7 +123,8 @@ export function AlertThresholdsTab() {
               <FormItem>
                 <FormLabel>Tempo parado (min)</FormLabel>
                 <FormControl>
-                  <Input type="number" min={1} max={120} step={1} disabled={!isAdmin} {...field} />
+                  <Input type="number" min={1} max={120} step={1} disabled={!isAdmin}
+                    {...field} value={(field.value ?? '') as string | number} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
