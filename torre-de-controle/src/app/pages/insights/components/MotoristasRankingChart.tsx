@@ -5,7 +5,7 @@ import {
 } from 'chart.js'
 import { useNavigate } from 'react-router-dom'
 import { useThemeStore } from '@/stores/useThemeStore'
-import { Card } from '@/components/ui/card'
+import { PanelCard } from '@/components/domain/PanelCard'
 import type { DriverRank } from '@/hooks/useInsights'
 
 ChartJS.register(BarElement, CategoryScale, LinearScale, Tooltip, Legend)
@@ -34,12 +34,8 @@ export function MotoristasRankingChart({ data, isLoading }: Props) {
   const driverIds    = data.map(d => d.driverId)
 
   return (
-    <Card className="bg-card p-5">
-      <header className="mb-3 flex items-baseline justify-between">
-        <h3 className="text-sm font-semibold text-foreground">Ranking Motoristas</h3>
-        <span className="text-xs text-muted-foreground">% no prazo</span>
-      </header>
-      <div style={{ height: 260, width: '100%' }}>
+    <PanelCard title="Ranking Motoristas" subtitle="% no prazo">
+      <div style={{ height: 360, width: '100%' }}>
         {isLoading ? (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             Carregando...
@@ -93,6 +89,6 @@ export function MotoristasRankingChart({ data, isLoading }: Props) {
           />
         )}
       </div>
-    </Card>
+    </PanelCard>
   )
 }

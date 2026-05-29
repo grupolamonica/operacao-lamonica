@@ -4,7 +4,7 @@ import {
   CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip, Legend,
 } from 'chart.js'
 import { useThemeStore } from '@/stores/useThemeStore'
-import { Card } from '@/components/ui/card'
+import { PanelCard } from '@/components/domain/PanelCard'
 import type { SlaPoint } from '@/hooks/useInsights'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip, Legend)
@@ -38,12 +38,8 @@ export function SlaHistoricoChart({ data, onPointClick, isLoading }: Props) {
   const lineColor  = successVar.startsWith('#') ? successVar : successHex
 
   return (
-    <Card className="bg-card p-5">
-      <header className="mb-3 flex items-baseline justify-between">
-        <h3 className="text-sm font-semibold text-foreground">SLA Histórico</h3>
-        <span className="text-xs text-muted-foreground">% no prazo</span>
-      </header>
-      <div style={{ height: 260, width: '100%' }}>
+    <PanelCard title="SLA Histórico" subtitle="% no prazo">
+      <div style={{ height: 300, width: '100%' }}>
         {isLoading ? (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             Carregando...
@@ -100,6 +96,6 @@ export function SlaHistoricoChart({ data, onPointClick, isLoading }: Props) {
           />
         )}
       </div>
-    </Card>
+    </PanelCard>
   )
 }

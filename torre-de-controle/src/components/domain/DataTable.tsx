@@ -14,6 +14,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { PanelCard } from '@/components/domain/PanelCard'
 
 interface DataTableProps<T extends { id: string }> {
   data: T[]
@@ -48,20 +49,7 @@ export function DataTable<T extends { id: string }>({
   })
 
   return (
-    <div
-      className="bg-card overflow-hidden w-full"
-      style={{
-        borderRadius: '1rem',
-        boxShadow: '0 0 2rem 0 rgba(136, 152, 170, 0.15)',
-        border: 'none',
-      }}
-    >
-      {(title || subtitle) && (
-        <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
-          {title && <h3 className="text-sm font-semibold text-foreground">{title}</h3>}
-          {subtitle && <span className="text-xs text-muted-foreground">{subtitle}</span>}
-        </div>
-      )}
+    <PanelCard title={title} subtitle={subtitle} noPadding>
       {toolbar && (
         <div style={{ overflowX: 'auto', borderBottom: '1px solid var(--border)', width: '100%' }}>
           <div style={{ padding: '0.75rem 1rem', width: 'max-content' }}>
@@ -172,6 +160,6 @@ export function DataTable<T extends { id: string }>({
           </div>
         </div>
       )}
-    </div>
+    </PanelCard>
   )
 }

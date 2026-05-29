@@ -24,11 +24,10 @@ function isValidRange(s: string | null): s is Range {
  * Layout:
  * - Header: title + DateRangePicker (preset 7d/30d/90d)
  * - Banner cross-filter (quando dateFilter ativo): "Filtrado por: YYYY-MM-DD [×]"
- * - Grid responsivo lg:grid-cols-2 xl:grid-cols-4 (D-25)
- *   - SlaHistoricoChart (line, onPointClick → cross-filter)
- *   - MotoristasRankingChart (bar, click → /motoristas/:id)
- *   - RotasProblematicasTable (table, click → /viagens?route=CODE)
- *   - AlertasDistribuicaoChart (doughnut)
+ * - Grid Argon ponderado lg:grid-cols-10 (mirror do Dashboard):
+ *   - Row 1: SlaHistoricoChart (col-span-7, line) + AlertasDistribuicaoChart (col-span-3, doughnut)
+ *   - Row 2: MotoristasRankingChart (col-span-4, bar) + RotasProblematicasTable (col-span-6, table)
+ *   - Todos os cards usam o PanelCard padronizado (mesma superfície Argon)
  *
  * State:
  * - `range` persistido em URL via useSearchParams (D-02 shareable links)
@@ -82,27 +81,40 @@ export function InsightsPage() {
         </div>
       )}
 
-      <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-4">
-        <SlaHistoricoChart
-          data={sla.data}
-          isLoading={sla.isLoading}
-          onPointClick={setDateFilter}
-        />
-        <MotoristasRankingChart
-          data={ranking.data}
-          isLoading={ranking.isLoading}
-          dateFilter={dateFilter}
-        />
-        <RotasProblematicasTable
-          data={routes.data}
-          isLoading={routes.isLoading}
-          dateFilter={dateFilter}
-        />
-        <AlertasDistribuicaoChart
-          data={dist.data}
-          isLoading={dist.isLoading}
-          dateFilter={dateFilter}
-        />
+      {/* Argon-weighted layout (mirrors Dashboard's 7/3 grid) instead of 4 cramped
+          equal columns: wide time-series on top, balanced ranking + table below. */}
+      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-10">
+        {/* Row 1 — SLA line (wide) + alerts doughnut (compact) */}
+        <div className="lg:col-span-7">
+          <SlaHistoricoChart
+            data={sla.data}
+            isLoading={sla.isLoading}
+            onPointClick={setDateFilter}
+          />
+        </div>
+        <div className="lg:col-span-3">
+          <AlertasDistribuicaoChart
+            data={dist.data}
+            isLoading={dist.isLoading}
+            dateFilter={dateFilter}
+          />
+        </div>
+
+        {/* Row 2 — driver ranking (medium) + problematic routes table (wide) */}
+        <div className="lg:col-span-4">
+          <MotoristasRankingChart
+            data={ranking.data}
+            isLoading={ranking.isLoading}
+            dateFilter={dateFilter}
+          />
+        </div>
+        <div className="lg:col-span-6">
+          <RotasProblematicasTable
+            data={routes.data}
+            isLoading={routes.isLoading}
+            dateFilter={dateFilter}
+          />
+        </div>
       </div>
     </div>
   )

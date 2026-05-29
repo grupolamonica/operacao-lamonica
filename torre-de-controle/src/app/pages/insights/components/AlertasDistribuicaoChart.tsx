@@ -1,7 +1,7 @@
 import { Doughnut } from 'react-chartjs-2'
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js'
 import { useThemeStore } from '@/stores/useThemeStore'
-import { Card } from '@/components/ui/card'
+import { PanelCard } from '@/components/domain/PanelCard'
 import type { AlertDist } from '@/hooks/useInsights'
 
 ChartJS.register(ArcElement, Tooltip, Legend)
@@ -51,12 +51,8 @@ export function AlertasDistribuicaoChart({ data, isLoading }: Props) {
   const fgColor = isDark ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.85)'
 
   return (
-    <Card className="bg-card p-5">
-      <header className="mb-3 flex items-baseline justify-between">
-        <h3 className="text-sm font-semibold text-foreground">Distribuição de Alertas</h3>
-        <span className="text-xs text-muted-foreground">por tipo</span>
-      </header>
-      <div style={{ height: 260, width: '100%' }}>
+    <PanelCard title="Distribuição de Alertas" subtitle="por tipo">
+      <div style={{ height: 300, width: '100%' }}>
         {isLoading ? (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             Carregando...
@@ -99,6 +95,6 @@ export function AlertasDistribuicaoChart({ data, isLoading }: Props) {
           />
         )}
       </div>
-    </Card>
+    </PanelCard>
   )
 }

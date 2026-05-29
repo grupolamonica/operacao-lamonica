@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { type ColumnDef } from '@tanstack/react-table'
 import { DataTable } from '@/components/domain/DataTable'
+import { PanelCard } from '@/components/domain/PanelCard'
 import type { ProblematicRoute } from '@/hooks/useInsights'
 
 interface Props {
@@ -62,12 +63,9 @@ export function RotasProblematicasTable({ data, isLoading }: Props) {
 
   if (isLoading) {
     return (
-      <div className="bg-card overflow-hidden w-full" style={{ borderRadius: '1rem', boxShadow: '0 0 2rem 0 rgba(136, 152, 170, 0.15)' }}>
-        <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
-          <h3 className="text-sm font-semibold text-foreground">Rotas Problemáticas</h3>
-        </div>
+      <PanelCard title="Rotas Problemáticas" subtitle="Top 20 por alertas" noPadding>
         <p className="text-sm text-muted-foreground py-8 text-center">Carregando...</p>
-      </div>
+      </PanelCard>
     )
   }
 
