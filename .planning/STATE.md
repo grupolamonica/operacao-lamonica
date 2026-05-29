@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 06-04-PLAN.md — push module + alert hook + 6-plugin wiring (Wave 2)
-last_updated: "2026-05-29T08:35:00.000Z"
+stopped_at: Completed 06-06-PLAN.md — Configurações 4 tabs + Service Worker (Wave 3)
+last_updated: "2026-05-29T11:53:01.348Z"
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 14
-  completed_plans: 14
+  completed_plans: 17
   percent: 100
 ---
 
@@ -18,7 +18,7 @@ progress:
 - **Phase:** 06-insights-polish-deploy — IN PROGRESS (Wave 0/1/2 complete, Wave 3 frontend ready)
 - **Completed Plan:** 06-04 (Wave 2 — push module + alert engine push hook + index.ts wires all 6 Phase 6 plugins + Sentry boot side-effect)
 - **Next Plans (Wave 3 frontend):** 06-05 (Insights page) + 06-06 (Configurações 4-tabs + SW + push) + 06-07 (Sidebar refactor + lazy + Sentry Vite)
-- **Stopped at:** Completed 06-04-PLAN.md — push module + alert hook + 6-plugin wiring (Wave 2)
+- **Stopped at:** Completed 06-06-PLAN.md — Configurações 4 tabs + Service Worker (Wave 3)
 - **Known issues:**
   - Elysia 1.4.28: POST routes with body schemas fail when loaded as plugins. Workaround: inline routes in index.ts.
   - Stale processes on port 3000 can mask route changes. Always kill all bun processes before testing.
@@ -68,6 +68,10 @@ progress:
 - 06-04: Endpoint URL truncated to 40 chars + '...' in all push-related logger calls — endpoint URL carries auth identifier (T-06.04-08)
 - 06-04 ENV/PROCESS: Windows `pkill -f` is unreliable for killing bun.exe — use `taskkill //F //IM bun.exe`. Stale bun processes binding port 3000 served OLD module cache and masked new plugin registration (false "NOT_FOUND 500" symptom).
 - 06-04: `/api/exports/*.csv` routes register at runtime but are absent from `/swagger/json` due to `.csv` suffix — @elysiajs/swagger quirk. Routes ARE functional (Eden Treaty type inference unaffected)
+- 06-06: NotificationsTab reads /api/auth/me (not /api/users) — works for all roles, no admin gate
+- 06-06: usePushSubscription falls back to GET /api/push/vapid-public-key when VITE_VAPID_PUBLIC_KEY env unset — no build-time secret required
+- 06-06: Service Worker registered with explicit { scope: '/' } at /sw.js — REQUIRED to receive push events on all SPA routes (RESEARCH Pitfall #2)
+- 06-06: useUsers retry:false — admin-only endpoint deterministically 403s for non-admin; single error is enough
 
 ## Performance Metrics
 
@@ -86,6 +90,7 @@ progress:
 | 06 | 01 | ~18min | 2 | 21 |
 | Phase 06-insights-polish-deploy P03 | 9min | 2 tasks | 6 files |
 | 06 | 04 | ~25min | 2 | 5 |
+| Phase 06 P06 | 35min | 2 tasks | 10 files |
 
 ## Quick Tasks Completed
 
