@@ -157,9 +157,7 @@ describe('calcStatusMetrics', () => {
   it('Test 6: returns onTime/early/delay rounded to 1 decimal on a fixed sample', () => {
     // 3 ON TIME, 2 EARLY, 1 DELAY over 6 valid => 50.0 / 33.3 / 16.7
     const sample = ['ON TIME', 'ON TIME', 'ON TIME', 'EARLY', 'EARLY', 'DELAY'];
-    const trips = sample.map((s, i) =>
-      ({ status_eta: s, status_eta_destino: 'ON TIME' } as unknown as Trip),
-    );
+    const trips = sample.map((s) => ({ status_eta: s, status_eta_destino: 'ON TIME' } as unknown as Trip));
     const metrics = calcStatusMetrics(trips, 'status_eta');
     expect(metrics.onTime).toBe(50);
     expect(metrics.early).toBe(33.3);
