@@ -1,16 +1,20 @@
 # docker-compose.domain.yml — HTTPS/domain overlay for Torre de Controle
 #
-# Apply on top of docker-compose.prod.yml when DNS is live:
+# Apply on top of docker-compose.prod.yml:
 #   DOMAIN=torre.grupolamonica.com \
 #   docker compose -f docker-compose.prod.yml -f docker-compose.domain.yml \
 #                  -f docker-compose.deploy.yml up -d
 #
 # Single-domain routing via platform Traefik (platform_public network):
-#   torre.grupolamonica.com/api/*     → backend:3000
-#   torre.grupolamonica.com/health    → backend:3000
-#   torre.grupolamonica.com/ws/*      → backend:3000 (WebSocket)
-#   torre.grupolamonica.com/swagger   → backend:3000
-#   torre.grupolamonica.com/*         → frontend:80 (SPA catch-all)
+#   torre.grupolamonica.com/api/*   → backend:3000
+#   torre.grupolamonica.com/health  → backend:3000
+#   torre.grupolamonica.com/ws/*    → backend:3000 (WebSocket)
+#   torre.grupolamonica.com/swagger → backend:3000
+#   torre.grupolamonica.com/*       → frontend:80 (SPA catch-all)
+#
+# HTTP→HTTPS redirect is handled GLOBALLY by the platform Traefik `web`
+# entrypoint (traefik.yml: entryPoints.web.http.redirections → websecure), so
+# no per-router redirect middleware or HTTP routers are needed here.
 #
 # Same origin → auth HttpOnly cookie (SameSite=Strict) works without CORS games.
 
@@ -20,31 +24,18 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=platform_public"
-      # HTTPS — backend owns /api, /health, /ws, /swagger (higher priority than frontend)
       - "traefik.http.routers.trc-backend-https.rule=Host(`${DOMAIN}`) && (PathPrefix(`/api`) || Path(`/health`) || PathPrefix(`/ws`) || PathPrefix(`/swagger`))"
       - "traefik.http.routers.trc-backend-https.entrypoints=websecure"
       - "traefik.http.routers.trc-backend-https.tls.certresolver=letsencrypt"
       - "traefik.http.routers.trc-backend-https.priority=20"
       - "traefik.http.services.trc-backend.loadbalancer.server.port=3000"
-      # HTTP → HTTPS redirect
-      - "traefik.http.routers.trc-backend-http.rule=Host(`${DOMAIN}`) && (PathPrefix(`/api`) || Path(`/health`) || PathPrefix(`/ws`) || PathPrefix(`/swagger`))"
-      - "traefik.http.routers.trc-backend-http.entrypoints=web"
-      - "traefik.http.routers.trc-backend-http.middlewares=trc-https-redirect"
 
   frontend:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=platform_public"
-      # HTTPS — frontend catch-all (SPA)
       - "traefik.http.routers.trc-frontend-https.rule=Host(`${DOMAIN}`)"
       - "traefik.http.routers.trc-frontend-https.entrypoints=websecure"
       - "traefik.http.routers.trc-frontend-https.tls.certresolver=letsencrypt"
       - "traefik.http.routers.trc-frontend-https.priority=10"
       - "traefik.http.services.trc-frontend.loadbalancer.server.port=80"
-      # HTTP → HTTPS redirect
-      - "traefik.http.routers.trc-frontend-http.rule=Host(`${DOMAIN}`)"
-      - "traefik.http.routers.trc-frontend-http.entrypoints=web"
-      - "traefik.http.routers.trc-frontend-http.middlewares=trc-https-redirect"
-      # Redirect middleware (defined once, used by both routers)
-      - "traefik.http.middlewares.trc-https-redirect.redirectscheme.scheme=https"
-      - "traefik.http.middlewares.trc-https-redirect.redirectscheme.permanent=true"
