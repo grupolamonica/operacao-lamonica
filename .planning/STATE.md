@@ -4,7 +4,7 @@ milestone: v2.0
 milestone_name: milestone
 status: unknown
 stopped_at: Completed 07-02-PLAN.md (Wave 1 — ranking types + scoring + golden-sample)
-last_updated: "2026-05-29T19:53:59.999Z"
+last_updated: "2026-05-29T19:54:09.548Z"
 progress:
   total_phases: 11
   completed_phases: 1
@@ -15,9 +15,9 @@ progress:
 
 ## Current Position
 
-- **Phase:** 07-ranking-backend — IN PROGRESS (Wave 1: 07-01 complete, 07-02 in RED)
-- **Completed Plan:** 07-01 (Wave 1 — ranking module setup: @supabase/supabase-js@2.106.2 + rankSupabase server-side client for ride-rank externo via service_role + 4 envs RANK_* em .env.example)
-- **Next Plans:** 07-02 (Wave 1, scoring paridade — em TDD-RED), depois 07-03 (reads) + 07-04 (endpoints + checkpoint do service_role)
+- **Phase:** 07-ranking-backend — IN PROGRESS (Wave 1: 07-01 + 07-02 complete)
+- **Completed Plan:** 07-02 (Wave 1 — ranking types + getRouteBasePoints fonte única + scoring puro portado 1:1 do ride-rank; 16 testes bun verdes incl. golden-sample + NO SHOW; paridade byte-a-byte dos literais de fallback)
+- **Next Plans:** 07-03 (reads: fetchEvaluations/DriverBlocks/Drivers/RouteScores via rankSupabase) + 07-04 (service + endpoints GET /api/ranking/* + checkpoint do service_role)
 - **Stopped at:** Completed 07-02-PLAN.md (Wave 1 — ranking types + scoring + golden-sample)
 - **Known issues:**
   - Elysia 1.4.28: POST routes with body schemas fail when loaded as plugins. Workaround: inline routes in index.ts.
