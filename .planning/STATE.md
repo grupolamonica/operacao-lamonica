@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Phase 06 — 7/8 plans done; 06-08 Task 1 complete, Task 2 awaiting human deploy checklist
-last_updated: "2026-05-29T12:11:55.741Z"
+stopped_at: "Phase 06 DEPLOYED to VPS — stack healthy (Supabase + Redis + backend + frontend via Traefik). Pending: DNS A record torre.grupolamonica.com → 76.13.169.177"
+last_updated: "2026-05-29T14:38:18.355Z"
 progress:
   total_phases: 6
   completed_phases: 1
@@ -18,7 +18,7 @@ progress:
 - **Phase:** 06-insights-polish-deploy — IN PROGRESS (Wave 0/1/2 complete, Wave 3 frontend ready)
 - **Completed Plan:** 06-07 (Wave 3 — frontend layout refactor: SidebarProvider + SidebarInset, 7 lazy route chunks, ExportButton + useExportCsv wired on 3 pages, vite.config sentryVitePlugin + manualChunks)
 - **Next Plans:** Wave 4 deploy (06-08) — Railway backend + Cloudflare Pages frontend + Sentry uploads + CI/CD
-- **Stopped at:** Phase 06 — 7/8 plans done; 06-08 Task 1 complete, Task 2 awaiting human deploy checklist
+- **Stopped at:** Phase 06 DEPLOYED to VPS — stack healthy (Supabase + Redis + backend + frontend via Traefik). Pending: DNS A record torre.grupolamonica.com → 76.13.169.177
 - **Known issues:**
   - Elysia 1.4.28: POST routes with body schemas fail when loaded as plugins. Workaround: inline routes in index.ts.
   - Stale processes on port 3000 can mask route changes. Always kill all bun processes before testing.
