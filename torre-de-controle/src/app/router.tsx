@@ -1,15 +1,45 @@
+import { lazy, Suspense } from 'react'
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { AppLayout } from './layout/AppLayout'
 import { AuthGuard } from './AuthGuard'
 import { LoginPage } from './pages/login/LoginPage'
 import { DashboardPage } from './pages/dashboard/DashboardPage'
-import { TorreDeControlePage } from './pages/torre-de-controle/TorreDeControlePage'
-import { ViagensPage } from './pages/viagens/ViagensPage'
-import { MotoristasPage } from './pages/motoristas/MotoristasPage'
-import { GeofencesPage } from './pages/geofences/GeofencesPage'
-import { AlertasPage } from './pages/alertas/AlertasPage'
-import { InsightsPage } from './pages/insights/InsightsPage'
-import { ConfiguracoesPage } from './pages/configuracoes/ConfiguracoesPage'
+
+// Lazy-loaded route chunks (D-26 — code-splitting)
+// Dashboard + Login + AuthGuard remain eager (entry/critical path).
+const TorreDeControlePage = lazy(() =>
+  import('./pages/torre-de-controle/TorreDeControlePage').then(m => ({ default: m.TorreDeControlePage })),
+)
+const ViagensPage = lazy(() =>
+  import('./pages/viagens/ViagensPage').then(m => ({ default: m.ViagensPage })),
+)
+const MotoristasPage = lazy(() =>
+  import('./pages/motoristas/MotoristasPage').then(m => ({ default: m.MotoristasPage })),
+)
+const GeofencesPage = lazy(() =>
+  import('./pages/geofences/GeofencesPage').then(m => ({ default: m.GeofencesPage })),
+)
+const AlertasPage = lazy(() =>
+  import('./pages/alertas/AlertasPage').then(m => ({ default: m.AlertasPage })),
+)
+const InsightsPage = lazy(() =>
+  import('./pages/insights/InsightsPage').then(m => ({ default: m.InsightsPage })),
+)
+const ConfiguracoesPage = lazy(() =>
+  import('./pages/configuracoes/ConfiguracoesPage').then(m => ({ default: m.ConfiguracoesPage })),
+)
+
+/**
+ * Suspense wrapper for lazy route chunks.
+ * Displays a lightweight fallback while the chunk loads.
+ */
+function L({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Carregando...</div>}>
+      {children}
+    </Suspense>
+  )
+}
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -22,13 +52,13 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="/dashboard" replace /> },
           { path: 'dashboard',         element: <DashboardPage /> },
-          { path: 'torre-de-controle', element: <TorreDeControlePage /> },
-          { path: 'viagens',           element: <ViagensPage /> },
-          { path: 'motoristas',        element: <MotoristasPage /> },
-          { path: 'geofences',         element: <GeofencesPage /> },
-          { path: 'alertas',           element: <AlertasPage /> },
-          { path: 'insights',          element: <InsightsPage /> },
-          { path: 'configuracoes',     element: <ConfiguracoesPage /> },
+          { path: 'torre-de-controle', element: <L><TorreDeControlePage /></L> },
+          { path: 'viagens',           element: <L><ViagensPage /></L> },
+          { path: 'motoristas',        element: <L><MotoristasPage /></L> },
+          { path: 'geofences',         element: <L><GeofencesPage /></L> },
+          { path: 'alertas',           element: <L><AlertasPage /></L> },
+          { path: 'insights',          element: <L><InsightsPage /></L> },
+          { path: 'configuracoes',     element: <L><ConfiguracoesPage /></L> },
         ],
       },
     ],

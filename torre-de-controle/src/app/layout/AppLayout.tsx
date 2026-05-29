@@ -1,10 +1,18 @@
 import { useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
+import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
 import { AppSidebar } from './AppSidebar'
 import { Topbar } from './Topbar'
 import { useVehiclePositions, usePositionsStore } from '@/hooks/useVehiclePositions'
 
+/**
+ * Root authenticated layout (Phase 6 / D-22).
+ *
+ * Refactored from fixed `marginLeft: '274px'` to shadcn `SidebarProvider`+`SidebarInset`,
+ * which provides responsive collapse behaviour (icon mode <1280px) for tablet+ devices.
+ * SidebarProvider owns sidebar open/collapsed state — never duplicated in useUIStore.
+ */
 export function AppLayout() {
   useVehiclePositions()
   const queryClient   = useQueryClient()
@@ -18,36 +26,35 @@ export function AppLayout() {
       queryClient.invalidateQueries({ queryKey: ['dashboard-kpis'] })
     }
   }, [newAlertCount, queryClient])
-  return (
-    <div className="relative flex h-full" style={{ background: 'var(--app-background)' }}>
-      {/* Full-width dark top band — absolute, scrolls with content, covers full width */}
-      <div
-        className="absolute top-0 left-0 right-0"
-        style={{
-          height: '280px',
-          background: 'var(--dark-band)',
-          zIndex: 0,
-        }}
-      />
 
-      {/* Floating sidebar — on top of dark band */}
+  return (
+    <SidebarProvider defaultOpen={true}>
       <AppSidebar />
 
-      {/* Main content area — offset by sidebar width + margins */}
-      <div
-        className="flex-1 flex flex-col min-h-screen relative overflow-x-hidden"
-        style={{ marginLeft: '274px', zIndex: 1 }}
+      <SidebarInset
+        className="relative flex flex-col min-h-screen overflow-x-hidden"
+        style={{ background: 'var(--app-background)' }}
       >
-        {/* Topbar — sits on dark band */}
-        <div className="relative">
+        {/* Full-width dark top band — preserves Argon visual identity */}
+        <div
+          className="absolute top-0 left-0 right-0 pointer-events-none"
+          style={{
+            height: '280px',
+            background: 'var(--dark-band)',
+            zIndex: 0,
+          }}
+        />
+
+        {/* Topbar sits on dark band */}
+        <div className="relative z-10">
           <Topbar />
         </div>
 
         {/* Page content */}
-        <main className="relative flex-1 px-6 pb-6 pt-2">
+        <main className="relative z-10 flex-1 px-6 pb-6 pt-2">
           <Outlet />
         </main>
-      </div>
-    </div>
+      </SidebarInset>
+    </SidebarProvider>
   )
 }
