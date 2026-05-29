@@ -4,3 +4,10 @@
 api/node_modules/
 api/.env
 api/.env.local
+
+# Phase 6: Production env files (NEVER commit)
+.env.production
+.env.local
+api/.env.production
+torre-de-controle/.env.production
+torre-de-controle/.env.local

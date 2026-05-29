@@ -1,0 +1,81 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'api/**'
+              - 'railway.json'
+            frontend:
+              - 'torre-de-controle/**'
+
+  deploy-backend:
+    needs: detect
+    if: needs.detect.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+      - name: Install
+        run: cd api && bun install --frozen-lockfile
+      # CRITICAL (D-37): --strict requires interactive confirmation on destructive ops.
+      # In CI (no TTY), destructive schema changes HANG until timeout — protective by design.
+      # Non-destructive additions proceed automatically. NEVER add --force.
+      - name: Drizzle schema push (production)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_PROD }}
+        run: cd api && bunx drizzle-kit push --strict --verbose
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+      - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service=${{ secrets.RAILWAY_SERVICE_ID }} --detach
+
+  deploy-frontend:
+    needs: detect
+    if: needs.detect.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: torre-de-controle/package-lock.json
+      - name: Install
+        run: cd torre-de-controle && npm ci
+      # vite.config.ts (from 06-07) auto-uploads source maps to Sentry when SENTRY_AUTH_TOKEN
+      # is present and deletes .map files post-upload (filesToDeleteAfterUpload: ['**/*.map']).
+      - name: Build with Sentry source maps upload
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+          VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: torre-frontend
+        run: cd torre-de-controle && npm run build
+      # cloudflare/wrangler-action@v3 — pages-action is DEPRECATED, do not use.
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy torre-de-controle/dist --project-name=torre-de-controle --branch=main
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
