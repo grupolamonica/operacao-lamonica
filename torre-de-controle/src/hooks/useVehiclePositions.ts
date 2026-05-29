@@ -78,7 +78,7 @@ export function useVehiclePositions() {
 
     connect()
     return () => {
-      retryRef.current && clearTimeout(retryRef.current)
+      if (retryRef.current) clearTimeout(retryRef.current)
       wsRef.current?.close()
       wsRef.current = null
     }
