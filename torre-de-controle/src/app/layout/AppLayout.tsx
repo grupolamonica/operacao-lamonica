@@ -9,7 +9,7 @@ import { useVehiclePositions, usePositionsStore } from '@/hooks/useVehiclePositi
 /**
  * Root authenticated layout (Phase 6 / D-22).
  *
- * Refactored from fixed `marginLeft: '274px'` to shadcn `SidebarProvider`+`SidebarInset`,
+ * Refactored from fixed margin-left layout to shadcn `SidebarProvider`+`SidebarInset`,
  * which provides responsive collapse behaviour (icon mode <1280px) for tablet+ devices.
  * SidebarProvider owns sidebar open/collapsed state — never duplicated in useUIStore.
  */
