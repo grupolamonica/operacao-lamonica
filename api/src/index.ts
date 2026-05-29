@@ -117,6 +117,16 @@ export const app = new Elysia()
     },
   }))
   .get('/', () => ({ status: 'ok', service: 'torre-api', version: '0.2.0' }))
+  // Health endpoint for Docker/Traefik healthcheck (routed by Path('/health'))
+  .get('/health', async ({ set }) => {
+    try {
+      await redis.ping()
+      return { status: 'ok', service: 'torre-api', ts: new Date().toISOString() }
+    } catch (e: any) {
+      set.status = 503
+      return { status: 'degraded', error: e?.message ?? 'redis unreachable' }
+    }
+  })
   .onError(({ code, error, set }) => {
     const msg = error instanceof Error ? error.message : String(error)
     if (code === 'VALIDATION') { set.status = 422; return { error: 'Validation error', details: msg.slice(0, 200) } }

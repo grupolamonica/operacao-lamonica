@@ -1,0 +1,108 @@
+# Torre de Controle — Production stack (VPS, single-domain via platform Traefik)
+#
+# Topology (decided 2026-05-29):
+#   - Postgres  → Supabase (external, sa-east-1) via DATABASE_URL
+#   - Redis     → local container (this file)
+#   - Backend   → Bun/Elysia, GHCR image, port 3000
+#   - Frontend  → nginx static SPA, GHCR image, port 80
+#   - Routing   → platform Traefik on platform_public (see docker-compose.domain.yml)
+#
+# Deploy (on VPS /opt/apps/torre):
+#   docker compose -f docker-compose.prod.yml -f docker-compose.domain.yml \
+#                  -f docker-compose.deploy.yml up -d
+#   (docker-compose.deploy.yml is written by CI to pin SHA image tags)
+#
+# Env comes from /opt/apps/torre/.env (NOT committed).
+
+name: torre
+
+networks:
+  internal:
+    driver: bridge
+  platform_public:
+    external: true
+    name: platform_public
+  platform_monitoring:
+    external: true
+    name: platform_monitoring
+
+volumes:
+  redisdata:
+
+services:
+
+  redis:
+    image: redis:7-alpine
+    container_name: torre-redis
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  backend:
+    image: ${BACKEND_IMAGE:-ghcr.io/antoniocesar-dev/torre-backend:latest}
+    container_name: torre-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      # Postgres = Supabase pooler (transaction mode, port 6543)
+      DATABASE_URL: ${DATABASE_URL}
+      # Redis = local container
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      # Auth (HS256 HttpOnly cookie — same-origin, SameSite=Strict works)
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
+      # Same-origin frontend (CORS + cookie domain)
+      FRONTEND_URL: https://${DOMAIN}
+      # Web Push (VAPID)
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
+      VAPID_SUBJECT: ${VAPID_SUBJECT}
+      # Observability
+      SENTRY_DSN: ${SENTRY_DSN_BACKEND}
+      # Telemetry ingest API key (GPS providers)
+      TELEMETRY_API_KEY: ${TELEMETRY_API_KEY}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      TZ: America/Sao_Paulo
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+      - platform_public
+      - platform_monitoring
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-ghcr.io/antoniocesar-dev/torre-frontend:latest}
+    container_name: torre-frontend
+    restart: unless-stopped
+    networks:
+      - platform_public
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
