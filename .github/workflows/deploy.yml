@@ -182,10 +182,11 @@ jobs:
               up -d --remove-orphans
 
             # Smoke test — wait for backend /health (max ~60s)
+            # oven/bun image has no wget — use Bun fetch; 127.0.0.1 (IPv4-only listener)
             echo "Waiting for backend health..."
             ok=0
             for i in $(seq 1 20); do
-              if docker exec torre-backend wget -qO- http://localhost:3000/health >/dev/null 2>&1; then
+              if docker exec torre-backend bun -e "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" >/dev/null 2>&1; then
                 echo "Backend healthy."; ok=1; break
               fi
               sleep 3
