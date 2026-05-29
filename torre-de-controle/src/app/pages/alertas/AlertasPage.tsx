@@ -3,6 +3,7 @@ import { AlertasKPIRow } from './components/AlertasKPIRow'
 import { AlertasFiltersBar } from './components/AlertasFiltersBar'
 import { AlertGroupedList } from './components/AlertGroupedList'
 import { AlertDetailPanel } from './components/AlertDetailPanel'
+import { ExportButton } from '@/components/common/ExportButton'
 import { FixedPanel } from '@/components/domain/FixedPanel'
 import { useAlerts, useAlert } from '@/hooks/useAlerts'
 import { useUIStore } from '@/stores/useUIStore'
@@ -17,9 +18,12 @@ export function AlertasPage() {
 
   return (
     <div className="space-y-5">
-      <header className="pb-4">
-        <h1 className="text-2xl font-bold text-white">Alertas</h1>
-        <p className="text-sm text-white/70">Lista priorizada e tratativas</p>
+      <header className="pb-4 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Alertas</h1>
+          <p className="text-sm text-white/70">Lista priorizada e tratativas</p>
+        </div>
+        <ExportButton entity="alertas" filters={filters} />
       </header>
 
       <AlertasKPIRow />

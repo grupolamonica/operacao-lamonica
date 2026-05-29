@@ -1,10 +1,11 @@
 import { type ColumnDef } from '@tanstack/react-table'
 import { useState } from 'react'
-import { Search, Filter, Download, ArrowUpDown, MoreVertical } from 'lucide-react'
+import { Search, Filter, ArrowUpDown, MoreVertical } from 'lucide-react'
 import { TableWithSidePanel } from '@/components/domain/TableWithSidePanel'
 import { StatusBadge } from '@/components/domain/StatusBadge'
 import { DriverAvatar } from '@/components/domain/DriverAvatar'
 import { ProgressBar } from '@/components/domain/ProgressBar'
+import { ExportButton } from '@/components/common/ExportButton'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -144,7 +145,7 @@ export function ViagensTable() {
 
       <Button variant="outline" size="sm" className="h-9 gap-2 text-xs"><ArrowUpDown className="h-3.5 w-3.5" /> Ordenar</Button>
       <Button variant="outline" size="sm" className="h-9 gap-2 text-xs"><Filter className="h-3.5 w-3.5" /> Filtros</Button>
-      <Button variant="outline" size="sm" className="h-9 gap-2 text-xs"><Download className="h-3.5 w-3.5" /> Exportar</Button>
+      <ExportButton entity="viagens" filters={merged} className="h-9 gap-2 text-xs" />
     </div>
   )
 
