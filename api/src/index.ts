@@ -1,3 +1,9 @@
+// Sentry MUST be imported BEFORE Elysia and any business module so its
+// async-hook instrumentation can wrap request handlers from the start.
+// The lib/sentry.ts module is a side-effect — Sentry.init runs at load if
+// SENTRY_DSN is set, no-ops otherwise (CONTEXT D-38).
+import './lib/sentry'
+
 import { Elysia } from 'elysia'
 import { cors } from '@elysiajs/cors'
 import { swagger } from '@elysiajs/swagger'
@@ -16,6 +22,13 @@ import { alertsPlugin } from './modules/alerts/alerts.plugin'
 import { vehiclesPlugin } from './modules/vehicles/vehicles.plugin'
 import { dashboardPlugin } from './modules/dashboard/dashboard.plugin'
 import { wsPlugin } from './modules/ws/ws.plugin'
+// Phase 6 modules (plans 06-02, 06-03, 06-04)
+import { insightsPlugin } from './modules/insights/insights.plugin'
+import { exportsPlugin } from './modules/exports/exports.plugin'
+import { pushPlugin } from './modules/push/push.plugin'
+import { usersPlugin } from './modules/users/users.plugin'
+import { thresholdsPlugin } from './modules/thresholds/thresholds.plugin'
+import { gpsProvidersPlugin } from './modules/gps-providers/gps-providers.plugin'
 import { processAlertDetection } from './jobs/alert-inline'
 import { sql, desc } from 'drizzle-orm'
 import { geofences, geofenceEvents } from './db/schema/geofences'
@@ -85,14 +98,21 @@ export const app = new Elysia()
     documentation: {
       info: { title: 'Torre de Controle API', version: '0.2.0', description: 'API de monitoramento de entregas em tempo real' },
       tags: [
-        { name: 'auth',      description: 'Autenticação (HttpOnly Cookie JWT)' },
-        { name: 'trips',     description: 'Viagens e KPIs' },
-        { name: 'drivers',   description: 'Motoristas e KPIs' },
-        { name: 'alerts',    description: 'Alertas + tratativas' },
-        { name: 'vehicles',  description: 'Frota' },
-        { name: 'dashboard', description: 'KPIs agregados (Redis cache)' },
-        { name: 'telemetry',  description: 'GPS ingest + posições em tempo real' },
-        { name: 'geofences', description: 'Zonas geográficas + entrada/saída via PostGIS' },
+        { name: 'auth',         description: 'Autenticação (HttpOnly Cookie JWT)' },
+        { name: 'trips',        description: 'Viagens e KPIs' },
+        { name: 'drivers',      description: 'Motoristas e KPIs' },
+        { name: 'alerts',       description: 'Alertas + tratativas' },
+        { name: 'vehicles',     description: 'Frota' },
+        { name: 'dashboard',    description: 'KPIs agregados (Redis cache)' },
+        { name: 'telemetry',    description: 'GPS ingest + posições em tempo real' },
+        { name: 'geofences',    description: 'Zonas geográficas + entrada/saída via PostGIS' },
+        // Phase 6 tags
+        { name: 'insights',     description: 'Analytics agregados (Redis cache 30s)' },
+        { name: 'exports',      description: 'CSV streaming (UTF-8 BOM, ; delim)' },
+        { name: 'push',         description: 'Web Push subscriptions + entrega (VAPID)' },
+        { name: 'users',        description: 'CRUD de usuários (admin) + prefs próprias' },
+        { name: 'thresholds',   description: 'Thresholds de alerta (in-memory cache 60s)' },
+        { name: 'gps-providers', description: 'Configuração de providers GPS (stubs)' },
       ],
     },
   }))
@@ -124,6 +144,14 @@ export const app = new Elysia()
   .use(alertsPlugin)
   .use(vehiclesPlugin)
   .use(dashboardPlugin)
+  // Phase 6 plugins (plans 06-02, 06-03, 06-04) — wired BEFORE wsPlugin so the
+  // WebSocket upgrade plugin remains last (Elysia 1.4 plugin POST order rule).
+  .use(insightsPlugin)
+  .use(exportsPlugin)
+  .use(pushPlugin)
+  .use(usersPlugin)
+  .use(thresholdsPlugin)
+  .use(gpsProvidersPlugin)
   .use(wsPlugin)
   // Telemetry inlined to avoid Elysia 1.4.28 plugin-composition issue with body schema
   .post('/api/telemetry/ingest', async ({ body, headers, set }) => {

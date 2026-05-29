@@ -4,6 +4,7 @@ import { redis } from '../redis/client'
 import { trips } from '../db/schema/trips'
 import { alerts } from '../db/schema/alerts'
 import { logger } from '../lib/logger'
+import { dispatchAlertPush } from '../modules/push/push.dispatcher'
 
 const DELAY_CRITICAL_MINUTES = 30
 const STOP_MINUTES            = 5
@@ -113,5 +114,21 @@ export async function processAlertDetection(
     }))
 
     logger.info({ alertId: inserted.id, type: a.type, tripId: trip.id }, 'alert created')
+
+    // Fire-and-forget Web Push dispatch (CONTEXT D-15 / T-06.04-03):
+    // the alert is already persisted at this point — push failures must
+    // NEVER block or fail the telemetry pipeline. dispatchAlertPush itself
+    // catches internally, the extra .catch() here is defense in depth.
+    dispatchAlertPush({
+      id:          inserted.id,
+      title:       a.title,
+      description: a.description ?? '',
+      severity:    a.severity as 'critico' | 'medio' | 'baixo',
+    }).catch((e: any) =>
+      logger.error(
+        { error: e?.message ?? String(e), alertId: inserted.id },
+        'push dispatch failed',
+      ),
+    )
   }
 }
