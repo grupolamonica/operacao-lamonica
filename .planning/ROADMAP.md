@@ -146,7 +146,7 @@ Plans:
 - [x] 06-01-PLAN.md — Wave 0: deps install (web-push, sentry, RHF, zod, shadcn form) + 3 Drizzle schemas (push_subscriptions, alert_thresholds, gps_providers) + users notification_preferences JSONB + scrub/sentry/vapid libs + .env.example sync — **DONE** (8e77a06, de732d0)
 - [ ] 06-02-PLAN.md — Wave 1: backend modules insights (4 aggregation endpoints + Redis cache) + exports (4 CSV streaming endpoints with UTF-8 BOM + ; delim + 50k cap)
 - [ ] 06-03-PLAN.md — Wave 1: backend modules users (admin CRUD + soft delete + self-update prefs) + thresholds (in-memory cache 60s + admin write) + gps-providers (admin CRUD stubs)
-- [ ] 06-04-PLAN.md — Wave 2: backend push module (subscribe/unsubscribe/dispatcher) + alert engine hook (alert-inline.ts → dispatchAlertPush) + wire 6 plugins in index.ts + Sentry side-effect init
+- [x] 06-04-PLAN.md — Wave 2: backend push module (subscribe/unsubscribe/dispatcher) + alert engine hook (alert-inline.ts → dispatchAlertPush) + wire 6 plugins in index.ts + Sentry side-effect init — **DONE** (899f008, 351c1d2)
 - [ ] 06-05-PLAN.md — Wave 3: frontend Insights page (4 Chart.js cards: SLA line, motoristas bar, rotas table, alertas donut) + cross-filter + drill-down + URL range persist
 - [ ] 06-06-PLAN.md — Wave 3: frontend Configurações 4 tabs (Users/Thresholds/Notifications/GpsProviders) + Service Worker + usePushSubscription + RHF+Zod forms
 - [ ] 06-07-PLAN.md — Wave 3: frontend layout refactor SidebarProvider + React.lazy code-splitting + ExportButton wiring (3 pages) + vite.config sentryVitePlugin + manualChunks

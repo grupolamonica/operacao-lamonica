@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 06-03-PLAN.md — users/thresholds/gps-providers backend RBAC (Wave 1)
-last_updated: "2026-05-28T20:35:49.418Z"
+stopped_at: Completed 06-04-PLAN.md — push module + alert hook + 6-plugin wiring (Wave 2)
+last_updated: "2026-05-29T08:35:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 0
@@ -15,10 +15,10 @@ progress:
 
 ## Current Position
 
-- **Phase:** 06-insights-polish-deploy — IN PROGRESS (Wave 0 complete, Wave 1+2 ready in parallel)
-- **Completed Plan:** 06-01 (Wave 0 scaffold — deps + 3 new schemas + Sentry/VAPID/scrub libs)
-- **Next Plans (parallel):** Wave 1 (06-02 Insights / 06-03 Exports / 06-04 Push / 06-05 Config) + Wave 2 (06-06 Frontend Polish)
-- **Stopped at:** Completed 06-03-PLAN.md — users/thresholds/gps-providers backend RBAC (Wave 1)
+- **Phase:** 06-insights-polish-deploy — IN PROGRESS (Wave 0/1/2 complete, Wave 3 frontend ready)
+- **Completed Plan:** 06-04 (Wave 2 — push module + alert engine push hook + index.ts wires all 6 Phase 6 plugins + Sentry boot side-effect)
+- **Next Plans (Wave 3 frontend):** 06-05 (Insights page) + 06-06 (Configurações 4-tabs + SW + push) + 06-07 (Sidebar refactor + lazy + Sentry Vite)
+- **Stopped at:** Completed 06-04-PLAN.md — push module + alert hook + 6-plugin wiring (Wave 2)
 - **Known issues:**
   - Elysia 1.4.28: POST routes with body schemas fail when loaded as plugins. Workaround: inline routes in index.ts.
   - Stale processes on port 3000 can mask route changes. Always kill all bun processes before testing.
@@ -59,6 +59,15 @@ progress:
 - 06-03: Two-sub-plugin RBAC pattern (readPlugin authGuard + writePlugin requireRole) combined via .use() — avoids forcing admin on GET endpoints
 - 06-03: writePlugin must chain .use(authGuard).use(requireRole).group() — Elysia 1.4 scope inference loses user derive through requireRole wrapper otherwise
 - 06-03: passwordHash and apiKey masked at service projection layer (single project() helper) — no select * leak risk
+- 06-04: publicKeyPlugin sub-plugin (no auth) + authedPlugin (.use(authGuard)) combined — public VAPID key must be reachable pre-subscription (RFC 8292)
+- 06-04: web-push 410 Gone / 404 Not Found trigger DELETE FROM push_subscriptions — auto-cleanup of dead endpoints (Promise.allSettled iteration)
+- 06-04: dispatchAlertPush severity filter via JSONB ->> text comparison: `notification_preferences->>${severity} = 'true'` (Drizzle sql template parameterized — safe vs T-06.04-06)
+- 06-04: Alert engine fires push fire-and-forget AFTER `logger.info('alert created')` — deterministic log ordering, push never blocks telemetry pipeline (T-06.04-03)
+- 06-04: import './lib/sentry' positioned at TOP of api/src/index.ts (before Elysia import) — Sentry async-hook instrumentation must wrap entire request lifecycle
+- 06-04: wsPlugin must remain LAST in .use() chain (Elysia 1.4 plugin POST order rule — WebSocket upgrade handler conflicts with plugins registered after it)
+- 06-04: Endpoint URL truncated to 40 chars + '...' in all push-related logger calls — endpoint URL carries auth identifier (T-06.04-08)
+- 06-04 ENV/PROCESS: Windows `pkill -f` is unreliable for killing bun.exe — use `taskkill //F //IM bun.exe`. Stale bun processes binding port 3000 served OLD module cache and masked new plugin registration (false "NOT_FOUND 500" symptom).
+- 06-04: `/api/exports/*.csv` routes register at runtime but are absent from `/swagger/json` due to `.csv` suffix — @elysiajs/swagger quirk. Routes ARE functional (Eden Treaty type inference unaffected)
 
 ## Performance Metrics
 
@@ -76,6 +85,7 @@ progress:
 | Phase 02-backend-core-auth-api-foundation P02 | 11min | 4 tasks | 12 files |
 | 06 | 01 | ~18min | 2 | 21 |
 | Phase 06-insights-polish-deploy P03 | 9min | 2 tasks | 6 files |
+| 06 | 04 | ~25min | 2 | 5 |
 
 ## Quick Tasks Completed
 
@@ -85,6 +95,6 @@ progress:
 
 ## Last Session
 
-- **Timestamp:** 2026-05-28T20:50:00Z
-- **Stopped at:** Phase 06 Plan 01 (Wave 0 scaffold) complete — commits 8e77a06 + de732d0
+- **Timestamp:** 2026-05-29T08:35:00Z
+- **Stopped at:** Phase 06 Plan 04 (Wave 2 — push backend + plugin wiring + Sentry boot) complete — commits 899f008 + 351c1d2
 - **Resume file:** None
