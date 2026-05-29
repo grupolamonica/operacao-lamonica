@@ -28,7 +28,11 @@ ENV VITE_API_URL=$VITE_API_URL \
     SENTRY_ORG=$SENTRY_ORG \
     SENTRY_PROJECT=$SENTRY_PROJECT
 
-RUN npm run build
+# vite build only (NOT `npm run build` which runs `tsc -b` first). The Eden Treaty
+# `App` type lives in the sibling api/ package, which is NOT in this build context,
+# so cross-package tsc would fail here. Full typecheck runs in the CI `test` job
+# (whole monorepo present). esbuild strips types without checking — bundle is correct.
+RUN npx vite build
 
 # ── Runtime: nginx static ────────────────────────────────────────────────────
 FROM nginx:1.27-alpine
