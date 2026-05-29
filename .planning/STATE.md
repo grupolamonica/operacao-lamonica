@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 06-07-PLAN.md — SidebarProvider layout + lazy routes + ExportButton + Sentry vite plugin (Wave 3)
-last_updated: "2026-05-29T11:53:14.000Z"
+stopped_at: Phase 06 — 7/8 plans done; 06-08 Task 1 complete, Task 2 awaiting human deploy checklist
+last_updated: "2026-05-29T12:11:55.741Z"
 progress:
   total_phases: 6
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 14
-  completed_plans: 17
+  completed_plans: 19
   percent: 100
 ---
 
@@ -18,7 +18,7 @@ progress:
 - **Phase:** 06-insights-polish-deploy — IN PROGRESS (Wave 0/1/2 complete, Wave 3 frontend ready)
 - **Completed Plan:** 06-07 (Wave 3 — frontend layout refactor: SidebarProvider + SidebarInset, 7 lazy route chunks, ExportButton + useExportCsv wired on 3 pages, vite.config sentryVitePlugin + manualChunks)
 - **Next Plans:** Wave 4 deploy (06-08) — Railway backend + Cloudflare Pages frontend + Sentry uploads + CI/CD
-- **Stopped at:** Completed 06-07-PLAN.md — SidebarProvider layout + lazy routes + ExportButton + Sentry vite plugin (Wave 3)
+- **Stopped at:** Phase 06 — 7/8 plans done; 06-08 Task 1 complete, Task 2 awaiting human deploy checklist
 - **Known issues:**
   - Elysia 1.4.28: POST routes with body schemas fail when loaded as plugins. Workaround: inline routes in index.ts.
   - Stale processes on port 3000 can mask route changes. Always kill all bun processes before testing.
@@ -112,4 +112,4 @@ progress:
 
 - **Timestamp:** 2026-05-29T11:53:14Z
 - **Stopped at:** Phase 06 Plan 07 (Wave 3 — SidebarProvider + lazy routes + ExportButton + Sentry vite) complete — commits 59c2fc9 + aaa9bda + e2cd362
-- **Resume file:** None
+- **Resume file:** --resume-file
