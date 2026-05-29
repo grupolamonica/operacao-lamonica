@@ -122,42 +122,56 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ── Deploy to VPS via SSH (pull GHCR images, compose up, smoke test) ─────────
+  # ── Deploy to VPS (ship compose files via scp, pull GHCR images, compose up) ─
+  # No git on the VPS (org disables deploy keys) — compose files are copied from
+  # the Actions runner. Secrets live in /opt/apps/torre/.env (provisioned once).
   deploy-vps:
     name: Deploy VPS
     needs: [build-backend, build-frontend]
     runs-on: ubuntu-latest
     environment: production
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy compose files to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "docker-compose.prod.yml,docker-compose.domain.yml"
+          target: "/opt/apps/torre"
+
       - name: Deploy + smoke test via SSH
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_ACTOR: ${{ github.actor }}
+          GIT_SHA: ${{ github.sha }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           command_timeout: 15m
+          envs: GHCR_TOKEN,GHCR_ACTOR,GIT_SHA
           script: |
             set -euo pipefail
             cd /opt/apps/torre
 
-            # Sync repo config (compose files, Dockerfiles) to this commit
-            git fetch origin main
-            git reset --hard origin/main
-
             # Authenticate with GHCR (token valid for the duration of this job)
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_ACTOR" --password-stdin
 
             # Pull SHA-pinned images
-            docker pull ghcr.io/grupolamonica/torre-backend:sha-${{ github.sha }}
-            docker pull ghcr.io/grupolamonica/torre-frontend:sha-${{ github.sha }}
+            docker pull "ghcr.io/grupolamonica/torre-backend:sha-${GIT_SHA}"
+            docker pull "ghcr.io/grupolamonica/torre-frontend:sha-${GIT_SHA}"
 
             # Pin exact SHA tags via deploy override
-            cat > docker-compose.deploy.yml << EOF
+            cat > docker-compose.deploy.yml <<EOF
             services:
               backend:
-                image: ghcr.io/grupolamonica/torre-backend:sha-${{ github.sha }}
+                image: ghcr.io/grupolamonica/torre-backend:sha-${GIT_SHA}
               frontend:
-                image: ghcr.io/grupolamonica/torre-frontend:sha-${{ github.sha }}
+                image: ghcr.io/grupolamonica/torre-frontend:sha-${GIT_SHA}
             EOF
 
             # Bring up the stack (env from /opt/apps/torre/.env, DOMAIN included there)
@@ -167,17 +181,16 @@ jobs:
               -f docker-compose.deploy.yml \
               up -d --remove-orphans
 
-            # Smoke test — wait for backend health (max ~60s)
+            # Smoke test — wait for backend /health (max ~60s)
             echo "Waiting for backend health..."
+            ok=0
             for i in $(seq 1 20); do
               if docker exec torre-backend wget -qO- http://localhost:3000/health >/dev/null 2>&1; then
-                echo "Backend healthy."
-                break
+                echo "Backend healthy."; ok=1; break
               fi
-              if [ "$i" = "20" ]; then echo "Backend did not become healthy"; docker logs torre-backend --tail 50; exit 1; fi
               sleep 3
             done
+            if [ "$ok" != "1" ]; then echo "Backend did not become healthy"; docker logs torre-backend --tail 60; exit 1; fi
 
-            # Prune dangling images to reclaim disk
             docker image prune -f >/dev/null 2>&1 || true
-            echo "Deploy complete: ${{ github.sha }}"
+            echo "Deploy complete: ${GIT_SHA}"
