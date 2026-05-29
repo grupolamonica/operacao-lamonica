@@ -1,6 +1,5 @@
 import { Bell, Sun, Moon } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { SidebarTrigger } from '@/components/ui/sidebar'
 import { useThemeStore } from '@/stores/useThemeStore'
 import { useLocation } from 'react-router-dom'
 
@@ -25,9 +24,8 @@ export function Topbar() {
       style={{ background: 'transparent' }}
       className="flex items-center justify-between px-6 py-3"
     >
-      {/* Left: sidebar trigger + breadcrumb */}
-      <div className="flex items-center gap-3">
-        <SidebarTrigger className="text-white hover:bg-white/10" />
+      {/* Left: breadcrumb only */}
+      <div>
         <p className="text-white/60 text-xs mb-0 leading-none">Páginas / {currentPage}</p>
       </div>
 

@@ -3,15 +3,6 @@ import {
   LayoutDashboard, Radio, Truck, Users, MapPin,
   AlertTriangle, BarChart3, Settings, Antenna,
 } from 'lucide-react'
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
-  SidebarMenuBadge,
-} from '@/components/ui/sidebar'
 import { usePositionsStore } from '@/hooks/useVehiclePositions'
 
 const navItems = [
@@ -25,86 +16,182 @@ const navItems = [
   { to: '/configuracoes',     label: 'Configurações',      icon: Settings },
 ] as const
 
-/**
- * Application sidebar (Phase 6 / D-22).
- *
- * Wrapped in shadcn `<Sidebar collapsible="icon">` to support icon-only collapse
- * on tablet (<1280px) while preserving Argon dark-navy branding through CSS
- * variables (`var(--sidebar)` etc) defined in index.css.
- *
- * `SidebarMenuButton` carries `tooltip` so collapsed-mode users still see labels.
- */
 export function AppSidebar() {
   const newAlertCount = usePositionsStore(s => s.newAlertCount)
   const clearAlerts   = usePositionsStore(s => s.clearAlerts)
 
   return (
-    <Sidebar
-      collapsible="icon"
-      className="border-r border-sidebar-border"
+    <nav
+      style={{
+        position: 'fixed',
+        top: '12px',
+        left: '12px',
+        width: '250px',
+        height: 'calc(100vh - 24px)',
+        background: 'var(--sidebar)',
+        borderRadius: '1rem',
+        boxShadow: '0 0 2rem 0 rgba(136, 152, 170, 0.15)',
+        display: 'flex',
+        flexDirection: 'column',
+        overflowY: 'auto',
+        zIndex: 50,
+      }}
     >
-      {/* Brand header */}
-      <SidebarHeader>
-        <div className="flex items-center gap-3 px-2 py-1.5">
-          <div
-            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl"
-            style={{ background: 'linear-gradient(310deg, #0d2055 0%, #1a4fc4 100%)' }}
-          >
-            <Antenna className="h-4 w-4 text-white" />
-          </div>
-          {/* Hide text when sidebar is collapsed to icon mode */}
-          <div className="flex flex-col leading-tight group-data-[collapsible=icon]:hidden">
-            <span className="text-[11px] font-bold tracking-[0.08em] text-sidebar-foreground">
-              TORRE DE CONTROLE
-            </span>
-            <span className="text-[10px] tracking-[0.05em] text-sidebar-primary">
-              DE ENTREGAS
-            </span>
-          </div>
+      {/* Logo area */}
+      <div
+        style={{
+          padding: '1.25rem 1.5rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+          borderBottom: '1px solid var(--sidebar-border)',
+        }}
+      >
+        <div
+          style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: '0.75rem',
+            background: 'linear-gradient(310deg, #0d2055 0%, #1a4fc4 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <Antenna style={{ width: '18px', height: '18px', color: 'white' }} />
         </div>
-      </SidebarHeader>
+        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: '1.2' }}>
+          <span
+            style={{
+              fontSize: '11px',
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+              color: 'var(--sidebar-foreground)',
+            }}
+          >
+            TORRE DE CONTROLE
+          </span>
+          <span
+            style={{
+              fontSize: '10px',
+              letterSpacing: '0.05em',
+              color: 'var(--sidebar-primary)',
+            }}
+          >
+            DE ENTREGAS
+          </span>
+        </div>
+      </div>
 
-      <SidebarContent>
-        <SidebarMenu>
-          {navItems.map(({ to, label, icon: Icon }) => {
-            const badge = to === '/alertas' && newAlertCount > 0 ? newAlertCount : undefined
-            return (
-              <SidebarMenuItem key={to}>
-                <NavLink
-                  to={to}
-                  onClick={() => { if (to === '/alertas') clearAlerts() }}
-                  className="block"
+      {/* Navigation */}
+      <div style={{ flex: 1, padding: '0.75rem 0' }}>
+        <p
+          style={{
+            fontSize: '10px',
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+            opacity: 0.6,
+            padding: '0.25rem 1.5rem 0.5rem',
+            color: 'var(--sidebar-foreground)',
+            marginTop: '0.5rem',
+          }}
+        >
+          Menu
+        </p>
+
+        {navItems.map(({ to, label, icon: Icon }) => {
+          // Real-time alert badge — clear on click
+          const badge = to === '/alertas' && newAlertCount > 0 ? newAlertCount : undefined
+          return (
+            <NavLink
+              key={to}
+              to={to}
+              onClick={() => to === '/alertas' && clearAlerts()}
+              style={{ textDecoration: 'none', display: 'block', margin: '1px 8px' }}
+            >
+              {({ isActive }) => (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '0.5rem 1rem',
+                    borderRadius: '0.5rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    background: isActive
+                      ? 'linear-gradient(310deg, #0d2055 0%, #1a4fc4 100%)'
+                      : 'transparent',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.background = 'var(--sidebar-accent)'
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.background = 'transparent'
+                    }
+                  }}
                 >
-                  {({ isActive }) => (
-                    <>
-                      <SidebarMenuButton
-                        isActive={isActive}
-                        tooltip={label}
-                        className={
-                          isActive
-                            ? 'data-[active=true]:bg-[linear-gradient(310deg,#0d2055_0%,#1a4fc4_100%)] data-[active=true]:text-white'
-                            : ''
-                        }
-                      >
-                        <Icon className="h-4 w-4" />
-                        <span>{label}</span>
-                      </SidebarMenuButton>
-                      {badge !== undefined && (
-                        <SidebarMenuBadge
-                          className="bg-[#ef4444] text-white"
-                          aria-label={`${badge} novos alertas`}
-                        >
-                          {badge}
-                        </SidebarMenuBadge>
-                      )}
-                    </>
+                  {/* Icon wrapper */}
+                  <div
+                    style={{
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '0.5rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: '0.75rem',
+                      flexShrink: 0,
+                      background: isActive
+                        ? 'rgba(255, 255, 255, 0.2)'
+                        : 'var(--sidebar-accent)',
+                    }}
+                  >
+                    <Icon
+                      style={{
+                        width: '14px',
+                        height: '14px',
+                        color: isActive ? 'white' : 'var(--sidebar-primary)',
+                      }}
+                    />
+                  </div>
+
+                  <span
+                    style={{
+                      flex: 1,
+                      fontSize: '13px',
+                      fontWeight: isActive ? 600 : 400,
+                      color: isActive ? 'white' : 'var(--sidebar-foreground)',
+                    }}
+                  >
+                    {label}
+                  </span>
+
+                  {badge !== undefined && (
+                    <span
+                      style={{
+                        marginLeft: 'auto',
+                        borderRadius: '9999px',
+                        background: isActive ? 'rgba(255,255,255,0.25)' : '#ef4444',
+                        padding: '1px 7px',
+                        fontSize: '10px',
+                        fontWeight: 700,
+                        color: 'white',
+                      }}
+                    >
+                      {badge}
+                    </span>
                   )}
-                </NavLink>
-              </SidebarMenuItem>
-            )
-          })}
-        </SidebarMenu>
-      </SidebarContent>
-    </Sidebar>
+                </div>
+              )}
+            </NavLink>
+          )
+        })}
+      </div>
+    </nav>
   )
 }
