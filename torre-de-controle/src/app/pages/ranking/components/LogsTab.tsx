@@ -3,28 +3,17 @@ import type { ColumnDef } from '@tanstack/react-table'
 import { DataTable } from '@/components/domain/DataTable'
 import { Badge } from '@/components/ui/badge'
 import { fixMojibake } from '@/lib/mojibake'
-// Tipo do contrato Phase 7 (re-exportado pelo App type). Importado por path
-// relativo — mesmo padrao de tipo-do-contrato usado por src/hooks/useRanking.ts
-// (`../../../api/...`). NAO ha hook de logs nesta fase: o endpoint de leitura de
-// evaluation_logs e Phase 9 (ver abaixo).
-import type { EvaluationLogRecord } from '../../../../../../api/src/modules/ranking/ranking.types'
+import { useRankingLogs } from '@/hooks/useRanking'
+import type { EvaluationLogRecord } from '@/hooks/useRanking'
 
 /**
  * LogsTab — aba Logs (PHASE8-TAB-LOGS). Recria a auditoria do ride-rank
  * (EvaluationLogList.tsx) no design Torre: uma DataTable com as colunas
  * Data/Hora, Acao, Viagem, Motorista, Operador e Detalhes (diff antes/depois).
  *
- * SHELL HONESTO (restricao real, NAO reducao de escopo): o modulo ranking do
- * Phase 7 expoe apenas 5 endpoints — drivers, trips, blocks, route-scores, stats
- * (ranking.plugin.ts / 07-04-SUMMARY). NAO existe `GET /api/ranking/logs`; a
- * leitura de `evaluation_logs` esta planejada para a Phase 9
- * (MILESTONE-v2-ROADMAP). Por isso esta aba monta a tabela + o render de diff
- * PRONTOS, mas alimenta com um array vazio e exibe um aviso de que a auditoria
- * sera habilitada na Phase 9 — sem chamar endpoint inexistente, sem criar
- * `useRankingLogs` e sem fetch. A Phase 9 so precisa trocar `const logs = []`
- * por um hook de dados.
- *
- * READ-ONLY por natureza: auditoria e somente leitura.
+ * Phase 9 (09-07): consome useRankingLogs (GET /api/ranking/logs) — o endpoint
+ * de leitura de evaluation_logs agora existe (09-02). A tabela + render de diff
+ * montados na Phase 8 recebem dados reais sem alteracao. READ-ONLY por natureza.
  */
 
 /** Linha da tabela: EvaluationLogRecord + `id` estavel exigido pela DataTable. */
@@ -143,13 +132,11 @@ function formatLogDate(createdAt?: string): string {
 }
 
 export function LogsTab() {
-  // Sem dados nesta fase: a leitura de evaluation_logs e Phase 9. A tabela e o
-  // render de diff ja estao prontos — a Phase 9 troca esta linha por um hook.
-  const logs: EvaluationLogRecord[] = []
+  const { data: logs, isLoading, isError } = useRankingLogs()
 
   const rows = useMemo<LogRow[]>(
     () =>
-      logs.map((log, i) => ({
+      (logs ?? []).map((log, i) => ({
         ...log,
         id: log.id ?? `${log.trip_id ?? 'log'}-${i}`,
       })),
@@ -206,13 +193,25 @@ export function LogsTab() {
     [],
   )
 
+  const subtitle = isLoading
+    ? 'Carregando…'
+    : isError
+      ? 'Falha ao carregar'
+      : `${(logs ?? []).length} registros`
+
   return (
     <DataTable<LogRow>
       data={rows}
       columns={columns}
       title="Log de Auditoria"
-      subtitle="Auditoria habilitada na Phase 9 (evaluation_logs)"
-      emptyMessage="Auditoria será habilitada na Phase 9 (leitura de evaluation_logs). A tabela e o diff antes/depois já estão prontos para receber os dados."
+      subtitle={subtitle}
+      emptyMessage={
+        isLoading
+          ? 'Carregando auditoria…'
+          : isError
+            ? 'Não foi possível carregar a auditoria.'
+            : 'Nenhum registro de auditoria ainda.'
+      }
     />
   )
 }
