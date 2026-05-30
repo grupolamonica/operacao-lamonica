@@ -19,8 +19,16 @@
  * never logged.
  */
 
-import { redis } from '../../redis/client';
 import type { SheetTrip } from './ranking.types';
+
+// Lazy redis import: ../../redis/client throws at module-eval if REDIS_URL is
+// unset (fail-fast). Importing it at top-level would make merely *importing* this
+// module (e.g. via ranking.service in pure-composition unit tests) crash without
+// Redis configured. Defer to call-time, when REDIS_URL is present in prod.
+async function getRedis() {
+  const { redis } = await import('../../redis/client');
+  return redis;
+}
 
 const SHEET_ID = process.env.RANK_SHEET_ID ?? '1MWTiaXU3HXW_iVn-n70WSk3o8rcHTRrQP2ac07W9cCU';
 const SHEET_TAB = process.env.RANK_SHEET_TAB ?? 'DBLHHISTORICO';
@@ -89,6 +97,7 @@ function parseCSV(csv: string): SheetTrip[] {
  * fetches, parses, caches and returns. Fetch/parse errors PROPAGATE.
  */
 export async function getSheetTrips(): Promise<SheetTrip[]> {
+  const redis = await getRedis();
   const cached = await redis.get(SHEET_TRIPS_CACHE_KEY);
   if (cached) {
     try {
