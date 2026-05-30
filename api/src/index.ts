@@ -31,6 +31,8 @@ import { thresholdsPlugin } from './modules/thresholds/thresholds.plugin'
 import { gpsProvidersPlugin } from './modules/gps-providers/gps-providers.plugin'
 // Phase 7 — ranking (read-only proxy to ride-rank Supabase + Sheets)
 import { rankingPlugin } from './modules/ranking/ranking.plugin'
+// Phase 9 — ranking write endpoints (evaluations, blocks, unblock) behind requireRole
+import { rankingWritePlugin } from './modules/ranking/ranking.write.plugin'
 import { processAlertDetection } from './jobs/alert-inline'
 import { sql, desc } from 'drizzle-orm'
 import { geofences, geofenceEvents } from './db/schema/geofences'
@@ -169,6 +171,9 @@ export const app = new Elysia()
   // Phase 7 — ranking wired BEFORE wsPlugin (wsPlugin must remain the last
   // plugin: Elysia 1.4 plugin POST-order rule, see Phase 6 note above).
   .use(rankingPlugin)
+  // Phase 9 — ranking write plugin wired AFTER rankingPlugin and BEFORE wsPlugin.
+  // requireRole('admin','supervisor') is applied at plugin level (T-09-03).
+  .use(rankingWritePlugin)
   .use(wsPlugin)
   // Telemetry inlined to avoid Elysia 1.4.28 plugin-composition issue with body schema
   .post('/api/telemetry/ingest', async ({ body, headers, set }) => {
