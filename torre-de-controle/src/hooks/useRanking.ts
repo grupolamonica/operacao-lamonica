@@ -1,6 +1,7 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { formatDate } from '@/lib/formatters'
+import { useAuthStore } from '@/stores/useAuthStore'
 
 /**
  * Ranking composite hooks — 5 read-only sub-hooks feeding the Phase 8 /ranking
@@ -20,9 +21,25 @@ import { formatDate } from '@/lib/formatters'
  * dot-notation disallows `-`. Cast `as any` matches the established pattern in
  * useInsights (`(api.api.insights as any)['sla-history']`).
  *
- * READ-ONLY: no mutation hooks (POST/PATCH/DELETE) — write is Phase 9.
+ * Phase 9 write layer (this file):
+ *   POST   /api/ranking/evaluations     → useEvaluateTrip
+ *   POST   /api/ranking/blocks          → useBlockDriver
+ *   PATCH  /api/ranking/blocks/:id      → useUnblockDriver
+ *   POST   /api/ranking/route-scores    → useCreateRouteScore
+ *   PATCH  /api/ranking/route-scores/:id→ useUpdateRouteScore
+ *   DELETE /api/ranking/route-scores/:id→ useDeleteRouteScore
+ *   GET    /api/ranking/logs            → useRankingLogs
+ *   Role gate for write UI              → useCanWriteRanking (admin|supervisor only)
  *
- * @see api/src/modules/ranking/ranking.plugin.ts — endpoint contracts
+ * SECURITY NOTE (T-09-19): useCanWriteRanking is convenience only — it hides/disables
+ * controls. The real gate is requireRole('admin','supervisor') on the backend (09-03/04).
+ * A user bypassing the frontend still gets 403.
+ *
+ * Mutation invalidation (D-09-09): each write invalidates the relevant ['ranking', ...]
+ * keys so the derived ranking refetches (backend already busted the 60s Redis cache).
+ *
+ * @see api/src/modules/ranking/ranking.plugin.ts — endpoint contracts (read)
+ * @see api/src/modules/ranking/ranking.write.plugin.ts — endpoint contracts (write)
  * @see api/src/modules/ranking/ranking.service.ts — RankedDriver / RankingStats
  */
 
@@ -35,6 +52,10 @@ export type {
   DriverBlockRecord,
   RouteScoreRecord,
   StatusMetrics,
+  EvaluationLogRecord,
+  Comunicacao,
+  DesvioRota,
+  Postura,
 } from '../../../api/src/modules/ranking/ranking.types'
 
 import type { RankedDriver, RankingStats } from '../../../api/src/modules/ranking/ranking.service'
@@ -42,6 +63,10 @@ import type {
   Trip,
   DriverBlockRecord,
   RouteScoreRecord,
+  EvaluationLogRecord,
+  Comunicacao,
+  DesvioRota,
+  Postura,
 } from '../../../api/src/modules/ranking/ranking.types'
 
 /** GET /api/ranking/drivers — full driver array (ATIVO + BLOQUEADO), pontuacao desc. */
@@ -150,4 +175,216 @@ export function useRankingStats() {
     error:     q.error,
     refetch:   q.refetch,
   }
+}
+
+// =============================================================================
+// Phase 9 additions: audit log read + mutation hooks + role gate
+// =============================================================================
+
+/** GET /api/ranking/logs — full evaluation audit log for the LogsTab. */
+export function useRankingLogs() {
+  const q = useQuery({
+    queryKey: ['ranking', 'logs'],
+    queryFn: async (): Promise<EvaluationLogRecord[]> => {
+      const { data, error } = await (api.api.ranking as any).logs.get()
+      if (error) throw new Error((error.value as any)?.error ?? 'Failed to fetch ranking logs')
+      return (data ?? []) as EvaluationLogRecord[]
+    },
+    staleTime: 30_000,
+  })
+  return {
+    data:      q.data ?? ([] as EvaluationLogRecord[]),
+    isLoading: q.isLoading,
+    isError:   q.isError,
+    error:     q.error,
+    refetch:   q.refetch,
+  }
+}
+
+/**
+ * Role gate for the write UI (D-09-10).
+ * Returns true only for admin|supervisor — these are the same roles that pass
+ * requireRole('admin','supervisor') on the backend (T-09-19 defense-in-depth).
+ * This only hides/disables UI controls; the real authorization is server-side.
+ */
+export function useCanWriteRanking(): boolean {
+  const role = useAuthStore(s => s.user?.role)
+  return role === 'admin' || role === 'supervisor'
+}
+
+// ---------------------------------------------------------------------------
+// Payload input types for mutation hooks (matching backend typebox schemas)
+// ---------------------------------------------------------------------------
+
+export interface EvaluateTripInput {
+  trip_id:      string
+  driver_id:    string
+  driver_name:  string
+  comunicacao:  Comunicacao
+  atendeu:      boolean
+  desvio_rota:  DesvioRota
+  postura:      Postura
+  ajuste_manual: number  // integer, clamped [-20,20] by backend
+  observacao?:  string
+}
+
+export interface BlockDriverInput {
+  driver_id:   string
+  driver_name: string
+  motivo:      string
+}
+
+export interface UnblockDriverInput {
+  id:          string  // block row id — REST semantics; actual unblock keys on driver_id+ativo
+  driver_id:   string
+  driver_name: string
+}
+
+export interface RouteScoreCreateInput {
+  origin_code:      string
+  destination_code: string
+  pontuacao:        number
+  data_inicio:      string
+  data_fim:         string | null
+  observacao:       string | null
+}
+
+export interface RouteScoreUpdateInput {
+  id:               string
+  origin_code?:     string
+  destination_code?: string
+  pontuacao?:       number
+  data_inicio?:     string
+  data_fim?:        string | null
+  observacao?:      string | null
+}
+
+// ---------------------------------------------------------------------------
+// Mutation hooks — each invalidates relevant ['ranking', ...] keys (D-09-09)
+// Backend already busts the 60s Redis cache; the front must refetch to stay fresh.
+// All calls go through the requireRole('admin','supervisor')-gated Phase 9 endpoints.
+// ---------------------------------------------------------------------------
+
+/**
+ * POST /api/ranking/evaluations — upsert trip evaluation + optional NO_SHOW auto-block.
+ * Invalidates: trips, drivers, stats, blocks (block may be auto-created), logs.
+ */
+export function useEvaluateTrip() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: EvaluateTripInput) => {
+      const { data, error } = await api.api.ranking.evaluations.post(payload as any)
+      if (error) throw new Error((error.value as any)?.error ?? 'Falha na operação')
+      return data
+    },
+    onSuccess: () => {
+      ;(['trips', 'drivers', 'stats', 'blocks', 'logs'] as const).forEach(key =>
+        qc.invalidateQueries({ queryKey: ['ranking', key] })
+      )
+    },
+  })
+}
+
+/**
+ * POST /api/ranking/blocks — manual driver block + BLOQUEIO_MANUAL audit.
+ * Invalidates: blocks, drivers, stats, logs.
+ */
+export function useBlockDriver() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: BlockDriverInput) => {
+      const { data, error } = await api.api.ranking.blocks.post(payload as any)
+      if (error) throw new Error((error.value as any)?.error ?? 'Falha na operação')
+      return data
+    },
+    onSuccess: () => {
+      ;(['blocks', 'drivers', 'stats', 'logs'] as const).forEach(key =>
+        qc.invalidateQueries({ queryKey: ['ranking', key] })
+      )
+    },
+  })
+}
+
+/**
+ * PATCH /api/ranking/blocks/:id — unblock driver (closes active rows + override record) + DESBLOQUEIO audit.
+ * Bracket-cast not needed (no hyphen); path param via dynamic call form.
+ * Invalidates: blocks, drivers, stats, logs.
+ */
+export function useUnblockDriver() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, driver_id, driver_name }: UnblockDriverInput) => {
+      const { data, error } = await (api.api.ranking.blocks as any)({ id }).patch({ driver_id, driver_name })
+      if (error) throw new Error((error.value as any)?.error ?? 'Falha na operação')
+      return data
+    },
+    onSuccess: () => {
+      ;(['blocks', 'drivers', 'stats', 'logs'] as const).forEach(key =>
+        qc.invalidateQueries({ queryKey: ['ranking', key] })
+      )
+    },
+  })
+}
+
+/**
+ * POST /api/ranking/route-scores — create route base score + ROTA_CRIACAO audit + cache bust.
+ * Bracket-cast required: hyphen in 'route-scores' breaks TS dot-access (mirror of useRankingRouteScores).
+ * Invalidates: route-scores, trips, drivers, stats, logs (base points change derived scores).
+ */
+export function useCreateRouteScore() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: RouteScoreCreateInput) => {
+      const { data, error } = await (api.api.ranking as any)['route-scores'].post(payload)
+      if (error) throw new Error((error.value as any)?.error ?? 'Falha na operação')
+      return data
+    },
+    onSuccess: () => {
+      ;(['route-scores', 'trips', 'drivers', 'stats', 'logs'] as const).forEach(key =>
+        qc.invalidateQueries({ queryKey: ['ranking', key] })
+      )
+    },
+  })
+}
+
+/**
+ * PATCH /api/ranking/route-scores/:id — update route score + ROTA_EDICAO audit + cache bust.
+ * Bracket-cast + path-param call form (mirror of blocks/:id pattern above).
+ * Invalidates: route-scores, trips, drivers, stats, logs.
+ */
+export function useUpdateRouteScore() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, ...patch }: RouteScoreUpdateInput) => {
+      const { data, error } = await (api.api.ranking as any)['route-scores']({ id }).patch(patch)
+      if (error) throw new Error((error.value as any)?.error ?? 'Falha na operação')
+      return data
+    },
+    onSuccess: () => {
+      ;(['route-scores', 'trips', 'drivers', 'stats', 'logs'] as const).forEach(key =>
+        qc.invalidateQueries({ queryKey: ['ranking', key] })
+      )
+    },
+  })
+}
+
+/**
+ * DELETE /api/ranking/route-scores/:id — remove route score + ROTA_REMOCAO audit + cache bust.
+ * Bracket-cast + path-param call form.
+ * Invalidates: route-scores, trips, drivers, stats, logs.
+ */
+export function useDeleteRouteScore() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data, error } = await (api.api.ranking as any)['route-scores']({ id }).delete()
+      if (error) throw new Error((error.value as any)?.error ?? 'Falha na operação')
+      return data
+    },
+    onSuccess: () => {
+      ;(['route-scores', 'trips', 'drivers', 'stats', 'logs'] as const).forEach(key =>
+        qc.invalidateQueries({ queryKey: ['ranking', key] })
+      )
+    },
+  })
 }
