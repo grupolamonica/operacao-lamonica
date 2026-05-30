@@ -223,6 +223,16 @@ Plans:
 **Depends on:** Phase 7.
 **Success criteria:** 6 abas renderizam dados reais no design Torre; filtros funcionam; zero erros.
 
+Plans:
+- [x] 08-01-PLAN.md — Wave 1: hooks useRanking* (Eden Treaty + TanStack, read-only) + re-export tipos do contrato Phase 7 — **DONE** (83b903a)
+- [x] 08-02-PLAN.md — Wave 1: fixMojibake (helper de display puro, normaliza mojibake do ride-rank só na view) — **DONE**
+- [x] 08-03-PLAN.md — Wave 2: rota lazy /ranking + item sidebar Argon (Trophy) + RankingPage shell (header + StatsCards 4 KPIs reais + shadcn Tabs 6 abas) + 6 stubs de aba isolados p/ Wave 3 — **DONE** (7ffb40d)
+- [ ] 08-04-PLAN.md — Wave 3: RankingTab (DataTable ordenável por pontuação + rank)
+- [ ] 08-05-PLAN.md — Wave 3: ViagensTab (DataTable de viagens FECHADA)
+- [ ] 08-06-PLAN.md — Wave 3: QualidadeTab (Chart.js bar + listas)
+- [ ] 08-07-PLAN.md — Wave 3: BloqueiosTab + RotasTab (DataTables de bloqueios + route_scores)
+- [ ] 08-08-PLAN.md — Wave 3: LogsTab (DataTable + diff JSON)
+
 ## Phase 9: Ranking — Escrita + Auditoria [ WRITE FLOWS ]
 **Goal:** avaliações, bloqueios (auto NO_SHOW + manual), config de rotas e aba Logs via `/api/ranking/*` (writes proxyados pro Supabase ride-rank), RBAC admin|supervisor|analyst.
 **Depends on:** Phase 8.

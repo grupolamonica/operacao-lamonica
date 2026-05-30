@@ -3,22 +3,22 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: milestone
 status: unknown
-stopped_at: "Phase 07 autonomous done — ranking backend (4 plans, 25 tests pass, tsc 0, 5 endpoints). Pending: 07-04 Task 4 real-data parity (needs RANK_SUPABASE_SERVICE_KEY)"
-last_updated: "2026-05-30T11:56:06.202Z"
+stopped_at: Completed 08-03-PLAN.md (Wave 2 — /ranking shell + StatsCards + 6 tab stubs)
+last_updated: "2026-05-30T12:08:59.410Z"
 progress:
   total_phases: 11
   completed_phases: 2
   total_plans: 26
-  completed_plans: 24
-  percent: 92
+  completed_plans: 25
+  percent: 96
 ---
 
 ## Current Position
 
-- **Phase:** 07-ranking-backend — IN PROGRESS (Wave 1: 07-01 + 07-02 complete · Wave 2: 07-03 complete · Wave 3: 07-04 autonomous tasks complete — checkpoint pendente)
-- **Completed Plan:** 07-04 autonomous tasks (Wave 3 — ranking.service.ts composeRanking [paridade COMPLETA do DataContext: transform FECHADA → driverName enrich → dateRange → ajuste_manual clamp 0..100 → activelyBlockedIds → deriveDrivers → status → rank-sobre-ativos → activeDrivers] + 5 service orchestrators + ranking.plugin.ts 5 GET /api/ranking/* atrás do authGuard + index.ts wiring antes do wsPlugin + tag swagger + export type App p/ Eden Treaty; ranking.supabase.ts → lazy-init [Rule 3]; bun test 25 pass + tsc exit 0 + smoke 401 nos 5 endpoints)
-- **Next Plans:** 07-04 Task 4 (checkpoint:human-verify — paridade dados reais, PENDENTE RANK_SUPABASE_SERVICE_KEY) → depois Phase 08 (ranking UI via Eden Treaty)
-- **Stopped at:** Phase 07 autonomous done — ranking backend (4 plans, 25 tests pass, tsc 0, 5 endpoints). Pending: 07-04 Task 4 real-data parity (needs RANK_SUPABASE_SERVICE_KEY)
+- **Phase:** 08-ranking-ui — IN PROGRESS (Wave 1: 08-01 hooks + 08-02 mojibake complete · Wave 2: 08-03 complete — /ranking shell navegável)
+- **Completed Plan:** 08-03 (Wave 2 — rota lazy /ranking [padrão 06-07] + item 'Ranking'/Trophy no sidebar Argon + RankingPage: header + StatsCards [4 KPICards reais via useRankingStats] + shadcn Tabs com as 6 abas Ranking/Viagens/Qualidade/Bloqueios/Rotas/Logs montando 6 stubs isolados; tsc -b --noEmit exit 0 + npm run build exit 0, chunk lazy RankingPage gerado; commit 7ffb40d)
+- **Next Plans:** Wave 3 paralela — 08-04 (RankingTab), 08-05 (ViagensTab), 08-06 (QualidadeTab), 08-07 (Bloqueios+RotasTab), 08-08 (LogsTab); cada um preenche seu próprio stub SEM tocar RankingPage.tsx (shell congelado). Pendente Phase 07: 07-04 Task 4 (checkpoint:human-verify — paridade dados reais, aguarda RANK_SUPABASE_SERVICE_KEY)
+- **Stopped at:** Completed 08-03-PLAN.md (Wave 2 — /ranking shell + StatsCards + 6 tab stubs)
 - **Known issues:**
   - Elysia 1.4.28: POST routes with body schemas fail when loaded as plugins. Workaround: inline routes in index.ts.
   - Stale processes on port 3000 can mask route changes. Always kill all bun processes before testing.
@@ -104,6 +104,8 @@ progress:
 - 07-04: contrato /drivers FIXADO = array completo (ATIVO+BLOQUEADO) pontuacao desc, rank 1..N so sobre ativos, bloqueado rank=null (RankedDriver); /trips so FECHADA + from/to, NO SHOW nao concatenado; UI filtra por status (Eden Treaty Phase 8)
 - 07-04: ranking.supabase.ts convertido para lazy-init (getRankSupabase + Proxy) — fail-fast movido de module-load para 1a query; desbloqueia teste puro composeRanking e boot smoke-401 sem RANK_SUPABASE_SERVICE_KEY (Rule 3); superficie publica rankSupabase.from(...) intacta
 - 07-04: rankingPlugin registrado ANTES de wsPlugin (regra Elysia 1.4 wsPlugin-last, T-07-12); export type App intacto; tag swagger ranking; smoke 401 nos 5 endpoints sem cookie confirmado
+- 08-03: RankingPage é a ÚNICA edição do shell — rota lazy /ranking + 6 abas shadcn montando stubs isolados (1 arquivo/aba) p/ Wave 3 paralela (08-04..08) sem conflito de merge
+- 08-03: TabsList no tom Argon (grid w-full 6-col + bg-card + hairline var(--border)) sobrescreve o w-fit/bg-muted default do shadcn; KPIs em-dash enquanto isLoading; pt-2 dá folga ao ícone flutuante do KPICard
 
 ## Performance Metrics
 
@@ -129,6 +131,7 @@ progress:
 | Phase 07 P03 | ~12min | 2 tasks | 2 files |
 | Phase Phase 07 PP04 | ~30min | 3 tasks | 5 files |
 | Phase 08 P01 | ~6min | 1 tasks | 1 files |
+| Phase 08 P03 | 5min | 3 tasks | 10 files |
 
 ## Quick Tasks Completed
 
@@ -140,4 +143,4 @@ progress:
 
 - **Timestamp:** 2026-05-29T20:13:00Z
 - **Stopped at:** Phase 07 Plan 03 (Wave 2 — ranking I/O layer: ranking.reads.ts 5 reads via rankSupabase + ranking.sheets.ts getSheetTrips CSV gviz + Redis EX 60) complete — commit fb9254c
-- **Resume file:** --resume-file
+- **Resume file:** None
