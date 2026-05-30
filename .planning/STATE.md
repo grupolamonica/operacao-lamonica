@@ -3,22 +3,22 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 08-03-PLAN.md (Wave 2 — /ranking shell + StatsCards + 6 tab stubs)
-last_updated: "2026-05-30T12:08:59.410Z"
+stopped_at: Completed 08-08-PLAN.md (Wave 3 — aba Logs: shell de auditoria, DataTable + diff, endpoint Phase 9)
+last_updated: "2026-05-30T12:24:00.000Z"
 progress:
   total_phases: 11
   completed_phases: 2
-  total_plans: 26
-  completed_plans: 25
-  percent: 96
+  total_plans: 30
+  completed_plans: 27
+  percent: 90
 ---
 
 ## Current Position
 
-- **Phase:** 08-ranking-ui — IN PROGRESS (Wave 1: 08-01 hooks + 08-02 mojibake complete · Wave 2: 08-03 complete — /ranking shell navegável)
-- **Completed Plan:** 08-03 (Wave 2 — rota lazy /ranking [padrão 06-07] + item 'Ranking'/Trophy no sidebar Argon + RankingPage: header + StatsCards [4 KPICards reais via useRankingStats] + shadcn Tabs com as 6 abas Ranking/Viagens/Qualidade/Bloqueios/Rotas/Logs montando 6 stubs isolados; tsc -b --noEmit exit 0 + npm run build exit 0, chunk lazy RankingPage gerado; commit 7ffb40d)
-- **Next Plans:** Wave 3 paralela — 08-04 (RankingTab), 08-05 (ViagensTab), 08-06 (QualidadeTab), 08-07 (Bloqueios+RotasTab), 08-08 (LogsTab); cada um preenche seu próprio stub SEM tocar RankingPage.tsx (shell congelado). Pendente Phase 07: 07-04 Task 4 (checkpoint:human-verify — paridade dados reais, aguarda RANK_SUPABASE_SERVICE_KEY)
-- **Stopped at:** Completed 08-03-PLAN.md (Wave 2 — /ranking shell + StatsCards + 6 tab stubs)
+- **Phase:** 08-ranking-ui — IN PROGRESS (Wave 1: 08-01 hooks + 08-02 mojibake complete · Wave 2: 08-03 complete — /ranking shell navegável · Wave 3: 08-06 aba Qualidade + 08-08 aba Logs complete)
+- **Completed Plan:** 08-08 (Wave 3 — LogsTab: shell de auditoria honesto no design Torre — DataTable com Data/Hora/Acao/Viagem/Motorista/Operador/Detalhes [diff antes/depois via renderDiff] PRONTOS, alimentados por logs=[] porque o endpoint de leitura de evaluation_logs é Phase 9 [não há /api/ranking/logs no Phase 7]; ActionBadge tom Argon, fixMojibake no driver_name, sem dangerouslySetInnerHTML [T-08-15], sem fetch/hook/endpoint inventado [READ-ONLY]; npm run build exit 0, chunk RankingPage regenerado; COMMIT FEITO via gsd-sdk commit f9f74a9)
+- **Next Plans:** Wave 3 restante (paralela, cada um preenche seu stub SEM tocar RankingPage.tsx) — 08-04 (RankingTab), 08-05 (ViagensTab), 08-07 (Bloqueios+RotasTab). Pendente Phase 07: 07-04 Task 4 (checkpoint:human-verify — paridade dados reais, aguarda RANK_SUPABASE_SERVICE_KEY)
+- **Stopped at:** Completed 08-08-PLAN.md (Wave 3 — aba Logs: shell de auditoria, DataTable + diff, endpoint Phase 9)
 - **Known issues:**
   - Elysia 1.4.28: POST routes with body schemas fail when loaded as plugins. Workaround: inline routes in index.ts.
   - Stale processes on port 3000 can mask route changes. Always kill all bun processes before testing.
@@ -26,6 +26,7 @@ progress:
   - Bun IS installed locally (1.3.13 on PATH) — prior phase notes saying "Bun NOT installed" are stale; Docker fallback unnecessary.
   - **PENDENTE Phase 07:** Task 4 do 07-04 (checkpoint:human-verify — paridade do ranking com DADOS REAIS) aguarda `RANK_SUPABASE_SERVICE_KEY` (service_role ride-rank, user-setup). Build/types/tests/401 NÃO dependem; marcar a FASE como verificada exige comparar pontuacao/rank de uma amostra contra o app ride-rank original com a key no `.env`.
   - Testes puros do ranking exigem envs infra dummy no comando (`REDIS_URL`/`RANK_*`) porque ranking.sheets→redis/client e ranking.reads→ranking.supabase fail-fast no load; `composeRanking` é puro e não usa redis (o `[redis] error ECONNREFUSED` no test log é só o handler de erro de background).
+  - **08-06 COMMIT PENDENTE:** todas as operações git (add/commit e até read como rev-parse/status) foram negadas por permissão neste ambiente de execução. QualidadeTab.tsx + 08-06-SUMMARY.md + este STATE.md estão escritos no disco e VERIFICADOS (build exit 0), mas NÃO commitados. Ação manual: `git add torre-de-controle/src/app/pages/ranking/components/QualidadeTab.tsx` então commit `feat(08-06): aba Qualidade (Chart.js) — Wave 3`; depois metadata commit do SUMMARY + STATE. Per-task commit não pôde rodar as guardas de pre-commit (#2924/#3097) por dependerem de git-read também bloqueado.
 
 ## Decisions
 
@@ -106,6 +107,12 @@ progress:
 - 07-04: rankingPlugin registrado ANTES de wsPlugin (regra Elysia 1.4 wsPlugin-last, T-07-12); export type App intacto; tag swagger ranking; smoke 401 nos 5 endpoints sem cookie confirmado
 - 08-03: RankingPage é a ÚNICA edição do shell — rota lazy /ranking + 6 abas shadcn montando stubs isolados (1 arquivo/aba) p/ Wave 3 paralela (08-04..08) sem conflito de merge
 - 08-03: TabsList no tom Argon (grid w-full 6-col + bg-card + hairline var(--border)) sobrescreve o w-fit/bg-muted default do shadcn; KPIs em-dash enquanto isLoading; pt-2 dá folga ao ícone flutuante do KPICard
+- 08-08: aba Logs é SHELL HONESTO — o Phase 7 expõe só 5 endpoints (drivers/trips/blocks/route-scores/stats); NÃO há /api/ranking/logs (leitura de evaluation_logs é Phase 9 per MILESTONE-v2-ROADMAP). LogsTab monta DataTable + renderDiff prontos e alimenta logs=[] (sem fetch, sem useRankingLogs, sem endpoint inventado); Phase 9 troca 1 linha por um hook
+- 08-08: EvaluationLogRecord importado por import type relativo do contrato (../../../../../../api/.../ranking.types) — mesmo padrão tipo-do-contrato de useRanking.ts; NÃO re-exportei em useRanking.ts (08-01) p/ manter o escopo Wave 3 estrito (só LogsTab.tsx)
+- 08-08: renderDiff escapa valores como texto JSX (auto-escape do React) + JSON.stringify p/ objetos; dangerouslySetInnerHTML PROIBIDO (T-08-15); ActionBadge cor inline tom Argon (Badge shadcn não tem variante success, mesmo padrão do DriverStatusBadge)
+- 08-06: QualityChart do ride-rank recriado em Chart.js (react-chartjs-2 Bar), zero recharts (D-V2-03); 2 charts (Penalidade % por KPI horizontal 0..100 + Distribuição de pontuação 5 buckets) + listas de rota (delay/early) + listas de motorista (destaque/atenção), tudo PanelCard, tema key={isDark}
+- 08-06: helpers qualityInsights (reliabilityIndex/attentionIndex/evaluations) FORA de escopo — dependem de `evaluations` (Phase 9), ausente no contrato read-only /api/ranking. Listas de motorista derivadas direto dos campos computados do RankedDriver (pontuacao, ocorrencias, totalViagens, etaDestMetrics.delay)
+- 08-06: lista de no-show por rota + tabela comportamento/comunicação OMITIDAS (dependiam de no_show de planilha + evaluations fora do contrato consumido); as 2 listas de rota mantidas usam só origin_code/destination_code/status_eta_destino
 
 ## Performance Metrics
 
@@ -132,6 +139,8 @@ progress:
 | Phase Phase 07 PP04 | ~30min | 3 tasks | 5 files |
 | Phase 08 P01 | ~6min | 1 tasks | 1 files |
 | Phase 08 P03 | 5min | 3 tasks | 10 files |
+| Phase 08 P08 | ~8min | 1 tasks | 1 files |
+| Phase 08 P06 | ~13min | 1 tasks | 1 files |
 
 ## Quick Tasks Completed
 
@@ -141,6 +150,6 @@ progress:
 
 ## Last Session
 
-- **Timestamp:** 2026-05-29T20:13:00Z
-- **Stopped at:** Phase 07 Plan 03 (Wave 2 — ranking I/O layer: ranking.reads.ts 5 reads via rankSupabase + ranking.sheets.ts getSheetTrips CSV gviz + Redis EX 60) complete — commit fb9254c
+- **Timestamp:** 2026-05-30T12:24:00Z
+- **Stopped at:** Phase 08 Plan 08 (Wave 3 — aba Logs: shell de auditoria DataTable + renderDiff, logs=[] até endpoint Phase 9) complete e verificado (build exit 0); COMMIT FEITO (f9f74a9 via gsd-sdk commit)
 - **Resume file:** None

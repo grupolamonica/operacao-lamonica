@@ -229,9 +229,9 @@ Plans:
 - [x] 08-03-PLAN.md — Wave 2: rota lazy /ranking + item sidebar Argon (Trophy) + RankingPage shell (header + StatsCards 4 KPIs reais + shadcn Tabs 6 abas) + 6 stubs de aba isolados p/ Wave 3 — **DONE** (7ffb40d)
 - [ ] 08-04-PLAN.md — Wave 3: RankingTab (DataTable ordenável por pontuação + rank)
 - [ ] 08-05-PLAN.md — Wave 3: ViagensTab (DataTable de viagens FECHADA)
-- [ ] 08-06-PLAN.md — Wave 3: QualidadeTab (Chart.js bar + listas)
+- [x] 08-06-PLAN.md — Wave 3: QualidadeTab (Chart.js bar + listas) — **AUTONOMOUS DONE** (build exit 0; commit PENDENTE — git bloqueado por permissão no ambiente, ver STATE Known issues): 2 charts Chart.js (Penalidade % por KPI + Distribuição de pontuação 5 buckets) + listas rota delay/early + listas motorista destaque/atenção, PanelCard, key={isDark}, fixMojibake, zero recharts
 - [ ] 08-07-PLAN.md — Wave 3: BloqueiosTab + RotasTab (DataTables de bloqueios + route_scores)
-- [ ] 08-08-PLAN.md — Wave 3: LogsTab (DataTable + diff JSON)
+- [x] 08-08-PLAN.md — Wave 3: LogsTab (DataTable + diff JSON) — shell de auditoria honesto: DataTable 6 colunas + renderDiff antes/depois prontos, logs=[] (endpoint de leitura é Phase 9), sem fetch/hook/endpoint inventado — **DONE** (f9f74a9)
 
 ## Phase 9: Ranking — Escrita + Auditoria [ WRITE FLOWS ]
 **Goal:** avaliações, bloqueios (auto NO_SHOW + manual), config de rotas e aba Logs via `/api/ranking/*` (writes proxyados pro Supabase ride-rank), RBAC admin|supervisor|analyst.
