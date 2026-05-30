@@ -2,20 +2,21 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: milestone
-status: phase-complete
-stopped_at: Phase 08 COMPLETE — todas as 8 plans (Wave 1/2/3) commitadas + build integrado das 6 abas exit 0
-last_updated: "2026-05-30T12:45:00.000Z"
+status: planning-complete
+stopped_at: Phase 09 PLANEJADA — 7 plans em 5 waves, plan-checker PASS (iter2); pronto p/ /gsd-execute-phase 9
+last_updated: "2026-05-30T13:30:00.000Z"
 progress:
   total_phases: 11
   completed_phases: 2
-  total_plans: 30
+  total_plans: 37
   completed_plans: 30
-  percent: 100
+  percent: 81
 ---
 
 ## Current Position
 
-- **Phase:** 08-ranking-ui — ✅ COMPLETE (8/8 plans). Wave 1: 08-01 hooks + 08-02 mojibake · Wave 2: 08-03 /ranking shell navegável · Wave 3: 08-04 Ranking+DriverDetails, 08-05 Viagens+EvaluationForm(shell), 08-06 Qualidade(Chart.js), 08-07 Bloqueios+Rotas, 08-08 Logs(shell). Build integrado das 6 abas exit 0.
+- **Phase:** 09-ranking-escrita-auditoria-write-flows — 📋 PLANEJADA (7 plans, 5 waves, plan-checker PASS iter2). W1: 09-01 (writes/audit/cache) ∥ 09-02 (plugin+service) · W2: 09-03 (evaluate+auto-block NO_SHOW, `autonomous:false` checkpoint paridade) · W3: 09-04 (route-scores CRUD) · W4: 09-05 (hooks + role gate) · W5: 09-06 (EvalForm/Bloqueios wiring) ∥ 09-07 (Rotas/Logs wiring). Decisões D-09-01..10 todas cobertas. Próximo: `/gsd-execute-phase 9`. NÃO iniciada.
+- **Phase 08 (anterior):** ✅ COMPLETE (8/8 plans). Wave 1: 08-01 hooks + 08-02 mojibake · Wave 2: 08-03 /ranking shell navegável · Wave 3: 08-04 Ranking+DriverDetails, 08-05 Viagens+EvaluationForm(shell), 08-06 Qualidade(Chart.js), 08-07 Bloqueios+Rotas, 08-08 Logs(shell). Build integrado das 6 abas exit 0.
 - **Completed Plan:** 08 (todas) — reconcile final 7cf6aaf commitou 08-05/06/07 (git lock contention nos executores paralelos); 08-04 (1ecc313) e 08-08 (f9f74a9) já commitados pelos executores. /ranking renderiza as 6 abas com dados reais via Eden Treaty (read-only).
 - **Next Plans:** Phase 09 (ranking: escrita + auditoria — submit avaliação, block/unblock, CRUD route_scores, endpoint /logs) — NÃO planejada (só no roadmap). Rodar `/gsd-plan-phase 9 --discuss`.
 - **Stopped at:** Phase 08 COMPLETE — reconcile + build integrado verde. Pronto para verify-work ou Phase 09.

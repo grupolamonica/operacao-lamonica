@@ -23,4 +23,12 @@
   - [x] 08-07-PLAN.md — aba Bloqueios (DataTable ativos, desbloquear disabled) + aba Rotas (tabela read de route-scores) [PHASE8-TAB-BLOQUEIOS, PHASE8-TAB-ROTAS]
   - [x] 08-08-PLAN.md — aba Logs (shell de auditoria: colunas + diff JSON, estado vazio + aviso Phase 9 — endpoint `/logs` é Phase 9) [PHASE8-TAB-LOGS]
 
-### Phase 9 — Ranking: escrita + auditoria
+### Phase 9 — Ranking: escrita + auditoria [ WRITE FLOWS ]
+**Goal:** avaliar→pontuar→bloquear(auto NO_SHOW + manual)→desbloquear + config rotas + aba Logs via `/api/ranking/*` (writes proxiados pro Supabase Lamonica Ranking), RBAC admin|supervisor, auditoria antes/depois.
+**Decisões (discuss 2026-05-30, D-09-01..10):** só admin+supervisor escrevem (`requireRole`); auto-block réplica (1 NO_SHOW); anon key + RLS aberta + gate no torre (zero credencial nova; RLS confirmada aberta via MCP); scoring derivado + invalidação de cache; auditoria em toda mutação; GET /logs novo; bug Elysia body → plugin/inline.
+**Plans:** 7 plans em 5 waves (planejado 2026-05-30 — plan-checker PASS iter2)
+- Wave 1 (∥): [ ] 09-01 (writes/audit/cache helpers) · [ ] 09-02 (write plugin + service scaffolding)
+- Wave 2: [ ] 09-03 (POST /evaluations + auto-block NO_SHOW + log; `autonomous:false` checkpoint paridade c/ RANK key)
+- Wave 3: [ ] 09-04 (route-scores CRUD POST/PATCH/DELETE + log)
+- Wave 4: [ ] 09-05 (hooks useRanking* mutations + role gate)
+- Wave 5 (∥): [ ] 09-06 (EvaluationFormDialog + BloqueiosTab wiring) · [ ] 09-07 (RotasTab CRUD + LogsTab consome /logs)
