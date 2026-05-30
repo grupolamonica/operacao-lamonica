@@ -27,9 +27,10 @@ decisions:
 metrics:
   duration: "~25 minutes"
   completed: "2026-05-30"
-  tasks_completed: 2
+  tasks_completed: 3
   tasks_total: 3
   files_count: 4
+  checkpoint_status: "verified — 11/11 live parity asserts pass (synthetic IDs, cleanup ok)"
 ---
 
 # Phase 9 Plan 03: Ranking Write Service + Plugin Summary
@@ -43,9 +44,27 @@ metrics:
 | 1 | ranking.write.service.ts | 8bfc6b5 | api/src/modules/ranking/ranking.write.service.ts |
 | 2 | ranking.write.plugin.ts + index.ts wire | a9e4dcd | ranking.write.plugin.ts, api/src/index.ts, api/.env.example |
 
-## Task 3: Deferred to Checkpoint
+## Task 3: VERIFIED (live parity against Lamonica Ranking DB)
 
-Task 3 (`checkpoint:human-verify`) requires `RANK_SUPABASE_SERVICE_KEY` (the anon key of Lamonica Ranking) to verify DB effect. Not auto-approving — stopped here per plan spec (`autonomous: false`).
+`checkpoint:human-verify` — **APPROVED**. The user ran the verification against the real Lamonica Ranking DB (`qbwazymqhfunlhnikbla`, anon key from `.env.deploy.local`) using **synthetic IDs + full cleanup**. **11/11 asserts PASS, 0 rows remaining.**
+
+Evidence:
+
+| # | Assert | Result |
+|---|--------|--------|
+| 1 | CRIAÇÃO: upsert #1 → `existed=false`, `before=null` | PASS |
+| 2 | CRIAÇÃO: eval row persisted (fields match) | PASS |
+| 3 | EDIÇÃO: upsert #2 → `existed=true`, `before`=prior row (ajuste 5) | PASS |
+| 4 | EDIÇÃO: record updated (ajuste -10) | PASS |
+| 5 | auto-block NO_SHOW inserted (atendeu=false) | PASS |
+| 6 | manual block inserted → 2 active blocks | PASS |
+| 7 | unblock → 0 active; all closed `ativo=false` + `data_fim` + `manual_override=true` | PASS |
+| 8 | evaluation_logs: 5 acoes present with em-dash (CRIAÇÃO, EDIÇÃO, BLOQUEIO_NO_SHOW, BLOQUEIO_MANUAL, DESBLOQUEIO) | PASS |
+| 9 | log EDIÇÃO.dados_antes = snapshot of prior row (ajuste 5) | PASS |
+| 10 | dados_depois carries updated record | PASS |
+| 11 | cleanup: all synthetic rows deleted (evals/blocks/logs = 0 remaining) | PASS |
+
+This confirms the DB-effect path that the autonomous run could not exercise (no `RANK_*` in local env): upsert existed/before semantics, NO_SHOW auto-block, manual block/unblock with override, and the 5 audit acoes with byte-for-byte accented literals + before→dados_antes snapshot. Ride-rank parity holds end-to-end.
 
 ## What Was Built
 
@@ -112,13 +131,13 @@ grep -c "t.Union"          → 3 ✓
 wsPlugin order             → L173 rankingPlugin → L176 rankingWritePlugin → L177 wsPlugin ✓
 ```
 
-## Checkpoint Pending (Task 3)
+## Checkpoint (Task 3) — VERIFIED
 
-**Type:** `checkpoint:human-verify` (blocking)
-**Requires:** `RANK_SUPABASE_SERVICE_KEY` (anon key of Lamonica Ranking — Dashboard → Settings → API → anon/public)
-**Awaits:** live DB-effect verification (evaluations row + logs row; NO_SHOW block; BLOQUEIO_MANUAL + DESBLOQUEIO; operador = Torre user name; cache bust confirmed by immediate read reflection)
+**Type:** `checkpoint:human-verify` (blocking) — **CLOSED / APPROVED 2026-05-30**
+**Verified against:** Lamonica Ranking DB (`qbwazymqhfunlhnikbla`), anon key from `.env.deploy.local`, synthetic IDs + full cleanup.
+**Result:** 11/11 asserts PASS, 0 rows remaining (see "Task 3: VERIFIED" section above for the full assert table).
 
-See 09-03-PLAN.md Task 3 for exact verification steps.
+The live DB-effect path is confirmed: upsert CRIAÇÃO/EDIÇÃO (existed/before), NO_SHOW auto-block, manual block/unblock with override record, and all 5 audit acoes with accented literals + before→dados_antes snapshot.
 
 ## Threat Surface Scan
 
