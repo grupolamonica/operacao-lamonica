@@ -238,6 +238,17 @@ Plans:
 **Depends on:** Phase 8.
 **Success criteria:** fluxo avaliar→pontuar→bloquear→desbloquear end-to-end; auditoria registra antes/depois.
 
+**Plans:** 7 plans (5 waves)
+
+Plans:
+- [x] 09-01-PLAN.md — W1: ranking.writes.ts (upsert eval / block / unblock / route-score CRUD) + ranking.audit.ts (single createEvaluationLog antes/depois) + ranking.cache.ts (bustRankingCache) — pure data layer
+- [x] 09-02-PLAN.md — W1: GET /api/ranking/logs (read, authGuard, evaluation_logs desc) on the existing read plugin + getRankingLogs orchestrator
+- [x] 09-03-PLAN.md — W2 (dep 01): driver-lifecycle writes — POST /evaluations (+auto-block NO_SHOW), POST /blocks (manual), PATCH /blocks/:id (unblock) behind requireRole('admin','supervisor'); operador server-resolved; typebox enums+clamp; cache bust; human-verify DB checkpoint
+- [x] 09-04-PLAN.md — W3 (dep 01,03): route-scores CRUD (POST/PATCH/DELETE /route-scores) same requireRole scope, ROTA_* audit + cache bust
+- [x] 09-05-PLAN.md — W4 (dep 02,03,04): front-end hooks — useRankingLogs + useEvaluateTrip/useBlockDriver/useUnblockDriver/useCreateRouteScore/useUpdateRouteScore/useDeleteRouteScore (['ranking',...] invalidation) + useCanWriteRanking role gate
+- [x] 09-06-PLAN.md — W5 (dep 05): wire EvaluationFormDialog (submit) + BloqueiosTab (unblock + manual block) + ViagensTab trigger, gated admin|supervisor (D-09-10)
+- [x] 09-07-PLAN.md — W5 (dep 05): wire RotasTab CRUD (gated) + LogsTab (live useRankingLogs feed, replaces logs=[] shell)
+
 ## Phase 10: Importação Viagens.xlsx → DB Torre [ INGESTION ]
 **Goal:** endpoint de upload do .xlsx que parseia posição+campos, geocoda (cidade/UF) e salva no DB do Torre (idempotente). Planilha é só fonte de import; futuro consulta de outra forma.
 **Depends on:** —

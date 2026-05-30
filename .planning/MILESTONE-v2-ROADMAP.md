@@ -26,9 +26,9 @@
 ### Phase 9 — Ranking: escrita + auditoria [ WRITE FLOWS ]
 **Goal:** avaliar→pontuar→bloquear(auto NO_SHOW + manual)→desbloquear + config rotas + aba Logs via `/api/ranking/*` (writes proxiados pro Supabase Lamonica Ranking), RBAC admin|supervisor, auditoria antes/depois.
 **Decisões (discuss 2026-05-30, D-09-01..10):** só admin+supervisor escrevem (`requireRole`); auto-block réplica (1 NO_SHOW); anon key + RLS aberta + gate no torre (zero credencial nova; RLS confirmada aberta via MCP); scoring derivado + invalidação de cache; auditoria em toda mutação; GET /logs novo; bug Elysia body → plugin/inline.
-**Plans:** 7 plans em 5 waves (planejado 2026-05-30 — plan-checker PASS iter2)
-- Wave 1 (∥): [ ] 09-01 (writes/audit/cache helpers) · [ ] 09-02 (write plugin + service scaffolding)
-- Wave 2: [ ] 09-03 (POST /evaluations + auto-block NO_SHOW + log; `autonomous:false` checkpoint paridade c/ RANK key)
-- Wave 3: [ ] 09-04 (route-scores CRUD POST/PATCH/DELETE + log)
-- Wave 4: [ ] 09-05 (hooks useRanking* mutations + role gate)
-- Wave 5 (∥): [ ] 09-06 (EvaluationFormDialog + BloqueiosTab wiring) · [ ] 09-07 (RotasTab CRUD + LogsTab consome /logs)
+**Plans:** 7 plans em 5 waves — ✅ COMPLETE (executado 2026-05-30; checkpoint paridade VERIFICADO 11/11 live; tsc backend/frontend + vite build + 25 tests verde)
+- Wave 1 (∥): [x] 09-01 (writes/audit/cache helpers) · [x] 09-02 (GET /logs + getRankingLogs)
+- Wave 2: [x] 09-03 (POST /evaluations + auto-block NO_SHOW + POST/PATCH /blocks; requireRole admin|supervisor; checkpoint paridade ✅)
+- Wave 3: [x] 09-04 (route-scores CRUD POST/PATCH/DELETE + log)
+- Wave 4: [x] 09-05 (hooks useRanking* mutations + useCanWriteRanking role gate)
+- Wave 5 (∥): [x] 09-06 (EvaluationFormDialog + BloqueiosTab + ViagensTab wiring) · [x] 09-07 (RotasTab CRUD + LogsTab live /logs)
