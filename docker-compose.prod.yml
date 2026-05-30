@@ -73,6 +73,11 @@ services:
       SENTRY_DSN: ${SENTRY_DSN_BACKEND}
       # Telemetry ingest API key (GPS providers)
       TELEMETRY_API_KEY: ${TELEMETRY_API_KEY}
+      # Ranking (Phase 7) — Supabase "Lamonica Ranking" + Sheets CSV público
+      RANK_SUPABASE_URL: ${RANK_SUPABASE_URL}
+      RANK_SUPABASE_SERVICE_KEY: ${RANK_SUPABASE_SERVICE_KEY}
+      RANK_SHEET_ID: ${RANK_SHEET_ID:-1MWTiaXU3HXW_iVn-n70WSk3o8rcHTRrQP2ac07W9cCU}
+      RANK_SHEET_TAB: ${RANK_SHEET_TAB:-DBLHHISTORICO}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       TZ: America/Sao_Paulo
     depends_on:

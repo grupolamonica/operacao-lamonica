@@ -1,18 +1,18 @@
 import { createClient } from '@supabase/supabase-js'
 
 /**
- * Client Supabase server-side para o projeto EXTERNO do ride-rank
- * (vrlhfgfyjvkzfnafibnc).
+ * Client Supabase server-side para o projeto de ranking "Lamonica Ranking"
+ * (qbwazymqhfunlhnikbla, sa-east-1).
  *
- * D-V2-01 (PROXY): toda leitura do ride-rank passa por aqui (server-side).
- * Usa o `service_role` (RANK_SUPABASE_SERVICE_KEY) que BYPASSA o RLS — por isso
- * lê todas as 5 tabelas (evaluations, driver_blocks, evaluation_logs,
- * route_scores, drivers) onde o anon só enxerga `drivers`.
+ * D-V2-01 (PROXY): toda leitura do ranking passa por aqui (server-side); o front
+ * consome /api/ranking/* via cookie do Torre.
+ * Key via RANK_SUPABASE_SERVICE_KEY: o RLS do projeto LIBERA leitura para o anon
+ * nas 5 tabelas (evaluations, driver_blocks, evaluation_logs, route_scores,
+ * drivers), então a ANON/publishable key basta para a Phase 7 (read-only).
  *
- * SEGURANÇA (T-07-01): o service_role é o segredo mais sensível desta fase.
- * - Lido SÓ de process.env. NUNCA logado (sem console.log do valor).
- * - Nunca prefixado com VITE_ → não chega ao bundle do front.
- * - Sem sessão de browser: persistSession:false / autoRefreshToken:false.
+ * SEGURANÇA (T-07-01): a key é lida SÓ de process.env, NUNCA logada (sem
+ * console.log do valor), nunca prefixada com VITE_ (não chega ao bundle do
+ * front). Sem sessão de browser: persistSession:false / autoRefreshToken:false.
  *
  * NÃO é o client do Torre (api/src/db/client.ts usa Drizzle/postgres.js para o
  * torre-controle-prod). São DBs diferentes — este aponta para o ride-rank.
