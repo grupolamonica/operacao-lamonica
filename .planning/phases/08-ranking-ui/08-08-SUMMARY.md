@@ -69,7 +69,7 @@ completed: 2026-05-30
 
 1. **Task 1: LogsTab — shell de auditoria (colunas + diff) com estado vazio + aviso Phase 9** - `f9f74a9` (feat)
 
-**Plan metadata:** `<pending>` (docs: complete plan)
+**Plan metadata:** `4dc567e` (docs: complete plan)
 
 ## Files Created/Modified
 - `torre-de-controle/src/app/pages/ranking/components/LogsTab.tsx` - Shell de auditoria: DataTable (6 colunas), ActionBadge tom Argon, renderDiff antes/depois, estado vazio + aviso Phase 9. Read-only por natureza.
@@ -101,6 +101,13 @@ None.
 ## Next Phase Readiness
 - 6a aba (Logs) entregue — escopo D-V2-03 "todas as 6 abas" coberto para esta wave.
 - **Phase 9:** plugar o hook de logs (`GET /api/ranking/logs` + `useRankingLogs`) e trocar `const logs = []` pelo retorno do hook; tabela e renderDiff ja prontos. RBAC de leitura atras do authGuard.
+
+## Self-Check: PASSED
+
+- FOUND: torre-de-controle/src/app/pages/ranking/components/LogsTab.tsx (modificado, build exit 0)
+- FOUND: .planning/phases/08-ranking-ui/08-08-SUMMARY.md
+- FOUND commit f9f74a9 (Task 1, feat — LogsTab) — committed via gsd-sdk
+- FOUND commit 4dc567e (metadata docs — SUMMARY + STATE + ROADMAP) — committed via gsd-sdk
 
 ---
 *Phase: 08-ranking-ui*
