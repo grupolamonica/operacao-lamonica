@@ -5,7 +5,7 @@ import { DataTable } from '@/components/domain/DataTable'
 import { StatusBadge, type SlaStatus } from '@/components/domain/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { useRankingTrips, type Trip } from '@/hooks/useRanking'
+import { useRankingTrips, useCanWriteRanking, type Trip } from '@/hooks/useRanking'
 import { fixMojibake } from '@/lib/mojibake'
 import { EvaluationFormDialog } from './EvaluationFormDialog'
 
@@ -67,6 +67,7 @@ function ScoreCell({ value }: { value: number }) {
 export function ViagensTab() {
   const { data: trips, isLoading } = useRankingTrips()
   const [evaluatingTripId, setEvaluatingTripId] = useState<string | null>(null)
+  const canWrite = useCanWriteRanking()
 
   const columns = useMemo<ColumnDef<Trip, unknown>[]>(() => [
     {
@@ -138,24 +139,29 @@ export function ViagensTab() {
     {
       id: 'acao',
       header: 'Ação',
-      cell: ({ row }) => (
-        <Button
-          size="sm"
-          variant={row.original.evaluated ? 'ghost' : 'outline'}
-          className="h-7 gap-1 text-xs"
-          onClick={() => setEvaluatingTripId(row.original.id)}
-        >
-          {row.original.evaluated ? (
-            <>
-              <Pencil className="h-3 w-3" /> Editar
-            </>
-          ) : (
-            'Avaliar'
-          )}
-        </Button>
-      ),
+      cell: ({ row }) => {
+        if (!canWrite) {
+          return <span className="text-xs text-muted-foreground">—</span>
+        }
+        return (
+          <Button
+            size="sm"
+            variant={row.original.evaluated ? 'ghost' : 'outline'}
+            className="h-7 gap-1 text-xs"
+            onClick={() => setEvaluatingTripId(row.original.id)}
+          >
+            {row.original.evaluated ? (
+              <>
+                <Pencil className="h-3 w-3" /> Editar
+              </>
+            ) : (
+              'Avaliar'
+            )}
+          </Button>
+        )
+      },
     },
-  ], [])
+  ], [canWrite])
 
   return (
     <>
