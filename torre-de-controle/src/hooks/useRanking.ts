@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { formatDate } from '@/lib/formatters'
 
 /**
  * Ranking composite hooks — 5 read-only sub-hooks feeding the Phase 8 /ranking
@@ -70,7 +71,15 @@ export function useRankingTrips(filters?: { from?: string; to?: string }) {
     queryFn: async (): Promise<Trip[]> => {
       const { data, error } = await api.api.ranking.trips.get({ query: (filters ?? {}) as any })
       if (error) throw new Error((error.value as any)?.error ?? 'Failed to fetch ranking trips')
-      return (data ?? []) as Trip[]
+      // Eden Treaty revives ISO-8601 `data` values into Date objects (rows whose
+      // date is BR-format "dd/MM/yyyy HH:mm:ss" stay strings). Normalize to a
+      // display string so no consumer renders a raw Date — which throws "Objects
+      // are not valid as a React child" and crashes the whole RankingPage via the
+      // router ErrorBoundary (hit by ViagensTab pagination + DriverDetailsDialog).
+      return ((data ?? []) as Trip[]).map((t) => {
+        const d = t.data as unknown
+        return d instanceof Date ? { ...t, data: formatDate(d, 'dd/MM/yyyy HH:mm:ss') } : t
+      })
     },
     staleTime: 30_000,
   })
