@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 07-04-PLAN.md autonomous tasks (Wave 3 — ranking service + 5 endpoints + Eden types); Task 4 real-data parity checkpoint PENDING RANK_SUPABASE_SERVICE_KEY
-last_updated: "2026-05-30T11:09:52.131Z"
+stopped_at: "Phase 07 autonomous done — ranking backend (4 plans, 25 tests pass, tsc 0, 5 endpoints). Pending: 07-04 Task 4 real-data parity (needs RANK_SUPABASE_SERVICE_KEY)"
+last_updated: "2026-05-30T11:16:17.272Z"
 progress:
   total_phases: 11
   completed_phases: 2
@@ -18,7 +18,7 @@ progress:
 - **Phase:** 07-ranking-backend — IN PROGRESS (Wave 1: 07-01 + 07-02 complete · Wave 2: 07-03 complete · Wave 3: 07-04 autonomous tasks complete — checkpoint pendente)
 - **Completed Plan:** 07-04 autonomous tasks (Wave 3 — ranking.service.ts composeRanking [paridade COMPLETA do DataContext: transform FECHADA → driverName enrich → dateRange → ajuste_manual clamp 0..100 → activelyBlockedIds → deriveDrivers → status → rank-sobre-ativos → activeDrivers] + 5 service orchestrators + ranking.plugin.ts 5 GET /api/ranking/* atrás do authGuard + index.ts wiring antes do wsPlugin + tag swagger + export type App p/ Eden Treaty; ranking.supabase.ts → lazy-init [Rule 3]; bun test 25 pass + tsc exit 0 + smoke 401 nos 5 endpoints)
 - **Next Plans:** 07-04 Task 4 (checkpoint:human-verify — paridade dados reais, PENDENTE RANK_SUPABASE_SERVICE_KEY) → depois Phase 08 (ranking UI via Eden Treaty)
-- **Stopped at:** Completed 07-04-PLAN.md autonomous tasks (Wave 3 — ranking service + 5 endpoints + Eden types); Task 4 real-data parity checkpoint PENDING RANK_SUPABASE_SERVICE_KEY
+- **Stopped at:** Phase 07 autonomous done — ranking backend (4 plans, 25 tests pass, tsc 0, 5 endpoints). Pending: 07-04 Task 4 real-data parity (needs RANK_SUPABASE_SERVICE_KEY)
 - **Known issues:**
   - Elysia 1.4.28: POST routes with body schemas fail when loaded as plugins. Workaround: inline routes in index.ts.
   - Stale processes on port 3000 can mask route changes. Always kill all bun processes before testing.
@@ -139,4 +139,4 @@ progress:
 
 - **Timestamp:** 2026-05-29T20:13:00Z
 - **Stopped at:** Phase 07 Plan 03 (Wave 2 — ranking I/O layer: ranking.reads.ts 5 reads via rankSupabase + ranking.sheets.ts getSheetTrips CSV gviz + Redis EX 60) complete — commit fb9254c
-- **Resume file:** None
+- **Resume file:** --resume-file
