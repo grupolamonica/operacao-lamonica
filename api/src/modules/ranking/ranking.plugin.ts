@@ -1,18 +1,23 @@
 /**
- * Ranking HTTP plugin — 5 read-only GET endpoints behind the Torre `authGuard`.
+ * Ranking HTTP plugin — 6 read-only GET endpoints behind the Torre `authGuard`.
  *
  * D-V2-01 (PROXY): this plugin is the single authorization boundary for the
  * ride-rank data. `.use(authGuard)` requires a valid Torre auth-cookie (JWT +
  * Redis blacklist check) — an unauthenticated request gets 401 (T-07-09), so no
  * query ever reaches the ride-rank Supabase without a session.
  *
- * The 5 endpoints mirror the fixed response contract consumed by the Phase 8
+ * The 6 endpoints mirror the fixed response contract consumed by the Phase 8
  * front-end via Eden Treaty:
  *   GET /api/ranking/drivers       → RankedDriver[] (full array, status + rank)
  *   GET /api/ranking/trips         → Trip[] (FECHADA only, optional from/to)
  *   GET /api/ranking/blocks        → DriverBlockRecord[] (active)
  *   GET /api/ranking/route-scores  → RouteScoreRecord[]
  *   GET /api/ranking/stats         → { activeDrivers, top3Avg, totalTrips, activeBlocks }
+ *   GET /api/ranking/logs          → EvaluationLogRecord[] (evaluation_logs, desc, limit 200)
+ *                                    read-only auditoria added in Phase 9; lives on this READ
+ *                                    plugin (not the write plugin) because it is a pure read
+ *                                    under authGuard only — D-09-01: any authenticated role
+ *                                    audits; no requireRole gate needed. (T-09-09)
  *
  * Errors thrown by the service (e.g. the lazy fail-fast when RANK_* envs are
  * missing, or a Supabase/Sheets fetch failure) propagate to the global
@@ -28,6 +33,7 @@ import { authGuard } from '../../lib/rbac'
 import {
   getRankingBlocks,
   getRankingDrivers,
+  getRankingLogs,
   getRankingRouteScores,
   getRankingStats,
   getRankingTrips,
@@ -63,6 +69,12 @@ export const rankingPlugin = new Elysia({ name: 'ranking' })
         detail: {
           tags: ['ranking'],
           summary: 'Metricas: activeDrivers, top3Avg, totalTrips, activeBlocks',
+        },
+      })
+      .get('/logs', () => getRankingLogs(), {
+        detail: {
+          tags: ['ranking'],
+          summary: 'Log de auditoria (evaluation_logs), ordenado desc',
         },
       })
   )

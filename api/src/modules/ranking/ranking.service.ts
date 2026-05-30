@@ -36,6 +36,7 @@ import {
 import {
   fetchDriverBlocks,
   fetchDrivers,
+  fetchEvaluationLogs,
   fetchEvaluations,
   fetchRouteScores,
 } from './ranking.reads';
@@ -44,6 +45,7 @@ import type {
   Driver,
   DriverBlockRecord,
   DriverRecord,
+  EvaluationLogRecord,
   EvaluationRecord,
   RouteScoreRecord,
   SheetTrip,
@@ -273,4 +275,9 @@ export async function getRankingRouteScores(): Promise<RouteScoreRecord[]> {
 export async function getRankingStats(): Promise<RankingStats> {
   const inputs = await loadRankingInputs();
   return composeRanking(inputs).stats;
+}
+
+/** GET /api/ranking/logs — evaluation_logs ordered desc, limit 200 (D-09-07). Any authenticated role reads. */
+export async function getRankingLogs(): Promise<EvaluationLogRecord[]> {
+  return fetchEvaluationLogs();
 }
