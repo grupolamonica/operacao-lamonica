@@ -36,7 +36,11 @@ import {
   upsertEvaluation,
   insertDriverBlock,
   unblockDriverBlocks,
+  createRouteScore,
+  updateRouteScore,
+  deleteRouteScore,
 } from './ranking.writes';
+import type { RouteScoreRecord } from './ranking.types';
 import { createEvaluationLog } from './ranking.audit';
 import { bustRankingCache } from './ranking.cache';
 
@@ -270,5 +274,79 @@ export async function unblockDriver(
   });
 
   // Step 5: bust cache
+  await bustRankingCache();
+}
+
+// ---------------------------------------------------------------------------
+// Route-score mutations — ROTA_CRIACAO / ROTA_EDICAO / ROTA_REMOCAO
+//
+// Route base-points drive the derived score (getRouteBasePoints → transformTrips).
+// Editing them must be audited with the analogous taxonomy (D-09-05) and must
+// bust the cache so the next read recomputes scores with the updated base points
+// (D-09-04).  operador is server-resolved (T-09-12).  No driver/trip ids on these
+// logs — the route identity lives in dados_*.
+//
+// Audit note for ROTA_EDICAO: dados_antes carries { id } (the route being edited)
+// rather than a full pre-image snapshot — the full row is not re-fetched to keep
+// it one query.  This is a minor deliberate divergence from the full-snapshot
+// pattern used in EDIÇÃO (evaluations), documented here.
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a route score row + ROTA_CRIACAO audit log + cache bust.
+ */
+export async function createRouteScoreLogged(
+  input: Omit<RouteScoreRecord, 'id' | 'created_at' | 'updated_at'>,
+  userId: string,
+): Promise<RouteScoreRecord> {
+  const operador = await resolveOperador(userId);
+  const row = await createRouteScore(input);
+  await createEvaluationLog({
+    operador,
+    acao: 'ROTA_CRIACAO',
+    dados_antes: null,
+    dados_depois: { ...input } as Record<string, unknown>,
+  });
+  await bustRankingCache();
+  return row;
+}
+
+/**
+ * Update a route score row + ROTA_EDICAO audit log + cache bust.
+ *
+ * dados_antes carries { id } — full pre-image not re-fetched (one-query design).
+ */
+export async function updateRouteScoreLogged(
+  id: string,
+  patch: Partial<RouteScoreRecord>,
+  userId: string,
+): Promise<RouteScoreRecord | null> {
+  const operador = await resolveOperador(userId);
+  const row = await updateRouteScore(id, patch);
+  await createEvaluationLog({
+    operador,
+    acao: 'ROTA_EDICAO',
+    dados_antes: { id } as Record<string, unknown>,
+    dados_depois: { id, ...patch } as Record<string, unknown>,
+  });
+  await bustRankingCache();
+  return row;
+}
+
+/**
+ * Delete a route score row + ROTA_REMOCAO audit log + cache bust.
+ */
+export async function deleteRouteScoreLogged(
+  id: string,
+  userId: string,
+): Promise<void> {
+  const operador = await resolveOperador(userId);
+  await deleteRouteScore(id);
+  await createEvaluationLog({
+    operador,
+    acao: 'ROTA_REMOCAO',
+    dados_antes: { id } as Record<string, unknown>,
+    dados_depois: null,
+  });
   await bustRankingCache();
 }
