@@ -3,27 +3,29 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 07-03-PLAN.md (Wave 2 — ranking reads + sheets CSV + redis cache)
-last_updated: "2026-05-29T20:13:00.000Z"
+stopped_at: Completed 07-04-PLAN.md autonomous tasks (Wave 3 — ranking service + 5 endpoints + Eden types); Task 4 real-data parity checkpoint PENDING RANK_SUPABASE_SERVICE_KEY
+last_updated: "2026-05-30T11:09:52.131Z"
 progress:
   total_phases: 11
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 18
-  completed_plans: 22
+  completed_plans: 23
   percent: 100
 ---
 
 ## Current Position
 
-- **Phase:** 07-ranking-backend — IN PROGRESS (Wave 1: 07-01 + 07-02 complete · Wave 2: 07-03 complete)
-- **Completed Plan:** 07-03 (Wave 2 — I/O layer: ranking.reads.ts com 5 reads via rankSupabase service_role [evaluations/driver_blocks/evaluation_logs/route_scores/drivers paginado] + ranking.sheets.ts getSheetTrips fetch CSV gviz público + parse SheetTrip[] + cache Redis ranking:sheets:trips EX 60; erro PROPAGA [diverge do source que engolia]; tsc exit 0)
-- **Next Plans:** 07-04 (service de composição + endpoints GET /api/ranking/* atrás do authGuard + checkpoint do service_role real contra ride-rank)
-- **Stopped at:** Completed 07-03-PLAN.md (Wave 2 — ranking reads + sheets CSV + redis cache)
+- **Phase:** 07-ranking-backend — IN PROGRESS (Wave 1: 07-01 + 07-02 complete · Wave 2: 07-03 complete · Wave 3: 07-04 autonomous tasks complete — checkpoint pendente)
+- **Completed Plan:** 07-04 autonomous tasks (Wave 3 — ranking.service.ts composeRanking [paridade COMPLETA do DataContext: transform FECHADA → driverName enrich → dateRange → ajuste_manual clamp 0..100 → activelyBlockedIds → deriveDrivers → status → rank-sobre-ativos → activeDrivers] + 5 service orchestrators + ranking.plugin.ts 5 GET /api/ranking/* atrás do authGuard + index.ts wiring antes do wsPlugin + tag swagger + export type App p/ Eden Treaty; ranking.supabase.ts → lazy-init [Rule 3]; bun test 25 pass + tsc exit 0 + smoke 401 nos 5 endpoints)
+- **Next Plans:** 07-04 Task 4 (checkpoint:human-verify — paridade dados reais, PENDENTE RANK_SUPABASE_SERVICE_KEY) → depois Phase 08 (ranking UI via Eden Treaty)
+- **Stopped at:** Completed 07-04-PLAN.md autonomous tasks (Wave 3 — ranking service + 5 endpoints + Eden types); Task 4 real-data parity checkpoint PENDING RANK_SUPABASE_SERVICE_KEY
 - **Known issues:**
   - Elysia 1.4.28: POST routes with body schemas fail when loaded as plugins. Workaround: inline routes in index.ts.
   - Stale processes on port 3000 can mask route changes. Always kill all bun processes before testing.
   - BullMQ connection silently fails in Bun 1.3.13 — alert engine uses inline await.
   - Bun IS installed locally (1.3.13 on PATH) — prior phase notes saying "Bun NOT installed" are stale; Docker fallback unnecessary.
+  - **PENDENTE Phase 07:** Task 4 do 07-04 (checkpoint:human-verify — paridade do ranking com DADOS REAIS) aguarda `RANK_SUPABASE_SERVICE_KEY` (service_role ride-rank, user-setup). Build/types/tests/401 NÃO dependem; marcar a FASE como verificada exige comparar pontuacao/rank de uma amostra contra o app ride-rank original com a key no `.env`.
+  - Testes puros do ranking exigem envs infra dummy no comando (`REDIS_URL`/`RANK_*`) porque ranking.sheets→redis/client e ranking.reads→ranking.supabase fail-fast no load; `composeRanking` é puro e não usa redis (o `[redis] error ECONNREFUSED` no test log é só o handler de erro de background).
 
 ## Decisions
 
@@ -98,6 +100,10 @@ progress:
 - 07-03: cache in-memory do source (cachedTrips/fetchPromise) trocado por Redis do Torre (ranking:sheets:trips EX 60) — D-V2 short cache T-07-07
 - 07-03: getSheetTrips PROPAGA erro de fetch (diverge do source que retornava [] silencioso) — endpoint do 07-04 trata; só response.status no throw, nunca o CSV/PII (T-07-06)
 - 07-03: .from('<tabela>') colado na linha do rankSupabase + literal 'EX', 60 inline no redis.set — exigência dos greps line-based do plano (key_links + acceptance)
+- 07-04: composeRanking replica a cadeia COMPLETA do ride-rank DataContext (transform FECHADA -> driverName enrich -> dateRange -> ajuste_manual clamp 0..100 -> activelyBlockedIds [ativo && !manual_override] -> deriveDrivers -> status -> rank-sobre-ativos -> activeDrivers)
+- 07-04: contrato /drivers FIXADO = array completo (ATIVO+BLOQUEADO) pontuacao desc, rank 1..N so sobre ativos, bloqueado rank=null (RankedDriver); /trips so FECHADA + from/to, NO SHOW nao concatenado; UI filtra por status (Eden Treaty Phase 8)
+- 07-04: ranking.supabase.ts convertido para lazy-init (getRankSupabase + Proxy) — fail-fast movido de module-load para 1a query; desbloqueia teste puro composeRanking e boot smoke-401 sem RANK_SUPABASE_SERVICE_KEY (Rule 3); superficie publica rankSupabase.from(...) intacta
+- 07-04: rankingPlugin registrado ANTES de wsPlugin (regra Elysia 1.4 wsPlugin-last, T-07-12); export type App intacto; tag swagger ranking; smoke 401 nos 5 endpoints sem cookie confirmado
 
 ## Performance Metrics
 
@@ -121,6 +127,7 @@ progress:
 | Phase 07 P01 | ~12min | 3 tasks | 4 files |
 | Phase 07 P02 | ~12min | 1 tasks | 4 files |
 | Phase 07 P03 | ~12min | 2 tasks | 2 files |
+| Phase Phase 07 PP04 | ~30min | 3 tasks | 5 files |
 
 ## Quick Tasks Completed
 
