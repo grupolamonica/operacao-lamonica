@@ -25,6 +25,9 @@ const AlertasPage = lazy(() =>
 const InsightsPage = lazy(() =>
   import('./pages/insights/InsightsPage').then(m => ({ default: m.InsightsPage })),
 )
+const RankingPage = lazy(() =>
+  import('./pages/ranking/RankingPage').then(m => ({ default: m.RankingPage })),
+)
 const ConfiguracoesPage = lazy(() =>
   import('./pages/configuracoes/ConfiguracoesPage').then(m => ({ default: m.ConfiguracoesPage })),
 )
@@ -58,6 +61,7 @@ export const router = createBrowserRouter([
           { path: 'geofences',         element: <L><GeofencesPage /></L> },
           { path: 'alertas',           element: <L><AlertasPage /></L> },
           { path: 'insights',          element: <L><InsightsPage /></L> },
+          { path: 'ranking',           element: <L><RankingPage /></L> },
           { path: 'configuracoes',     element: <L><ConfiguracoesPage /></L> },
         ],
       },
