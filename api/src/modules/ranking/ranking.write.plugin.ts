@@ -12,9 +12,12 @@
  * is byte-for-byte identical to `requireRole('admin','supervisor')`. (T-09-03)
  *
  * Routes:
- *   POST   /api/ranking/evaluations  — upsert evaluation + audit + optional NO_SHOW auto-block
- *   POST   /api/ranking/blocks       — manual driver block + BLOQUEIO_MANUAL audit
- *   PATCH  /api/ranking/blocks/:id   — unblock (ativo=false on active rows + override record) + DESBLOQUEIO audit
+ *   POST   /api/ranking/evaluations      — upsert evaluation + audit + optional NO_SHOW auto-block
+ *   POST   /api/ranking/blocks           — manual driver block + BLOQUEIO_MANUAL audit
+ *   PATCH  /api/ranking/blocks/:id       — unblock (ativo=false on active rows + override record) + DESBLOQUEIO audit
+ *   POST   /api/ranking/route-scores     — create route score + ROTA_CRIACAO audit + cache bust
+ *   PATCH  /api/ranking/route-scores/:id — update route score + ROTA_EDICAO audit + cache bust
+ *   DELETE /api/ranking/route-scores/:id — delete route score + ROTA_REMOCAO audit + cache bust
  *
  * SECURITY (T-09-03):
  *   - authGuard requires valid Torre cookie; no cookie → 401. Role check → 403 for non-admin/supervisor.
@@ -28,7 +31,14 @@
 
 import { Elysia, t } from 'elysia';
 import { authGuard } from '../../lib/rbac';
-import { evaluateTrip, blockDriverManual, unblockDriver } from './ranking.write.service';
+import {
+  evaluateTrip,
+  blockDriverManual,
+  unblockDriver,
+  createRouteScoreLogged,
+  updateRouteScoreLogged,
+  deleteRouteScoreLogged,
+} from './ranking.write.service';
 
 // ---------------------------------------------------------------------------
 // Typebox enum schemas (D-09-06, T5)
@@ -143,6 +153,89 @@ export const rankingWritePlugin = new Elysia({ name: 'ranking-write' })
       detail: {
         tags: ['ranking'],
         summary: 'Desbloquear motorista (fecha active blocks + override record) + DESBLOQUEIO audit (admin|supervisor)',
+      },
+    },
+  )
+
+  // ----- POST /api/ranking/route-scores -----------------------------------------
+  .post(
+    '/api/ranking/route-scores',
+    async ({ body, user, set }) => {
+      try {
+        const row = await createRouteScoreLogged(body, user.id);
+        return { ok: true, id: row.id };
+      } catch (e: any) {
+        set.status = 500;
+        throw e;
+      }
+    },
+    {
+      body: t.Object({
+        origin_code:      t.String({ minLength: 1 }),
+        destination_code: t.String({ minLength: 1 }),
+        pontuacao:        t.Integer(),
+        data_inicio:      t.String({ minLength: 1 }),
+        data_fim:         t.Union([t.String(), t.Null()]),
+        observacao:       t.Union([t.String({ maxLength: 500 }), t.Null()]),
+      }),
+      detail: {
+        tags: ['ranking'],
+        summary: 'Criar pontuação de rota + ROTA_CRIACAO audit + cache bust (admin|supervisor)',
+      },
+    },
+  )
+
+  // ----- PATCH /api/ranking/route-scores/:id ------------------------------------
+  .patch(
+    '/api/ranking/route-scores/:id',
+    async ({ params, body, user, set }) => {
+      try {
+        const row = await updateRouteScoreLogged(params.id, body, user.id);
+        if (!row) {
+          set.status = 404;
+          return { error: 'Route score not found' };
+        }
+        return { ok: true };
+      } catch (e: any) {
+        set.status = 500;
+        throw e;
+      }
+    },
+    {
+      params: t.Object({ id: t.String() }),
+      body: t.Object({
+        origin_code:      t.Optional(t.String()),
+        destination_code: t.Optional(t.String()),
+        pontuacao:        t.Optional(t.Integer()),
+        data_inicio:      t.Optional(t.String()),
+        data_fim:         t.Optional(t.Union([t.String(), t.Null()])),
+        observacao:       t.Optional(t.Union([t.String({ maxLength: 500 }), t.Null()])),
+      }),
+      detail: {
+        tags: ['ranking'],
+        summary: 'Atualizar pontuação de rota + ROTA_EDICAO audit + cache bust (admin|supervisor)',
+      },
+    },
+  )
+
+  // ----- DELETE /api/ranking/route-scores/:id -----------------------------------
+  .delete(
+    '/api/ranking/route-scores/:id',
+    async ({ params, user, set }) => {
+      try {
+        await deleteRouteScoreLogged(params.id, user.id);
+        set.status = 204;
+        return '';
+      } catch (e: any) {
+        set.status = 500;
+        throw e;
+      }
+    },
+    {
+      params: t.Object({ id: t.String() }),
+      detail: {
+        tags: ['ranking'],
+        summary: 'Remover pontuação de rota + ROTA_REMOCAO audit + cache bust (admin|supervisor)',
       },
     },
   );
