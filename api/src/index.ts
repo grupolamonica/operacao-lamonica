@@ -29,6 +29,8 @@ import { pushPlugin } from './modules/push/push.plugin'
 import { usersPlugin } from './modules/users/users.plugin'
 import { thresholdsPlugin } from './modules/thresholds/thresholds.plugin'
 import { gpsProvidersPlugin } from './modules/gps-providers/gps-providers.plugin'
+// Phase 7 — ranking (read-only proxy to ride-rank Supabase + Sheets)
+import { rankingPlugin } from './modules/ranking/ranking.plugin'
 import { processAlertDetection } from './jobs/alert-inline'
 import { sql, desc } from 'drizzle-orm'
 import { geofences, geofenceEvents } from './db/schema/geofences'
@@ -113,6 +115,8 @@ export const app = new Elysia()
         { name: 'users',        description: 'CRUD de usuários (admin) + prefs próprias' },
         { name: 'thresholds',   description: 'Thresholds de alerta (in-memory cache 60s)' },
         { name: 'gps-providers', description: 'Configuração de providers GPS (stubs)' },
+        // Phase 7 tag
+        { name: 'ranking',      description: 'Ranking de motoristas (proxy Supabase ride-rank + Sheets, Redis cache 60s)' },
       ],
     },
   }))
@@ -162,6 +166,9 @@ export const app = new Elysia()
   .use(usersPlugin)
   .use(thresholdsPlugin)
   .use(gpsProvidersPlugin)
+  // Phase 7 — ranking wired BEFORE wsPlugin (wsPlugin must remain the last
+  // plugin: Elysia 1.4 plugin POST-order rule, see Phase 6 note above).
+  .use(rankingPlugin)
   .use(wsPlugin)
   // Telemetry inlined to avoid Elysia 1.4.28 plugin-composition issue with body schema
   .post('/api/telemetry/ingest', async ({ body, headers, set }) => {
