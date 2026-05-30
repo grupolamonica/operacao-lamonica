@@ -10,6 +10,7 @@ import {
   type RouteScoreRecord,
 } from '@/hooks/useRanking'
 import { fixMojibake } from '@/lib/mojibake'
+import { formatDate } from '@/lib/formatters'
 
 /**
  * RotasTab — aba Rotas (PHASE8-TAB-ROTAS). Recria a RouteScores do ride-rank no
@@ -102,8 +103,8 @@ export function RotasTab() {
         header: 'Período',
         cell: ({ row }) => (
           <span className="font-mono text-xs text-muted-foreground">
-            {row.original.data_inicio}
-            {row.original.data_fim ? ` → ${row.original.data_fim}` : ' → atual'}
+            {row.original.data_inicio ? formatDate(row.original.data_inicio, 'dd/MM/yyyy') : '—'}
+            {row.original.data_fim ? ` → ${formatDate(row.original.data_fim, 'dd/MM/yyyy')}` : ' → atual'}
           </span>
         ),
       },

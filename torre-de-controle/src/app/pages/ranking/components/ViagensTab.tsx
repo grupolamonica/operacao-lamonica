@@ -59,7 +59,7 @@ function ScoreCell({ value }: { value: number }) {
     : 'var(--muted-foreground)'
   return (
     <span className="font-mono font-bold tabular-nums" style={{ color }}>
-      {value > 0 ? `+${value}` : value}
+      {value > 0 ? `+${value.toFixed(1)}` : value.toFixed(1)}
     </span>
   )
 }

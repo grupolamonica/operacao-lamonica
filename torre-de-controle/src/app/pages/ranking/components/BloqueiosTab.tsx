@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useRankingBlocks, type DriverBlockRecord } from '@/hooks/useRanking'
 import { fixMojibake } from '@/lib/mojibake'
+import { formatDate } from '@/lib/formatters'
 
 /**
  * BloqueiosTab — aba Bloqueios (PHASE8-TAB-BLOQUEIOS). Recria a BlocksList do
@@ -91,7 +92,7 @@ export function BloqueiosTab() {
         header: 'Início',
         cell: ({ row }) => (
           <span className="font-mono text-xs text-muted-foreground">
-            {row.original.data_inicio || '—'}
+            {row.original.data_inicio ? formatDate(row.original.data_inicio) : '—'}
           </span>
         ),
       },
