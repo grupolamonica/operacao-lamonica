@@ -179,6 +179,7 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
   const markersRef           = useRef<Map<string, maplibregl.Marker>>(new Map())
   const initRef              = useRef(false)  // React StrictMode guard
   const fleetHandlersRef     = useRef(false)  // fleet click/cursor handlers registered once
+  const fleetFittedRef       = useRef(false)  // fitBounds aplicado uma vez por ativação da camada
   const [mode, setMode]      = useState<'mapa' | 'satelite'>('mapa')
   const [mapReady, setMapReady] = useState(false)
   const [showFleet, setShowFleet] = useState(false)  // default OFF (D-11-06)
@@ -247,20 +248,41 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
   // Fleet layer effect — show/hide based on toggle + data
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !mapReady || !map.isStyleLoaded()) return
+    if (!map || !mapReady) return
 
     if (showFleet && fleet.length > 0) {
-      registerTruckImage(map)
-      // Image loads async — attempt render after a tick
-      setTimeout(() => {
-        if (map.isStyleLoaded()) {
-          renderFleet(map, fleet)
-          registerFleetHandlers(map)
+      // isStyleLoaded() é INSTÁVEL com tiles vetoriais (openfreemap) — fica false
+      // mesmo com o mapa pronto, e era o motivo dos caminhões NUNCA aparecerem
+      // (o guard retornava cedo). Renderiza se o estilo está pronto, senão no
+      // próximo 'idle'. addSource/addLayer são seguros pós-'load' (mapReady).
+      const doRender = () => {
+        registerTruckImage(map)
+        renderFleet(map, fleet)
+        registerFleetHandlers(map)
+        // fitBounds nas posições UMA vez por ativação — senão o mapa fica no
+        // center default (SP) e os caminhões (NE/MG) ficam fora do viewport.
+        if (!fleetFittedRef.current) {
+          const pts = fleet.filter((f) => Number.isFinite(f.lng) && Number.isFinite(f.lat))
+          if (pts.length > 0) {
+            const lngs = pts.map((f) => f.lng)
+            const lats = pts.map((f) => f.lat)
+            map.fitBounds(
+              [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+              { padding: 60, maxZoom: 8, duration: 800 },
+            )
+            fleetFittedRef.current = true
+          }
         }
-      }, 50)
+      }
+      // addSource/addLayer são seguros pós-'load' (garantido por mapReady).
+      // Chamar direto — NÃO depender de isStyleLoaded()/'idle' (mapa estático
+      // nunca re-dispara 'idle'). Imagem do caminhão carrega async e o addImage
+      // dispara repaint, então os ícones aparecem assim que a imagem fica pronta.
+      doRender()
     } else if (!showFleet) {
       removeFleet(map)
       fleetHandlersRef.current = false
+      fleetFittedRef.current = false
     }
   }, [showFleet, fleet, mapReady])
 
