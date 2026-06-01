@@ -83,9 +83,12 @@ export async function getFleetPositions(): Promise<FleetPosition[]> {
   // 2. Join cross-source — chamado UMA vez, fora do loop (cache 60s interno)
   const rankedDrivers = await getRankingDrivers()
 
-  // 3. Index O(1) por nome normalizado
+  // 3. Index O(1) por nome normalizado.
+  // O `nome` do ranking traz o ID do motorista no fim: "ADAUTO SANTOS COSTA (2729070)".
+  // A planilha (driver_positions.motorista_norm) NÃO tem o ID → strip do sufixo " (\d+)"
+  // antes de normalizar, senão o match nunca bate (confirmado no checkpoint live).
   const byName = new Map(
-    rankedDrivers.map((d) => [normalizeMotorista(d.nome), d])
+    rankedDrivers.map((d) => [normalizeMotorista(d.nome.replace(/\s*\(\d+\)\s*$/, '')), d])
   )
 
   // 4. Projeção + enriquecimento
