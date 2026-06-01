@@ -34,6 +34,8 @@ import { gpsProvidersPlugin } from './modules/gps-providers/gps-providers.plugin
 import { rankingPlugin } from './modules/ranking/ranking.plugin'
 // Phase 9 — ranking write endpoints (evaluations, blocks, unblock) behind requireRole
 import { rankingWritePlugin } from './modules/ranking/ranking.write.plugin'
+// Phase 11 — positions read (GET /api/positions, authGuard, enriquecido c/ ranking)
+import { positionsReadPlugin } from './modules/positions/positions.plugin'
 import { processAlertDetection } from './jobs/alert-inline'
 import { sql, desc } from 'drizzle-orm'
 import { geofences, geofenceEvents } from './db/schema/geofences'
@@ -124,6 +126,8 @@ export const app = new Elysia()
         { name: 'gps-providers', description: 'Configuração de providers GPS (stubs)' },
         // Phase 7 tag
         { name: 'ranking',      description: 'Ranking de motoristas (proxy Supabase ride-rank + Sheets, Redis cache 60s)' },
+        // Phase 11 tag
+        { name: 'positions',    description: 'Posições de frota importada (read-only, enriquecido c/ ranking)' },
       ],
     },
   }))
@@ -179,6 +183,8 @@ export const app = new Elysia()
   // Phase 9 — ranking write plugin wired AFTER rankingPlugin and BEFORE wsPlugin.
   // requireRole('admin','supervisor') is applied at plugin level (T-09-03).
   .use(rankingWritePlugin)
+  // Phase 11 — positions read wired BEFORE wsPlugin (wsPlugin-last rule, Elysia 1.4).
+  .use(positionsReadPlugin)
   .use(wsPlugin)
   // Telemetry inlined to avoid Elysia 1.4.28 plugin-composition issue with body schema
   .post('/api/telemetry/ingest', async ({ body, headers, set }) => {
