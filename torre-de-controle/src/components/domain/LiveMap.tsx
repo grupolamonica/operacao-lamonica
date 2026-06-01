@@ -99,64 +99,25 @@ function renderFleet(map: maplibregl.Map, fleet: FleetPosition[]) {
   if (map.getLayer('fleet-clusters'))      map.removeLayer('fleet-clusters')
   if (map.getLayer('fleet-trucks'))        map.removeLayer('fleet-trucks')
 
+  // SEM clustering (D-11-05 revisado pelo usuário): mostrar TODOS os motoristas
+  // como caminhão em qualquer zoom, mesmo muito distantes/sobrepostos.
   map.addSource('fleet', {
-    type:          'geojson',
-    data:          geojson,
-    cluster:       true,
-    clusterRadius: 50,
-    clusterMaxZoom: 14,
+    type: 'geojson',
+    data: geojson,
   })
 
-  // Circle layer for clusters
-  map.addLayer({
-    id:     'fleet-clusters',
-    type:   'circle',
-    source: 'fleet',
-    filter: ['has', 'point_count'],
-    paint:  {
-      'circle-color': [
-        'step', ['get', 'point_count'],
-        '#51bbd6', 5,
-        '#f1a33f', 15,
-        '#f28cb1',
-      ],
-      'circle-radius': [
-        'step', ['get', 'point_count'],
-        16, 5,
-        22, 15,
-        28,
-      ],
-      'circle-stroke-width': 2,
-      'circle-stroke-color': '#fff',
-    },
-  })
-
-  // Count label on clusters
-  map.addLayer({
-    id:     'fleet-cluster-count',
-    type:   'symbol',
-    source: 'fleet',
-    filter: ['has', 'point_count'],
-    layout: {
-      'text-field':  ['get', 'point_count_abbreviated'],
-      'text-font':   ['Open Sans Bold', 'Arial Unicode MS Bold'],
-      'text-size':   12,
-    },
-    paint: {
-      'text-color': '#fff',
-    },
-  })
-
-  // Symbol layer for individual trucks (SDF recolor via icon-color)
+  // Símbolo de caminhão por motorista (SDF recolorido por status via icon-color).
+  // icon-allow-overlap:true → todos visíveis mesmo sobrepostos. icon-size
+  // interpola por zoom (menor quando afastado p/ não virar uma bolha única).
   map.addLayer({
     id:     'fleet-trucks',
     type:   'symbol',
     source: 'fleet',
-    filter: ['!', ['has', 'point_count']],
     layout: {
       'icon-image':          'truck-icon',
-      'icon-size':           0.9,
+      'icon-size':           ['interpolate', ['linear'], ['zoom'], 3, 0.55, 6, 0.75, 10, 0.95],
       'icon-allow-overlap':  true,
+      'icon-ignore-placement': true,
       'text-field':          '',
     },
     paint: {
