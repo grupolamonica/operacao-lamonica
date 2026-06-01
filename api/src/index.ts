@@ -8,6 +8,7 @@ import { Elysia } from 'elysia'
 import { cors } from '@elysiajs/cors'
 import { swagger } from '@elysiajs/swagger'
 import { eq, and } from 'drizzle-orm'
+import * as jose from 'jose'
 
 import { logger } from './lib/logger'
 import { db } from './db/client'
@@ -36,6 +37,10 @@ import { rankingWritePlugin } from './modules/ranking/ranking.write.plugin'
 import { processAlertDetection } from './jobs/alert-inline'
 import { sql, desc } from 'drizzle-orm'
 import { geofences, geofenceEvents } from './db/schema/geofences'
+// Phase 10 — positions import
+import { driverPositions } from './db/schema/driver-positions'
+import { parseViagensXlsx } from './modules/positions/viagens.parser'
+import { geocodeText } from './modules/positions/geocoder'
 
 const PORT = Number(process.env.PORT ?? 3000)
 const FRONTEND_URL = process.env.FRONTEND_URL ?? 'http://localhost:5173'
@@ -238,6 +243,139 @@ export const app = new Elysia()
   .delete('/api/geofences/:id', async ({ params, set }) => {
     await db.delete(geofences).where(eq(geofences.id, params.id))
     set.status = 204; return ''
+  })
+  // Phase 10 — POST /api/positions/import (multipart xlsx upload, admin only)
+  // Inlined to avoid Elysia 1.4.28 body/multipart bug with plugin composition.
+  // Gate: espelha authGuard + requireRole('admin') do rbac.ts via jose direto.
+  .post('/api/positions/import', async ({ body, cookie, set }) => {
+    // ── Gate admin (T1, D-10-03) ─────────────────────────────────────────────
+    const token = (cookie as any).access_token?.value as string | undefined
+    if (!token) {
+      set.status = 401
+      return { error: 'Unauthorized: no session cookie' }
+    }
+    let payload: jose.JWTPayload & { role?: string; jti?: string }
+    try {
+      const secret = new TextEncoder().encode(process.env.JWT_SECRET)
+      const { payload: p } = await jose.jwtVerify(token, secret)
+      payload = p
+    } catch {
+      set.status = 401
+      return { error: 'Unauthorized: invalid token' }
+    }
+    if (payload.jti) {
+      const blacklisted = await redis.get(`session:blacklist:${payload.jti}`)
+      if (blacklisted) {
+        set.status = 401
+        return { error: 'Unauthorized: token revoked' }
+      }
+    }
+    if (payload.role !== 'admin') {
+      set.status = 403
+      return { error: 'Forbidden: requires role admin' }
+    }
+
+    // ── Validação do upload (T2) ──────────────────────────────────────────────
+    const b = body as any
+    const file = b?.file as File | undefined
+    if (!file) {
+      set.status = 400
+      return { error: 'Missing file field in multipart body' }
+    }
+    const MAX_SIZE = 10 * 1024 * 1024  // 10 MB
+    if (file.size > MAX_SIZE) {
+      set.status = 413
+      return { error: `File too large (max ${MAX_SIZE / 1024 / 1024} MB)` }
+    }
+    const filename = (file as any).name ?? ''
+    const validMime = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'application/octet-stream',
+    ]
+    if (!filename.toLowerCase().endsWith('.xlsx') && !validMime.includes(file.type)) {
+      set.status = 400
+      return { error: 'Only .xlsx files are accepted' }
+    }
+
+    const buf = Buffer.from(await file.arrayBuffer())
+
+    // ── Parse (D-10-05) ───────────────────────────────────────────────────────
+    let rows: ReturnType<typeof parseViagensXlsx>
+    try {
+      rows = parseViagensXlsx(buf)
+    } catch {
+      set.status = 400
+      return { error: 'Failed to parse xlsx — file may be corrupt or not a valid xlsx' }
+    }
+
+    const MAX_ROWS = 5000  // cap defensivo T2
+    const total = rows.length
+    const toProcess = rows.slice(0, MAX_ROWS)
+
+    // ── Orquestração sequencial: geocode → upsert → geom (D-10-01/04, T3/T4) ─
+    let inserted = 0
+    let skipped = 0
+    let failed = 0
+    const sample: Array<{
+      motorista: string; dataPosicao: string;
+      cidade: string | null; uf: string | null; geocoded: boolean
+    }> = []
+
+    for (const row of toProcess) {
+      try {
+        const g = await geocodeText(row.posicaoRaw)
+
+        const [ins] = await db
+          .insert(driverPositions)
+          .values({
+            motorista:     row.motorista,
+            motoristaNorm: row.motoristaNorm,
+            dataPosicao:   row.dataPosicao,
+            posicaoRaw:    row.posicaoRaw,
+            veiculo:       row.veiculo,
+            cidade:        g.cidade,
+            uf:            g.uf,
+            lat:           g.lat !== null ? String(g.lat) : null,
+            lng:           g.lng !== null ? String(g.lng) : null,
+            geocoded:      g.geocoded,
+          })
+          .onConflictDoNothing({
+            target: [driverPositions.motoristaNorm, driverPositions.dataPosicao],
+          })
+          .returning({ id: driverPositions.id })
+
+        if (!ins) {
+          // ON CONFLICT DO NOTHING → row already exists (idempotência D-10-04)
+          skipped++
+        } else {
+          inserted++
+          // Atualiza geom via ST_MakePoint(lng, lat) — ordem X,Y (T4)
+          if (g.geocoded && g.lat !== null && g.lng !== null) {
+            await db.execute(
+              sql`UPDATE driver_positions
+                  SET geom = ST_SetSRID(ST_MakePoint(${g.lng}, ${g.lat}), 4326)
+                  WHERE id = ${ins.id}`,
+            )
+          }
+          if (sample.length < 5) {
+            sample.push({
+              motorista:   row.motorista,
+              dataPosicao: row.dataPosicao.toISOString(),
+              cidade:      g.cidade,
+              uf:          g.uf,
+              geocoded:    g.geocoded,
+            })
+          }
+        }
+      } catch {
+        // Best-effort: falha de linha não derruba o import (D-10-01)
+        failed++
+      }
+    }
+
+    // ── Resposta (D-10-07) ────────────────────────────────────────────────────
+    return { inserted, skipped, failed, total, sample }
   })
   .listen(PORT, () => {
     logger.info({ port: PORT, frontendUrl: FRONTEND_URL }, 'torre-api listening')
