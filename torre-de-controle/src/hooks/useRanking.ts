@@ -71,12 +71,30 @@ import type {
   Postura,
 } from '../../../api/src/modules/ranking/ranking.types'
 
+/** Filter overrides driven by the ranking filter bar. `ignoredOccurrences`
+ *  rescoring + `from`/`to` date range are applied server-side (composeRanking). */
+export interface RankingFilterOpts {
+  ignoredOccurrences?: string[]
+  from?: string
+  to?: string
+}
+
+/** Build the query object for the composed endpoints. `ignored` is JSON-encoded
+ *  (occurrence descriptions contain commas). */
+function buildRankingQuery(opts?: RankingFilterOpts): Record<string, string> {
+  const q: Record<string, string> = {}
+  if (opts?.ignoredOccurrences) q.ignored = JSON.stringify(opts.ignoredOccurrences)
+  if (opts?.from) q.from = opts.from
+  if (opts?.to) q.to = opts.to
+  return q
+}
+
 /** GET /api/ranking/drivers — full driver array (ATIVO + BLOQUEADO), pontuacao desc. */
-export function useRankingDrivers() {
+export function useRankingDrivers(opts?: RankingFilterOpts) {
   const q = useQuery({
-    queryKey: ['ranking', 'drivers'],
+    queryKey: ['ranking', 'drivers', opts ?? {}],
     queryFn: async (): Promise<RankedDriver[]> => {
-      const { data, error } = await api.api.ranking.drivers.get()
+      const { data, error } = await api.api.ranking.drivers.get({ query: buildRankingQuery(opts) as any })
       if (error) throw new Error((error.value as any)?.error ?? 'Failed to fetch ranking drivers')
       return (data ?? []) as RankedDriver[]
     },
@@ -92,11 +110,11 @@ export function useRankingDrivers() {
 }
 
 /** GET /api/ranking/trips — FECHADA trips only, optional from/to BR-date filter. */
-export function useRankingTrips(filters?: { from?: string; to?: string }) {
+export function useRankingTrips(opts?: RankingFilterOpts) {
   const q = useQuery({
-    queryKey: ['ranking', 'trips', filters],
+    queryKey: ['ranking', 'trips', opts ?? {}],
     queryFn: async (): Promise<Trip[]> => {
-      const { data, error } = await api.api.ranking.trips.get({ query: (filters ?? {}) as any })
+      const { data, error } = await api.api.ranking.trips.get({ query: buildRankingQuery(opts) as any })
       if (error) throw new Error((error.value as any)?.error ?? 'Failed to fetch ranking trips')
       // Eden Treaty revives ISO-8601 strings into Date objects PER VALUE — so any
       // trip field whose value happens to be ISO (data, eta_*_scheduled/realized)
@@ -169,11 +187,11 @@ export function useRankingRouteScores() {
 }
 
 /** GET /api/ranking/stats — { activeDrivers, top3Avg, totalTrips, activeBlocks }. */
-export function useRankingStats() {
+export function useRankingStats(opts?: RankingFilterOpts) {
   const q = useQuery({
-    queryKey: ['ranking', 'stats'],
+    queryKey: ['ranking', 'stats', opts ?? {}],
     queryFn: async (): Promise<RankingStats> => {
-      const { data, error } = await api.api.ranking.stats.get()
+      const { data, error } = await api.api.ranking.stats.get({ query: buildRankingQuery(opts) as any })
       if (error) throw new Error((error.value as any)?.error ?? 'Failed to fetch ranking stats')
       return (data ?? { activeDrivers: 0, top3Avg: 0, totalTrips: 0, activeBlocks: 0 }) as RankingStats
     },

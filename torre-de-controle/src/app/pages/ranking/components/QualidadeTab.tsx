@@ -9,7 +9,7 @@ import { PanelCard } from '@/components/domain/PanelCard'
 import { Skeleton } from '@/components/ui/skeleton'
 import { fixMojibake } from '@/lib/mojibake'
 import { useRankingTrips, useRankingDrivers } from '@/hooks/useRanking'
-import type { Trip, RankedDriver } from '@/hooks/useRanking'
+import type { Trip, RankedDriver, RankingFilterOpts } from '@/hooks/useRanking'
 
 ChartJS.register(BarElement, CategoryScale, LinearScale, Tooltip, Legend)
 
@@ -202,10 +202,10 @@ function DriverInsightPanel({
   )
 }
 
-export function QualidadeTab() {
+export function QualidadeTab({ opts }: { opts?: RankingFilterOpts }) {
   const { isDark } = useThemeStore()
-  const { data: trips, isLoading: tripsLoading }     = useRankingTrips()
-  const { data: drivers, isLoading: driversLoading } = useRankingDrivers()
+  const { data: trips, isLoading: tripsLoading }     = useRankingTrips(opts)
+  const { data: drivers, isLoading: driversLoading } = useRankingDrivers(opts)
 
   const tickColor = isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.7)'
   const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'

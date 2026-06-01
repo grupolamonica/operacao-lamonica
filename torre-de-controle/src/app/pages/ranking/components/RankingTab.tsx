@@ -2,13 +2,11 @@ import { useMemo, useState } from 'react'
 import { ArrowDown, ArrowUp, ChevronsUpDown, AlertCircle } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { DataTable } from '@/components/domain/DataTable'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { useRankingDrivers, useCanWriteRanking, type RankedDriver } from '@/hooks/useRanking'
+import { useRankingDrivers, type RankedDriver, type RankingFilterOpts } from '@/hooks/useRanking'
 import { fixMojibake } from '@/lib/mojibake'
 import { getDriverVinculoLabel } from '@/lib/driverInsights'
 import { cn } from '@/lib/utils'
 import { DriverDetailsDialog } from './DriverDetailsDialog'
-import { DriverImport } from './DriverImport'
 
 /**
  * RankingTab — aba Ranking (PHASE8-TAB-RANKING). Recria a tabela de ranking do
@@ -106,14 +104,11 @@ function DriverStatusBadge({ status }: { status: RankedDriver['status'] }) {
   )
 }
 
-export function RankingTab() {
-  const { data: drivers, isLoading, isError } = useRankingDrivers()
-  const canWrite = useCanWriteRanking()
+export function RankingTab({ opts, vinculo }: { opts?: RankingFilterOpts; vinculo: string }) {
+  const { data: drivers, isLoading, isError } = useRankingDrivers(opts)
   const [selectedDriver, setSelectedDriver] = useState<RankedDriver | null>(null)
   const [sortKey, setSortKey] = useState<SortKey>(DEFAULT_SORT)
   const [sortDir, setSortDir] = useState<SortDir>(DEFAULT_DIR)
-  const [vinculoFilter, setVinculoFilter] = useState<string>('all')
-  const [occFilter, setOccFilter] = useState<'all' | 'with' | 'without'>('all')
 
   /** Alterna o sort de uma coluna: nova coluna -> desc; mesma -> desc->asc->default. */
   function toggleSort(key: SortKey) {
@@ -143,23 +138,13 @@ export function RankingTab() {
     return arr
   }, [drivers, sortKey, sortDir])
 
-  /** Vínculos distintos para o filtro (rótulo amigável; "Terceiros" p/ vazio). */
-  const vinculoOptions = useMemo(() => {
-    const set = new Set<string>()
-    for (const d of drivers) set.add(getDriverVinculoLabel(d.vinculo))
-    return [...set].sort((a, b) => a.localeCompare(b))
-  }, [drivers])
-
-  /** Drivers após filtros de Vínculo + Ocorrências (client-side). */
+  /** Filtro de Vínculo (client-side) vindo da barra de filtros do topo. */
   const filteredDrivers = useMemo(
     () =>
-      sortedDrivers.filter((d) => {
-        if (vinculoFilter !== 'all' && getDriverVinculoLabel(d.vinculo) !== vinculoFilter) return false
-        if (occFilter === 'with' && d.ocorrencias <= 0) return false
-        if (occFilter === 'without' && d.ocorrencias > 0) return false
-        return true
-      }),
-    [sortedDrivers, vinculoFilter, occFilter],
+      vinculo === 'all'
+        ? sortedDrivers
+        : sortedDrivers.filter((d) => getDriverVinculoLabel(d.vinculo) === vinculo),
+    [sortedDrivers, vinculo],
   )
 
   /** Header clicavel para colunas numericas, com indicador de sort. */
@@ -219,7 +204,7 @@ export function RankingTab() {
         header: () => <SortHeader label="Pontos" sortKeyFor="pontuacao" />,
         cell: ({ row }) => (
           <span className="block text-right font-mono font-bold tabular-nums">
-            {row.original.pontuacao}
+            {row.original.pontuacao.toFixed(1)}
           </span>
         ),
       },
@@ -324,48 +309,19 @@ export function RankingTab() {
     [SortHeader],
   )
 
-  const hasFilter = vinculoFilter !== 'all' || occFilter !== 'all'
   const subtitle = isLoading
     ? 'Carregando…'
     : isError
       ? 'Falha ao carregar'
-      : hasFilter
+      : vinculo !== 'all'
         ? `${filteredDrivers.length} de ${drivers.length} motoristas`
         : `${drivers.length} motoristas`
-
-  const toolbar = (
-    <div className="flex flex-wrap items-center gap-2">
-      <Select value={vinculoFilter} onValueChange={setVinculoFilter}>
-        <SelectTrigger size="sm" className="h-8 w-[190px]">
-          <SelectValue placeholder="Vínculo" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Todos os vínculos</SelectItem>
-          {vinculoOptions.map((v) => (
-            <SelectItem key={v} value={v}>{v}</SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Select value={occFilter} onValueChange={(v) => setOccFilter(v as 'all' | 'with' | 'without')}>
-        <SelectTrigger size="sm" className="h-8 w-[180px]">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Todas ocorrências</SelectItem>
-          <SelectItem value="with">Com ocorrências</SelectItem>
-          <SelectItem value="without">Sem ocorrências</SelectItem>
-        </SelectContent>
-      </Select>
-      {canWrite && <DriverImport />}
-    </div>
-  )
 
   return (
     <>
       <DataTable<RankedDriver>
         data={filteredDrivers}
         columns={columns}
-        toolbar={toolbar}
         onRowClick={(d) => setSelectedDriver(d)}
         selectedId={selectedDriver?.id ?? null}
         title="Ranking de Motoristas"

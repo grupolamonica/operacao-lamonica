@@ -40,24 +40,47 @@ import {
   getRankingTrips,
 } from './ranking.service'
 
+/** Shared query schema for the composed endpoints (drivers/trips/stats). `ignored`
+ *  is a JSON-encoded string[] (occurrence descriptions contain commas, so CSV is
+ *  unsafe). `from`/`to` are BR-date strings. All optional. */
+const rankingQuerySchema = t.Object({
+  ignored: t.Optional(t.String()),
+  from: t.Optional(t.String()),
+  to: t.Optional(t.String()),
+})
+
+/** Parse the filter-bar query into RankingQueryOpts. `ignored` absent → undefined
+ *  (backend keeps DEFAULT_IGNORED_OCCURRENCES); malformed JSON is ignored. */
+function parseRankingQuery(query: { ignored?: string; from?: string; to?: string }) {
+  let ignoredOccurrences: string[] | undefined
+  if (query.ignored) {
+    try {
+      const parsed = JSON.parse(query.ignored)
+      if (Array.isArray(parsed)) ignoredOccurrences = parsed.map(String)
+    } catch {
+      /* malformed — fall back to default ignore set */
+    }
+  }
+  const dateRange = query.from || query.to ? { from: query.from, to: query.to } : undefined
+  return { ignoredOccurrences, dateRange }
+}
+
 export const rankingPlugin = new Elysia({ name: 'ranking' })
   .use(authGuard)
   .group('/api/ranking', (app) =>
     app
-      .get('/drivers', () => getRankingDrivers(), {
+      .get('/drivers', ({ query }) => getRankingDrivers(parseRankingQuery(query)), {
+        query: rankingQuerySchema,
         detail: {
           tags: ['ranking'],
-          summary: 'Ranking de motoristas — array completo (status + rank), pontuacao desc',
+          summary: 'Ranking de motoristas (status + rank, pontuacao desc); filtros opcionais ignored/from/to',
         },
       })
-      .get('/trips', ({ query }) => getRankingTrips({ from: query.from, to: query.to }), {
-        query: t.Object({
-          from: t.Optional(t.String()),
-          to: t.Optional(t.String()),
-        }),
+      .get('/trips', ({ query }) => getRankingTrips(parseRankingQuery(query)), {
+        query: rankingQuerySchema,
         detail: {
           tags: ['ranking'],
-          summary: 'Viagens FECHADA (ajuste_manual aplicado), filtro opcional from/to',
+          summary: 'Viagens FECHADA (ajuste_manual aplicado); filtros opcionais ignored/from/to',
         },
       })
       .get('/blocks', () => getRankingBlocks(), {
@@ -66,10 +89,11 @@ export const rankingPlugin = new Elysia({ name: 'ranking' })
       .get('/route-scores', () => getRankingRouteScores(), {
         detail: { tags: ['ranking'], summary: 'Pontuacoes base por rota' },
       })
-      .get('/stats', () => getRankingStats(), {
+      .get('/stats', ({ query }) => getRankingStats(parseRankingQuery(query)), {
+        query: rankingQuerySchema,
         detail: {
           tags: ['ranking'],
-          summary: 'Metricas: activeDrivers, top3Avg, totalTrips, activeBlocks',
+          summary: 'Metricas: activeDrivers, top3Avg, totalTrips, activeBlocks; filtros opcionais ignored/from/to',
         },
       })
       .get('/logs', () => getRankingLogs(), {

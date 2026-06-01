@@ -5,10 +5,9 @@ import { DataTable } from '@/components/domain/DataTable'
 import { StatusBadge, type SlaStatus } from '@/components/domain/StatusBadge'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { useRankingTrips, useRankingDrivers, useCanWriteRanking, type Trip } from '@/hooks/useRanking'
+import { useRankingTrips, useRankingDrivers, useCanWriteRanking, type Trip, type RankingFilterOpts } from '@/hooks/useRanking'
 import { fixMojibake } from '@/lib/mojibake'
-import { getDriverVinculoLabel, getRouteKey, getRouteLabel, parseTripDate } from '@/lib/driverInsights'
+import { getDriverVinculoLabel, getRouteKey } from '@/lib/driverInsights'
 import { EvaluationFormDialog } from './EvaluationFormDialog'
 
 /**
@@ -66,17 +65,11 @@ function ScoreCell({ value }: { value: number }) {
   )
 }
 
-export function ViagensTab() {
-  const { data: trips, isLoading } = useRankingTrips()
-  const { data: drivers } = useRankingDrivers()
+export function ViagensTab({ opts, vinculo, rota }: { opts?: RankingFilterOpts; vinculo: string; rota: string }) {
+  const { data: trips, isLoading } = useRankingTrips(opts)
+  const { data: drivers } = useRankingDrivers(opts)
   const [evaluatingTripId, setEvaluatingTripId] = useState<string | null>(null)
   const canWrite = useCanWriteRanking()
-
-  const [vinculoFilter, setVinculoFilter] = useState<string>('all')
-  const [rotaFilter, setRotaFilter] = useState<string>('all')
-  const [occFilter, setOccFilter] = useState<'all' | 'with' | 'without'>('all')
-  const [fromDate, setFromDate] = useState<string>('')
-  const [toDate, setToDate] = useState<string>('')
 
   // Cross trips × drivers by driver_id to surface the vínculo (the Trip contract
   // carries no vinculo — it lives on RankedDriver, enriched from the vinculo sheet).
@@ -85,35 +78,17 @@ export function ViagensTab() {
     [drivers],
   )
 
-  const vinculoOptions = useMemo(() => {
-    const set = new Set<string>()
-    for (const t of trips) set.add(getDriverVinculoLabel(vinculoByDriver.get(t.driver_id)))
-    return [...set].sort((a, b) => a.localeCompare(b))
-  }, [trips, vinculoByDriver])
-
-  const rotaOptions = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const t of trips) map.set(getRouteKey(t.origin_code, t.destination_code), getRouteLabel(t.origin_code, t.destination_code))
-    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]))
-  }, [trips])
-
-  const filteredTrips = useMemo(() => {
-    const from = fromDate ? new Date(`${fromDate}T00:00:00`) : null
-    const to = toDate ? new Date(`${toDate}T23:59:59`) : null
-    return trips.filter((t) => {
-      if (vinculoFilter !== 'all' && getDriverVinculoLabel(vinculoByDriver.get(t.driver_id)) !== vinculoFilter) return false
-      if (rotaFilter !== 'all' && getRouteKey(t.origin_code, t.destination_code) !== rotaFilter) return false
-      if (occFilter === 'with' && !t.ocorrencia) return false
-      if (occFilter === 'without' && t.ocorrencia) return false
-      if (from || to) {
-        const d = parseTripDate(t.data)
-        if (!d) return false
-        if (from && d < from) return false
-        if (to && d > to) return false
-      }
-      return true
-    })
-  }, [trips, vinculoByDriver, vinculoFilter, rotaFilter, occFilter, fromDate, toDate])
+  /** Filtros Vínculo + Rota (client-side) vindos da barra do topo. Período +
+   *  Ocorrências (ignorar tipos) já chegam aplicados pelo backend via `opts`. */
+  const filteredTrips = useMemo(
+    () =>
+      trips.filter((t) => {
+        if (vinculo !== 'all' && getDriverVinculoLabel(vinculoByDriver.get(t.driver_id)) !== vinculo) return false
+        if (rota !== 'all' && getRouteKey(t.origin_code, t.destination_code) !== rota) return false
+        return true
+      }),
+    [trips, vinculoByDriver, vinculo, rota],
+  )
 
   const columns = useMemo<ColumnDef<Trip, unknown>[]>(() => [
     {
@@ -218,61 +193,18 @@ export function ViagensTab() {
     },
   ], [canWrite, vinculoByDriver])
 
-  const hasFilter =
-    vinculoFilter !== 'all' || rotaFilter !== 'all' || occFilter !== 'all' || !!fromDate || !!toDate
-
-  const toolbar = (
-    <div className="flex flex-wrap items-center gap-2">
-      <Select value={vinculoFilter} onValueChange={setVinculoFilter}>
-        <SelectTrigger size="sm" className="h-8 w-[170px]"><SelectValue placeholder="Vínculo" /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Todos os vínculos</SelectItem>
-          {vinculoOptions.map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}
-        </SelectContent>
-      </Select>
-      <Select value={rotaFilter} onValueChange={setRotaFilter}>
-        <SelectTrigger size="sm" className="h-8 w-[200px]"><SelectValue placeholder="Rota" /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Todas as rotas</SelectItem>
-          {rotaOptions.map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}
-        </SelectContent>
-      </Select>
-      <Select value={occFilter} onValueChange={(v) => setOccFilter(v as 'all' | 'with' | 'without')}>
-        <SelectTrigger size="sm" className="h-8 w-[180px]"><SelectValue /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Todas ocorrências</SelectItem>
-          <SelectItem value="with">Com ocorrências</SelectItem>
-          <SelectItem value="without">Sem ocorrências</SelectItem>
-        </SelectContent>
-      </Select>
-      <input
-        type="date"
-        value={fromDate}
-        onChange={(e) => setFromDate(e.target.value)}
-        title="Período: de"
-        className="h-8 rounded-md border border-input bg-transparent px-2 text-xs text-foreground"
-      />
-      <input
-        type="date"
-        value={toDate}
-        onChange={(e) => setToDate(e.target.value)}
-        title="Período: até"
-        className="h-8 rounded-md border border-input bg-transparent px-2 text-xs text-foreground"
-      />
-    </div>
-  )
+  const filtered = vinculo !== 'all' || rota !== 'all'
 
   return (
     <>
       <DataTable<Trip>
         data={filteredTrips}
         columns={columns}
-        toolbar={toolbar}
         title="Viagens"
         subtitle={
           isLoading
             ? 'Carregando…'
-            : hasFilter
+            : filtered
               ? `${filteredTrips.length} de ${trips.length} viagens`
               : `${trips.length} viagens`
         }

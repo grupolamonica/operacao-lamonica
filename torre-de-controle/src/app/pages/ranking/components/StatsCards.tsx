@@ -1,5 +1,5 @@
 import { KPICard } from '@/components/domain/KPICard'
-import { useRankingStats } from '@/hooks/useRanking'
+import { useRankingStats, type RankingFilterOpts } from '@/hooks/useRanking'
 import { Users, BarChart3, Route, ShieldAlert } from 'lucide-react'
 
 /**
@@ -12,8 +12,8 @@ import { Users, BarChart3, Route, ShieldAlert } from 'lucide-react'
  * Grid Argon de 4 colunas (mirror do DashboardKPIRow). pt-2 da folga ao icone
  * flutuante do KPICard (top: -1.25rem).
  */
-export function StatsCards() {
-  const { data: stats, isLoading } = useRankingStats()
+export function StatsCards({ opts }: { opts?: RankingFilterOpts }) {
+  const { data: stats, isLoading } = useRankingStats(opts)
   const v = (n: number) => (isLoading ? '—' : n)
 
   return (

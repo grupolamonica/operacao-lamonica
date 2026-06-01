@@ -81,6 +81,14 @@ export interface DateRangeInput {
   to?: string;
 }
 
+/** Optional per-request overrides for the ranking composition (driven by the
+ *  front-end filter bar). `ignoredOccurrences` undefined → DEFAULT_IGNORED_OCCURRENCES
+ *  (composeRanking default); `[]` → ignore nothing (full re-score). */
+export interface RankingQueryOpts {
+  ignoredOccurrences?: string[];
+  dateRange?: DateRangeInput;
+}
+
 export interface RankingStats {
   activeDrivers: number;
   top3Avg: number;
@@ -260,18 +268,18 @@ async function loadRankingInputs(): Promise<{
  * (ATIVO + BLOQUEADO), ordered by pontuacao desc, each with `status` and `rank`
  * (1..N over ATIVO; BLOQUEADO → null). The UI filters by status.
  */
-export async function getRankingDrivers(): Promise<RankedDriver[]> {
+export async function getRankingDrivers(opts: RankingQueryOpts = {}): Promise<RankedDriver[]> {
   const inputs = await loadRankingInputs();
-  return composeRanking(inputs).drivers;
+  return composeRanking({ ...inputs, ignoredOccurrences: opts.ignoredOccurrences, dateRange: opts.dateRange }).drivers;
 }
 
 /**
  * GET /api/ranking/trips — FECHADA trips only (with ajuste_manual applied),
  * optional from/to date filter. NO SHOW trips are NOT concatenated here.
  */
-export async function getRankingTrips(dateRange?: DateRangeInput): Promise<Trip[]> {
+export async function getRankingTrips(opts: RankingQueryOpts = {}): Promise<Trip[]> {
   const inputs = await loadRankingInputs();
-  return composeRanking({ ...inputs, dateRange }).trips;
+  return composeRanking({ ...inputs, ignoredOccurrences: opts.ignoredOccurrences, dateRange: opts.dateRange }).trips;
 }
 
 /** GET /api/ranking/blocks — active driver blocks only. */
@@ -286,9 +294,9 @@ export async function getRankingRouteScores(): Promise<RouteScoreRecord[]> {
 }
 
 /** GET /api/ranking/stats — { activeDrivers, top3Avg, totalTrips, activeBlocks }. */
-export async function getRankingStats(): Promise<RankingStats> {
+export async function getRankingStats(opts: RankingQueryOpts = {}): Promise<RankingStats> {
   const inputs = await loadRankingInputs();
-  return composeRanking(inputs).stats;
+  return composeRanking({ ...inputs, ignoredOccurrences: opts.ignoredOccurrences, dateRange: opts.dateRange }).stats;
 }
 
 /** GET /api/ranking/logs — evaluation_logs ordered desc, limit 200 (D-09-07). Any authenticated role reads. */

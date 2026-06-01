@@ -13,6 +13,32 @@
 
 import type { Trip, RankedDriver, RouteScoreRecord, EvaluationRecord } from '@/hooks/useRanking'
 
+/**
+ * Ocorrências ignoradas por padrão no score (espelha 1:1 o
+ * `DEFAULT_IGNORED_OCCURRENCES` do backend, ranking.service.ts). Duplicado no
+ * front de propósito: importar o valor do backend puxaria `db/client` para o
+ * bundle do Vite. Usado pelo Filtro de Ocorrências (default + "Resetar").
+ */
+export const DEFAULT_IGNORED_OCCURRENCES = [
+  'Atraso na portaria Shopee',
+  'Morosidade no carregamento',
+  'Problema sistêmico Shopee (CTE/API)',
+  'Saída antecipada do CPT - Early',
+  'Solicitação Shopee para antecipação de chegada - Early',
+]
+
+/** Distinct occurrence descriptions present in the trips (for the ignore filter). */
+export function extractUniqueOccurrences(trips: Trip[]): string[] {
+  const set = new Set<string>()
+  for (const t of trips) {
+    for (const v of [t.ocorrencia_eta, t.ocorrencia_cpt, t.ocorrencia_eta_destino]) {
+      const s = (v || '').trim()
+      if (s && s !== '-') set.add(s)
+    }
+  }
+  return [...set].sort((a, b) => a.localeCompare(b))
+}
+
 // ---------------------------------------------------------------------------
 // Date parsing (driver trips arrive BR "dd/MM/yyyy HH:mm:ss"; route_scores ISO)
 // ---------------------------------------------------------------------------
