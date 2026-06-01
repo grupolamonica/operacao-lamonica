@@ -266,3 +266,9 @@ Plans:
 **Goal:** camada "frota importada" no LiveMap lendo do DB do Torre, marcadores por status + popup.
 **Depends on:** Phase 10.
 **Success criteria:** mapa mostra os motoristas da planilha geocodados com popup; alterna camadas.
+
+**Plans:** 2 plans (2 waves)
+
+Plans:
+- [ ] 11-01-PLAN.md — W1: GET /api/positions (authGuard) — última posição geocodada/motorista (DISTINCT ON) + join cross-source com getRankingDrivers (ranked/rank/pontuacao/status/vinculo); plugin espelhando ranking; checkpoint join live (ADAUTO #1)
+- [ ] 11-02-PLAN.md — W2 (dep 01): useFleetPositions (Eden Treaty + TanStack) + camada LiveMap GeoJSON cluster nativo de caminhoes SDF coloridos por status + toggle Frota importada + popup seguro (setDOMContent) + expand de cluster
