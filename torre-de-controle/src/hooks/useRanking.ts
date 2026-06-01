@@ -52,6 +52,7 @@ export type {
   DriverBlockRecord,
   RouteScoreRecord,
   StatusMetrics,
+  EvaluationRecord,
   EvaluationLogRecord,
   Comunicacao,
   DesvioRota,
@@ -63,6 +64,7 @@ import type {
   Trip,
   DriverBlockRecord,
   RouteScoreRecord,
+  EvaluationRecord,
   EvaluationLogRecord,
   Comunicacao,
   DesvioRota,
@@ -96,14 +98,23 @@ export function useRankingTrips(filters?: { from?: string; to?: string }) {
     queryFn: async (): Promise<Trip[]> => {
       const { data, error } = await api.api.ranking.trips.get({ query: (filters ?? {}) as any })
       if (error) throw new Error((error.value as any)?.error ?? 'Failed to fetch ranking trips')
-      // Eden Treaty revives ISO-8601 `data` values into Date objects (rows whose
-      // date is BR-format "dd/MM/yyyy HH:mm:ss" stay strings). Normalize to a
-      // display string so no consumer renders a raw Date — which throws "Objects
-      // are not valid as a React child" and crashes the whole RankingPage via the
-      // router ErrorBoundary (hit by ViagensTab pagination + DriverDetailsDialog).
+      // Eden Treaty revives ISO-8601 strings into Date objects PER VALUE — so any
+      // trip field whose value happens to be ISO (data, eta_*_scheduled/realized)
+      // arrives as a Date while BR-format values stay strings. Rendering a raw Date
+      // throws "Objects are not valid as a React child" and crashes the whole
+      // RankingPage via the router ErrorBoundary (hit by ViagensTab + the
+      // DriverDetailsDialog trip accordion). Coerce EVERY Date field to a display
+      // string defensively (clone only when a Date is found).
       return ((data ?? []) as Trip[]).map((t) => {
-        const d = t.data as unknown
-        return d instanceof Date ? { ...t, data: formatDate(d, 'dd/MM/yyyy HH:mm:ss') } : t
+        let out: Record<string, unknown> | null = null
+        for (const key in t) {
+          const v = (t as Record<string, unknown>)[key]
+          if (v instanceof Date) {
+            out = out ?? { ...t }
+            out[key] = formatDate(v, 'dd/MM/yyyy HH:mm:ss')
+          }
+        }
+        return (out ?? t) as Trip
       })
     },
     staleTime: 30_000,
@@ -201,6 +212,27 @@ export function useRankingLogs() {
   }
 }
 
+/** GET /api/ranking/evaluations — all operator evaluations (read-only). Feeds the
+ *  DriverDetailsDialog quality summary + "Análise da Lamônica". */
+export function useRankingEvaluations() {
+  const q = useQuery({
+    queryKey: ['ranking', 'evaluations'],
+    queryFn: async (): Promise<EvaluationRecord[]> => {
+      const { data, error } = await (api.api.ranking as any).evaluations.get()
+      if (error) throw new Error((error.value as any)?.error ?? 'Failed to fetch ranking evaluations')
+      return (data ?? []) as EvaluationRecord[]
+    },
+    staleTime: 30_000,
+  })
+  return {
+    data:      q.data ?? ([] as EvaluationRecord[]),
+    isLoading: q.isLoading,
+    isError:   q.isError,
+    error:     q.error,
+    refetch:   q.refetch,
+  }
+}
+
 /**
  * Role gate for the write UI (D-09-10).
  * Returns true only for admin|supervisor — these are the same roles that pass
@@ -279,6 +311,27 @@ export function useEvaluateTrip() {
     },
     onSuccess: () => {
       ;(['trips', 'drivers', 'stats', 'blocks', 'logs'] as const).forEach(key =>
+        qc.invalidateQueries({ queryKey: ['ranking', key] })
+      )
+    },
+  })
+}
+
+/**
+ * POST /api/ranking/drivers/import — upsert drivers (CSV/xlsx) + IMPORT_MOTORISTAS audit.
+ * Names override the trip-sheet names for matching driver_ids (re-derives ranking).
+ * Invalidates: drivers, trips, logs.
+ */
+export function useImportDrivers() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (drivers: { driver_id: string; driver_name: string }[]) => {
+      const { data, error } = await (api.api.ranking as any).drivers.import.post({ drivers })
+      if (error) throw new Error((error.value as any)?.error ?? 'Falha ao importar motoristas')
+      return data as { ok: boolean; count: number }
+    },
+    onSuccess: () => {
+      ;(['drivers', 'trips', 'logs'] as const).forEach(key =>
         qc.invalidateQueries({ queryKey: ['ranking', key] })
       )
     },

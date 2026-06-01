@@ -39,6 +39,7 @@ import {
   createRouteScore,
   updateRouteScore,
   deleteRouteScore,
+  upsertDrivers,
 } from './ranking.writes';
 import type { RouteScoreRecord } from './ranking.types';
 import { createEvaluationLog } from './ranking.audit';
@@ -349,4 +350,27 @@ export async function deleteRouteScoreLogged(
     dados_depois: null,
   });
   await bustRankingCache();
+}
+
+// ---------------------------------------------------------------------------
+// importDriversLogged — upsert drivers (CSV/xlsx) + IMPORT_MOTORISTAS audit + bust
+//
+// Driver names override the trip-sheet names for matching driver_ids (re-derives
+// the ranking on next read — composeRanking step 2). operador server-resolved.
+// ---------------------------------------------------------------------------
+
+export async function importDriversLogged(
+  drivers: { driver_id: string; driver_name: string }[],
+  userId: string,
+): Promise<{ count: number }> {
+  const operador = await resolveOperador(userId);
+  const count = await upsertDrivers(drivers);
+  await createEvaluationLog({
+    operador,
+    acao: 'IMPORT_MOTORISTAS',
+    dados_antes: null,
+    dados_depois: { count } as Record<string, unknown>,
+  });
+  await bustRankingCache();
+  return { count };
 }

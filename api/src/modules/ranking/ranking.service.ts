@@ -30,6 +30,7 @@
 
 import {
   deriveDrivers,
+  getVinculoForDriver,
   parseDateBR,
   transformTrips,
 } from './ranking.scoring';
@@ -40,7 +41,7 @@ import {
   fetchEvaluations,
   fetchRouteScores,
 } from './ranking.reads';
-import { getSheetTrips } from './ranking.sheets';
+import { getSheetTrips, fetchVinculos } from './ranking.sheets';
 import type {
   Driver,
   DriverBlockRecord,
@@ -50,6 +51,7 @@ import type {
   RouteScoreRecord,
   SheetTrip,
   Trip,
+  VinculoRecord,
 } from './ranking.types';
 
 /**
@@ -92,6 +94,9 @@ export interface ComposeRankingInput {
   driverBlocks: DriverBlockRecord[];
   routeScores: RouteScoreRecord[];
   drivers: DriverRecord[];
+  /** Driver→vinculo map from the public vinculo sheet (optional; absent in pure
+   *  unit tests, where drivers keep the byte-for-byte '—' fallback). */
+  vinculos?: VinculoRecord[];
   ignoredOccurrences?: string[];
   dateRange?: DateRangeInput;
 }
@@ -134,6 +139,7 @@ export function composeRanking(input: ComposeRankingInput): ComposeRankingResult
     driverBlocks,
     routeScores,
     drivers: driverRecords,
+    vinculos,
     ignoredOccurrences = DEFAULT_IGNORED_OCCURRENCES,
     dateRange,
   } = input;
@@ -176,8 +182,14 @@ export function composeRanking(input: ComposeRankingInput): ComposeRankingResult
     driverBlocks.filter((b) => b.ativo && !b.manual_override).map((b) => b.driver_id),
   );
 
-  // 6. Aggregate drivers (already sorted pontuacao desc).
-  const derived = deriveDrivers(trips);
+  // 6. Aggregate drivers (already sorted pontuacao desc). Enrich `vinculo` by
+  //    name from the vinculo sheet when available (parity with the ride-rank
+  //    DataContext); without it, deriveDrivers keeps the '—' fallback.
+  const getVinculo =
+    vinculos && vinculos.length > 0
+      ? (driverName: string) => getVinculoForDriver(vinculos, driverName)
+      : undefined;
+  const derived = deriveDrivers(trips, getVinculo);
 
   // 7 + 8. Status + rank (rank counts only ATIVO drivers, 1..N).
   let activeRank = 0;
@@ -230,15 +242,17 @@ async function loadRankingInputs(): Promise<{
   driverBlocks: DriverBlockRecord[];
   routeScores: RouteScoreRecord[];
   drivers: DriverRecord[];
+  vinculos: VinculoRecord[];
 }> {
-  const [sheetTrips, evaluations, driverBlocks, routeScores, drivers] = await Promise.all([
+  const [sheetTrips, evaluations, driverBlocks, routeScores, drivers, vinculos] = await Promise.all([
     getSheetTrips(),
     fetchEvaluations(),
     fetchDriverBlocks(),
     fetchRouteScores(),
     fetchDrivers(),
+    fetchVinculos(),
   ]);
-  return { sheetTrips, evaluations, driverBlocks, routeScores, drivers };
+  return { sheetTrips, evaluations, driverBlocks, routeScores, drivers, vinculos };
 }
 
 /**
@@ -280,4 +294,11 @@ export async function getRankingStats(): Promise<RankingStats> {
 /** GET /api/ranking/logs — evaluation_logs ordered desc, limit 200 (D-09-07). Any authenticated role reads. */
 export async function getRankingLogs(): Promise<EvaluationLogRecord[]> {
   return fetchEvaluationLogs();
+}
+
+/** GET /api/ranking/evaluations — all operator evaluations (read-only). Feeds the
+ *  driver-details modal's quality summary + "Análise da Lamônica" (parity with the
+ *  ride-rank DataContext, which loads evaluations client-side). Any authenticated role. */
+export async function getRankingEvaluations(): Promise<EvaluationRecord[]> {
+  return fetchEvaluations();
 }

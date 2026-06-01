@@ -19,7 +19,7 @@
  * never logged.
  */
 
-import type { SheetTrip } from './ranking.types';
+import type { SheetTrip, VinculoRecord } from './ranking.types';
 
 // Lazy redis import: ../../redis/client throws at module-eval if REDIS_URL is
 // unset (fail-fast). Importing it at top-level would make merely *importing* this
@@ -118,4 +118,52 @@ export async function getSheetTrips(): Promise<SheetTrip[]> {
 
   await redis.set(SHEET_TRIPS_CACHE_KEY, JSON.stringify(trips), 'EX', 60);
   return trips;
+}
+
+// --- Vinculos (driver employment bond) — separate public Google Sheet ---
+
+const VINCULO_SHEET_ID = process.env.RANK_VINCULO_SHEET_ID ?? '1l0dI0cphGpddSWgPx65hyVTqAm5i7H4RlXo4h2OzIMU';
+const VINCULO_CSV_URL = `https://docs.google.com/spreadsheets/d/${VINCULO_SHEET_ID}/gviz/tq?tqx=out:csv`;
+
+export const VINCULOS_CACHE_KEY = 'ranking:sheets:vinculos';
+
+/**
+ * Fetch the public vinculo CSV (columns: motorista, vinculo), parse + cache in
+ * Redis 60s. Ported from ride-rank `vinculoService.fetchVinculos`.
+ *
+ * UNLIKE getSheetTrips, fetch/parse failures are SWALLOWED (returns []) — the
+ * vinculo is display-only enrichment, not a critical ranking input, so an outage
+ * of this sheet must never break GET /api/ranking/drivers. Worst case the drivers
+ * keep the '—' fallback (same as before this feature). T-07-06: never log PII.
+ */
+export async function fetchVinculos(): Promise<VinculoRecord[]> {
+  try {
+    const redis = await getRedis();
+    const cached = await redis.get(VINCULOS_CACHE_KEY);
+    if (cached) {
+      try {
+        return JSON.parse(cached) as VinculoRecord[];
+      } catch {
+        /* corrupt cache — fall through and re-fetch */
+      }
+    }
+
+    const response = await fetch(VINCULO_CSV_URL);
+    if (!response.ok) throw new Error(`Failed to fetch vinculos: ${response.status}`);
+
+    const csv = await response.text();
+    const lines = csv.split('\n').filter((line) => line.trim() !== '');
+    const records: VinculoRecord[] = [];
+    for (let i = 1; i < lines.length; i++) {
+      const vals = parseCSVLine(lines[i]);
+      const motorista = (vals[0] || '').replace(/^"|"$/g, '').trim();
+      const vinculo = (vals[1] || '').replace(/^"|"$/g, '').trim();
+      if (motorista && vinculo) records.push({ motorista, vinculo });
+    }
+
+    await redis.set(VINCULOS_CACHE_KEY, JSON.stringify(records), 'EX', 60);
+    return records;
+  } catch {
+    return [];
+  }
 }

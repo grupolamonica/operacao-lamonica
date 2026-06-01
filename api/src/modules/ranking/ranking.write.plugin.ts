@@ -38,6 +38,7 @@ import {
   createRouteScoreLogged,
   updateRouteScoreLogged,
   deleteRouteScoreLogged,
+  importDriversLogged,
 } from './ranking.write.service';
 
 // ---------------------------------------------------------------------------
@@ -236,6 +237,35 @@ export const rankingWritePlugin = new Elysia({ name: 'ranking-write' })
       detail: {
         tags: ['ranking'],
         summary: 'Remover pontuação de rota + ROTA_REMOCAO audit + cache bust (admin|supervisor)',
+      },
+    },
+  )
+
+  // ----- POST /api/ranking/drivers/import ---------------------------------------
+  .post(
+    '/api/ranking/drivers/import',
+    async ({ body, user, set }) => {
+      try {
+        const { count } = await importDriversLogged(body.drivers, user.id);
+        return { ok: true, count };
+      } catch (e: any) {
+        set.status = 500;
+        throw e;
+      }
+    },
+    {
+      body: t.Object({
+        drivers: t.Array(
+          t.Object({
+            driver_id: t.String({ minLength: 1 }),
+            driver_name: t.String({ minLength: 1 }),
+          }),
+          { minItems: 1, maxItems: 5000 },
+        ),
+      }),
+      detail: {
+        tags: ['ranking'],
+        summary: 'Importar motoristas (upsert por driver_id) + IMPORT_MOTORISTAS audit (admin|supervisor)',
       },
     },
   );

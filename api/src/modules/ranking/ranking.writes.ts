@@ -169,3 +169,30 @@ export async function deleteRouteScore(id: string): Promise<void> {
   const { error } = await rankSupabase.from('route_scores').delete().eq('id', id);
   if (error) throw error;
 }
+
+// --- Drivers (import) ---
+
+/**
+ * Upsert drivers by `driver_id` in batches of 100. Ported 1:1 from ride-rank
+ * `supabaseService.upsertDrivers` — replaces `driver_name` for matching ids
+ * (`onConflict: 'driver_id'`). Returns the number of rows written. RLS is open
+ * (D-09-03) so the anon client writes; the endpoint enforces requireRole.
+ */
+export async function upsertDrivers(
+  drivers: { driver_id: string; driver_name: string }[],
+): Promise<number> {
+  let count = 0;
+  for (let i = 0; i < drivers.length; i += 100) {
+    const batch = drivers.slice(i, i + 100).map((d) => ({
+      driver_id: d.driver_id,
+      driver_name: d.driver_name,
+      updated_at: new Date().toISOString(),
+    }));
+    const { error } = await rankSupabase
+      .from('drivers')
+      .upsert(batch as any, { onConflict: 'driver_id' });
+    if (error) throw error;
+    count += batch.length;
+  }
+  return count;
+}

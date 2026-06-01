@@ -33,6 +33,7 @@ import { authGuard } from '../../lib/rbac'
 import {
   getRankingBlocks,
   getRankingDrivers,
+  getRankingEvaluations,
   getRankingLogs,
   getRankingRouteScores,
   getRankingStats,
@@ -75,6 +76,12 @@ export const rankingPlugin = new Elysia({ name: 'ranking' })
         detail: {
           tags: ['ranking'],
           summary: 'Log de auditoria (evaluation_logs), ordenado desc',
+        },
+      })
+      .get('/evaluations', () => getRankingEvaluations(), {
+        detail: {
+          tags: ['ranking'],
+          summary: 'Avaliações de operador (read-only) — resumo de qualidade do modal',
         },
       })
   )

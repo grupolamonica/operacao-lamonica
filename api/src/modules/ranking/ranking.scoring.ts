@@ -18,7 +18,7 @@
  */
 
 import { getRouteBasePoints } from './ranking.routes';
-import type { Driver, DriverStatus, RouteScoreRecord, SheetTrip, StatusMetrics, Trip } from './ranking.types';
+import type { Driver, DriverStatus, RouteScoreRecord, SheetTrip, StatusMetrics, Trip, VinculoRecord } from './ranking.types';
 
 const VALID_STATUS_VALUES = new Set(['ON TIME', 'EARLY', 'DELAY']);
 const SHEET_SOURCE_FIELD = 'DBLHHISTORICO.status_agrupado';
@@ -276,7 +276,29 @@ export function calcStatusMetrics(trips: Trip[], field: 'status_eta' | 'status_e
   };
 }
 
-export function deriveDrivers(trips: Trip[]): Driver[] {
+/** Normalize a driver name for vinculo matching: uppercase, strip accents.
+ *  Ported 1:1 from ride-rank `vinculoService.normalize`. */
+function normalizeVinculoName(name: string): string {
+  return name.toUpperCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').trim();
+}
+
+/** Resolve a driver's vinculo from the vinculo sheet by normalized-name match.
+ *  Ported 1:1 from ride-rank `vinculoService.getVinculoForDriver` — returns the
+ *  matched vinculo or the '—' fallback (proper em-dash). */
+export function getVinculoForDriver(vinculos: VinculoRecord[], driverName: string): string {
+  const norm = normalizeVinculoName(driverName);
+  const match = vinculos.find((v) => normalizeVinculoName(v.motorista) === norm);
+  return match?.vinculo || '—';
+}
+
+/**
+ * Aggregate trips into drivers (pontuacao desc).
+ *
+ * `getVinculo` (optional) resolves each driver's vinculo by name; when omitted
+ * the byte-for-byte port fallback 'â€”' is kept (preserves the pure-layer unit
+ * tests and the "no vinculos loaded" parity state).
+ */
+export function deriveDrivers(trips: Trip[], getVinculo?: (driverName: string) => string): Driver[] {
   const driverMap = new Map<string, Trip[]>();
 
   for (const trip of trips) {
@@ -306,7 +328,7 @@ export function deriveDrivers(trips: Trip[]): Driver[] {
       created_at: driverTrips[0]?.data || '',
       etaOrigMetrics: calcStatusMetrics(driverTrips, 'status_eta'),
       etaDestMetrics: calcStatusMetrics(driverTrips, 'status_eta_destino'),
-      vinculo: 'â€”',
+      vinculo: getVinculo ? getVinculo(nome) : 'â€”',
     });
   }
 
