@@ -2,20 +2,22 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: milestone
-status: phase-complete
-stopped_at: Phase 09 COMPLETE — 7/7 plans, checkpoint paridade VERIFICADO (11/11 live), build integrado verde
-last_updated: "2026-05-30T14:45:00.000Z"
+status: planning-complete
+stopped_at: Phase 10 PLANEJADA — 4 plans, 3 waves, plan-checker PASS; pronto p/ /gsd-execute-phase 10
+last_updated: "2026-05-30T15:15:00.000Z"
 progress:
   total_phases: 11
   completed_phases: 3
-  total_plans: 37
+  total_plans: 41
   completed_plans: 37
-  percent: 100
+  percent: 90
 ---
 
 ## Current Position
 
-- **Phase:** 09-ranking-escrita-auditoria-write-flows — ✅ COMPLETE (7/7 plans). W1: 09-01 writes/audit/cache (ranking.writes/audit/cache.ts) + 09-02 GET /logs · W2: 09-03 POST /evaluations (upsert CRIAÇÃO/EDIÇÃO + auto-block NO_SHOW) + POST /blocks + PATCH /blocks/:id (requireRole admin|supervisor, plugin path) — **checkpoint paridade VERIFICADO 11/11 live** · W3: 09-04 route-scores CRUD · W4: 09-05 mutation hooks + useCanWriteRanking · W5: 09-06 EvalForm/Bloqueios/Viagens wiring + 09-07 Rotas CRUD + LogsTab live. Verif: backend tsc 0, frontend tsc -b 0, vite build 0, 25 tests pass. Fluxo avaliar→pontuar→bloquear→desbloquear end-to-end provado.
+- **Phase:** 10-importa-o-viagens-xlsx-db-torre-ingestion — 📋 PLANEJADA (4 plans, 3 waves, plan-checker PASS). W1: 10-01 schema driver_positions+geocode_cache + PostGIS geom MANUAL (não db:push) ∥ 10-02 parser SheetJS (125 linhas c/ motorista, sem fórmulas) · W2: 10-03 geocoder Nominatim cache-first + rate-limit 1/s + best-effort · W3: 10-04 POST /api/positions/import (requireRole admin) upsert ON CONFLICT(motorista_norm,data_posicao) + ST_MakePoint geom — **checkpoint live** (autonomous:false: planilha fora do repo + DB Torre). Decisões D-10-01..08 cobertas. Planilha: Downloads/Viagens.xlsx (1540 linhas, 125 c/ motorista). Próximo: `/gsd-execute-phase 10`. NÃO iniciada.
+- **Phase 09 (anterior):** ✅ COMPLETE (7/7 plans). W1: 09-01 writes/audit/cache + 09-02 GET /logs · W2: 09-03 POST /evaluations (upsert + auto-block NO_SHOW) + blocks (requireRole admin|supervisor) — checkpoint paridade VERIFICADO 11/11 live · W3: 09-04 route-scores CRUD · W4: 09-05 mutation hooks · W5: 09-06/07 wiring UI. tsc/build/25 tests verde.
+- **Phase 08 (anterior):** ✅ COMPLETE (8/8 plans). Wave 1: 08-01 hooks + 08-02 mojibake · Wave 2: 08-03 /ranking shell navegável · Wave 3: 08-04 Ranking+DriverDetails, 08-05 Viagens+EvaluationForm(shell), 08-06 Qualidade(Chart.js), 08-07 Bloqueios+Rotas, 08-08 Logs(shell). Build integrado das 6 abas exit 0. W1: 09-01 writes/audit/cache (ranking.writes/audit/cache.ts) + 09-02 GET /logs · W2: 09-03 POST /evaluations (upsert CRIAÇÃO/EDIÇÃO + auto-block NO_SHOW) + POST /blocks + PATCH /blocks/:id (requireRole admin|supervisor, plugin path) — **checkpoint paridade VERIFICADO 11/11 live** · W3: 09-04 route-scores CRUD · W4: 09-05 mutation hooks + useCanWriteRanking · W5: 09-06 EvalForm/Bloqueios/Viagens wiring + 09-07 Rotas CRUD + LogsTab live. Verif: backend tsc 0, frontend tsc -b 0, vite build 0, 25 tests pass. Fluxo avaliar→pontuar→bloquear→desbloquear end-to-end provado.
 - **Phase 08 (anterior):** ✅ COMPLETE (8/8 plans). Wave 1: 08-01 hooks + 08-02 mojibake · Wave 2: 08-03 /ranking shell navegável · Wave 3: 08-04 Ranking+DriverDetails, 08-05 Viagens+EvaluationForm(shell), 08-06 Qualidade(Chart.js), 08-07 Bloqueios+Rotas, 08-08 Logs(shell). Build integrado das 6 abas exit 0.
 - **Completed Plan:** 08 (todas) — reconcile final 7cf6aaf commitou 08-05/06/07 (git lock contention nos executores paralelos); 08-04 (1ecc313) e 08-08 (f9f74a9) já commitados pelos executores. /ranking renderiza as 6 abas com dados reais via Eden Treaty (read-only).
 - **Next Plans:** Phase 09 (ranking: escrita + auditoria — submit avaliação, block/unblock, CRUD route_scores, endpoint /logs) — NÃO planejada (só no roadmap). Rodar `/gsd-plan-phase 9 --discuss`.
