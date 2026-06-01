@@ -229,3 +229,29 @@ describe('geocodeText', () => {
     expect(mockSelect).not.toHaveBeenCalled()
   })
 })
+
+// ---------------------------------------------------------------------------
+// extractLocality — pura, sem DB/rede (Phase 10 deviation-fix do texto sujo)
+// ---------------------------------------------------------------------------
+
+describe('extractLocality', () => {
+  it('extrai CIDADE, UF do fim (UF separada por espaço)', async () => {
+    const { extractLocality } = await import('./geocoder')
+    expect(extractLocality('0.03 Km - POSTO J REIS - ENTRE RIOS BA')).toBe('ENTRE RIOS, BA, Brasil')
+  })
+
+  it('lida com sufixo /UF e remove asteriscos', async () => {
+    const { extractLocality } = await import('./geocoder')
+    expect(extractLocality('2.63 Km - CHONIN DE BAIXO/MG*')).toBe('CHONIN DE BAIXO, MG, Brasil')
+  })
+
+  it('lida com sufixo -UF e descarta prefixos de landmark/rodovia', async () => {
+    const { extractLocality } = await import('./geocoder')
+    expect(extractLocality('0.01 Km - PT PICHILAU - BR104 KM112 - MESSIAS-AL')).toBe('MESSIAS, AL, Brasil')
+  })
+
+  it('sem UF: usa o último segmento " - " + Brasil', async () => {
+    const { extractLocality } = await import('./geocoder')
+    expect(extractLocality('0.10 Km - CBD - CABO DE SANTO AGOSTINHO')).toBe('CABO DE SANTO AGOSTINHO, Brasil')
+  })
+})

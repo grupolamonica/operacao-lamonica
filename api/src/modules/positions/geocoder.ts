@@ -105,6 +105,39 @@ function resolveCidade(address: Record<string, string>): string | null {
 }
 
 // ---------------------------------------------------------------------------
+// extractLocality — a Posição é texto sujo ("0.03 Km - POSTO J REIS - ENTRE
+// RIOS BA"); Nominatim não resolve a string inteira. Extrai "CIDADE, UF, Brasil"
+// do FIM (cidade+UF ficam após o último " - "). Confirmado: a query crua → 0
+// resultados; "Entre Rios, BA, Brasil" → acerta. Granularidade cidade/UF (D-10-01).
+// ---------------------------------------------------------------------------
+
+const UF_SET = new Set([
+  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
+  'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO',
+])
+
+export function extractLocality(raw: string): string {
+  // 1. Tira o prefixo de distância "X.XX Km - "
+  let s = raw.replace(/^\s*[\d.,]+\s*km\s*-\s*/i, '').trim()
+  // 2. Remove ruído: asteriscos, parênteses; normaliza espaços
+  s = s.replace(/\*+/g, ' ').replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim()
+  // 3. UF de 2 letras no fim, após espaço/hífen/barra ("ENTRE RIOS BA", "MESSIAS-AL", "CHONIN DE BAIXO/MG")
+  const m = s.match(/[\s/-]([A-Za-z]{2})$/)
+  if (m && UF_SET.has(m[1].toUpperCase())) {
+    const uf = m[1].toUpperCase()
+    const head = s.slice(0, m.index).replace(/[\s/-]+$/, '').trim()
+    // cidade = último segmento " - " do head (descarta prefixos de landmark/rodovia)
+    const segs = head.split(/\s+-\s+/)
+    const city = (segs[segs.length - 1] || head).trim()
+    return city ? `${city}, ${uf}, Brasil` : `${uf}, Brasil`
+  }
+  // 4. Sem UF clara: usa o último segmento " - " como localidade
+  const segs = s.split(/\s+-\s+/)
+  const tail = (segs[segs.length - 1] || s).trim()
+  return tail ? `${tail}, Brasil` : raw
+}
+
+// ---------------------------------------------------------------------------
 // Lat/lng range validation (T4)
 // ---------------------------------------------------------------------------
 
@@ -194,8 +227,10 @@ export async function geocodeText(query: string): Promise<GeocodeResult> {
   let result: GeocodeResult = { ...EMPTY_MISS }
 
   try {
+    // Nominatim não resolve o texto cru — extrai "CIDADE, UF, Brasil" do fim.
+    const searchQuery = extractLocality(q)
     const url =
-      `${NOMINATIM_BASE}?q=${encodeURIComponent(q)}` +
+      `${NOMINATIM_BASE}?q=${encodeURIComponent(searchQuery)}` +
       `&format=json&countrycodes=br&limit=1&addressdetails=1`
 
     const response = await rateLimitedFetch(url)
