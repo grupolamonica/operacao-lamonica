@@ -180,6 +180,7 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
   const initRef              = useRef(false)  // React StrictMode guard
   const fleetHandlersRef     = useRef(false)  // fleet click/cursor handlers registered once
   const fleetFittedRef       = useRef(false)  // fitBounds aplicado uma vez por ativação da camada
+  const modeInitRef          = useRef(true)   // pula o setStyle inicial (estilo já correto) — não derruba a camada de frota
   const [mode, setMode]      = useState<'mapa' | 'satelite'>('mapa')
   const [mapReady, setMapReady] = useState(false)
   const [showFleet, setShowFleet] = useState(false)  // default OFF (D-11-06)
@@ -207,14 +208,18 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right')
     map.addControl(new maplibregl.NavigationControl(), 'top-left')
 
-    map.on('load', () => {
-      map.resize()  // fix container size computed after mount
-      setMapReady(true)
-    })
+    const markReady = () => setMapReady(true)
+    map.on('load', () => { map.resize(); markReady() })
+    // Fallback: em alguns ambientes o 'load' não dispara (recurso de CDN do basemap
+    // bloqueado/lento). 'idle' (1º render assentado) + timeout garantem que mapReady
+    // vire true e a camada de frota renderize mesmo assim. setMapReady é idempotente.
+    map.on('idle', markReady)
+    const readyFallback = setTimeout(markReady, 2500)
 
     mapRef.current = map
 
     return () => {
+      clearTimeout(readyFallback)
       initRef.current = false
       fleetHandlersRef.current = false
       mapRef.current = null
@@ -226,6 +231,10 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
   // Style switch — re-register fleet after style loads (setStyle drops all sources/layers)
   useEffect(() => {
     if (!mapReady || !mapRef.current) return
+    // Pula a 1ª execução (quando mapReady vira true): o estilo já é TILE_STYLES[mode]
+    // do init. Re-setStyle aqui derrubava a camada de frota recém-renderizada (o
+    // 'styledata' tentava re-renderizar mas era gated por isStyleLoaded() flaky).
+    if (modeInitRef.current) { modeInitRef.current = false; return }
     const map = mapRef.current
 
     map.setStyle(TILE_STYLES[mode])
@@ -251,18 +260,24 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
     if (!map || !mapReady) return
 
     if (showFleet && fleet.length > 0) {
-      // isStyleLoaded() é INSTÁVEL com tiles vetoriais (openfreemap) — fica false
-      // mesmo com o mapa pronto, e era o motivo dos caminhões NUNCA aparecerem
-      // (o guard retornava cedo). Renderiza se o estilo está pronto, senão no
-      // próximo 'idle'. addSource/addLayer são seguros pós-'load' (mapReady).
+      // addSource/addLayer EXIGEM isStyleLoaded()===true (senão maplibre lança
+      // "Style is not done loading" e o error boundary derruba o mapa). O estilo
+      // pode ainda estar carregando quando os dados chegam → renderiza só quando
+      // pronto; senão re-tenta no próximo 'idle' (dispara ao terminar o estilo).
       const doRender = () => {
+        if (!map.isStyleLoaded()) { map.once('idle', doRender); return }
         registerTruckImage(map)
         renderFleet(map, fleet)
         registerFleetHandlers(map)
         // fitBounds nas posições UMA vez por ativação — senão o mapa fica no
         // center default (SP) e os caminhões (NE/MG) ficam fora do viewport.
         if (!fleetFittedRef.current) {
-          const pts = fleet.filter((f) => Number.isFinite(f.lng) && Number.isFinite(f.lat))
+          // Filtra à extensão do Brasil só p/ o CÁLCULO do fit (um geocode outlier
+          // não deve jogar o center pro oceano). Marcadores fora ainda renderizam.
+          const pts = fleet.filter(
+            (f) => Number.isFinite(f.lng) && Number.isFinite(f.lat) &&
+              f.lng >= -74 && f.lng <= -34 && f.lat >= -34 && f.lat <= 6,
+          )
           if (pts.length > 0) {
             const lngs = pts.map((f) => f.lng)
             const lats = pts.map((f) => f.lat)
