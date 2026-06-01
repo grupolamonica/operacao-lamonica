@@ -12,4 +12,7 @@ export * from './geofences'
 export * from './push-subscriptions'
 export * from './alert-thresholds'
 export * from './gps-providers'
+// Phase 10 — Importação Viagens.xlsx / Ingestão posições motoristas
+export * from './driver-positions'
+export * from './geocode-cache'
 export * from './relations'
