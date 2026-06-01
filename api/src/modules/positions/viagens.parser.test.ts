@@ -4,11 +4,11 @@
  * Fixture completamente sintética (in-memory via XLSX.utils) — sem
  * dependência de rede, DB, Redis ou arquivo externo ao repo.
  *
- * Aba "Página1", índices 0-based:
- *   11 = Veículo (col12)
- *   14 = Motorista (col15)
- *   15 = Data Posição (col16)  "dd/MM/yyyy HH:mm:ss"
- *   17 = Posição (col18)
+ * Aba "Página1", índices 0-based (confirmados contra o arquivo real):
+ *   12 = Veículo (coluna M)
+ *   15 = Motorista (coluna P)
+ *   16 = Data Posição (coluna Q)  "dd/MM/yyyy HH:mm:ss"
+ *   18 = Posição (coluna S)
  */
 
 import * as XLSX from 'xlsx'
@@ -42,10 +42,10 @@ function makeRow(opts: {
   veiculo?: string
 }): string[] {
   const row = Array<string>(68).fill('')
-  if (opts.motorista !== undefined) row[14] = opts.motorista  // col15
-  if (opts.data      !== undefined) row[15] = opts.data       // col16
-  if (opts.posicao   !== undefined) row[17] = opts.posicao    // col18
-  if (opts.veiculo   !== undefined) row[11] = opts.veiculo    // col12
+  if (opts.motorista !== undefined) row[15] = opts.motorista  // coluna P
+  if (opts.data      !== undefined) row[16] = opts.data       // coluna Q
+  if (opts.posicao   !== undefined) row[18] = opts.posicao    // coluna S
+  if (opts.veiculo   !== undefined) row[12] = opts.veiculo    // coluna M
   return row
 }
 

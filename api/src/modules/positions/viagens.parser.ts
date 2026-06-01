@@ -30,10 +30,12 @@ export interface ParsedPosition {
 // col12=Veículo, col15=Motorista, col16=Data Posição, col18=Posição
 // ---------------------------------------------------------------------------
 
-const COL_VEICULO  = 11  // col12 (1-indexed) → index 11
-const COL_MOTORISTA = 14  // col15 → index 14
-const COL_DATA      = 15  // col16 → index 15
-const COL_POSICAO   = 17  // col18 → index 17
+// Índices 0-based confirmados contra o arquivo real (SheetJS header:1, coluna A=0):
+// M=Veículo(12), P=Motorista(15), Q=Data Posição(16), S=Posição(18).
+const COL_VEICULO   = 12  // "Veículo" (coluna M)
+const COL_MOTORISTA = 15  // "Motorista" (coluna P)
+const COL_DATA      = 16  // "Data Posição" (coluna Q)
+const COL_POSICAO   = 18  // "Posição" (coluna S)
 
 // ---------------------------------------------------------------------------
 // normalizeMotorista (D-10-06)
