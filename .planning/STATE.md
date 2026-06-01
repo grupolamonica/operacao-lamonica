@@ -2,20 +2,21 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: milestone
-status: planning-complete
-stopped_at: Phase 10 PLANEJADA — 4 plans, 3 waves, plan-checker PASS; pronto p/ /gsd-execute-phase 10
-last_updated: "2026-05-30T15:15:00.000Z"
+status: phase-complete
+stopped_at: Phase 10 COMPLETE — 4/4 plans; import live VERIFICADO no Supabase Torre (125 inseridos / 69 geocodados / idempotente); 2 deviation fixes
+last_updated: "2026-05-30T16:00:00.000Z"
 progress:
   total_phases: 11
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 41
-  completed_plans: 37
-  percent: 90
+  completed_plans: 41
+  percent: 100
 ---
 
 ## Current Position
 
-- **Phase:** 10-importa-o-viagens-xlsx-db-torre-ingestion — 📋 PLANEJADA (4 plans, 3 waves, plan-checker PASS). W1: 10-01 schema driver_positions+geocode_cache + PostGIS geom MANUAL (não db:push) ∥ 10-02 parser SheetJS (125 linhas c/ motorista, sem fórmulas) · W2: 10-03 geocoder Nominatim cache-first + rate-limit 1/s + best-effort · W3: 10-04 POST /api/positions/import (requireRole admin) upsert ON CONFLICT(motorista_norm,data_posicao) + ST_MakePoint geom — **checkpoint live** (autonomous:false: planilha fora do repo + DB Torre). Decisões D-10-01..08 cobertas. Planilha: Downloads/Viagens.xlsx (1540 linhas, 125 c/ motorista). Próximo: `/gsd-execute-phase 10`. NÃO iniciada.
+- **Phase:** 10-importa-o-viagens-xlsx-db-torre-ingestion — ✅ COMPLETE (4/4 plans). W1: 10-01 schema driver_positions+geocode_cache + PostGIS geom (SQL manual, aplicado no Supabase Torre via MCP) ∥ 10-02 parser SheetJS · W2: 10-03 geocoder Nominatim cache-first + extractLocality · W3: 10-04 POST /api/positions/import (admin). **Import live VERIFICADO** no Supabase Torre (ocgifdytaqlubuokjkwv): 125 inseridos, 69 geocodados (best-effort; geom Point 4326), idempotência provada (2º import 0/125 skip), RBAC 401/403. **2 deviation fixes pegos no checkpoint:** parser off-by-one (lia cols 11/14/15/17 em vez de 12/15/16/18 → 0 linhas) + geocoder extractLocality (texto cru não casava no Nominatim). Decisões D-10-01..08 cobertas.
+- **Pilha de ranking não-commitada (WIP do usuário, NÃO tocar):** 14 arquivos (ranking.*.ts, tabs, useRanking, novos DriverImport.tsx/accordion.tsx/driverInsights.ts, torre package.json/bun.lock) — feature de ranking em progresso, deixada intacta no working tree por decisão do usuário.
 - **Phase 09 (anterior):** ✅ COMPLETE (7/7 plans). W1: 09-01 writes/audit/cache + 09-02 GET /logs · W2: 09-03 POST /evaluations (upsert + auto-block NO_SHOW) + blocks (requireRole admin|supervisor) — checkpoint paridade VERIFICADO 11/11 live · W3: 09-04 route-scores CRUD · W4: 09-05 mutation hooks · W5: 09-06/07 wiring UI. tsc/build/25 tests verde.
 - **Phase 08 (anterior):** ✅ COMPLETE (8/8 plans). Wave 1: 08-01 hooks + 08-02 mojibake · Wave 2: 08-03 /ranking shell navegável · Wave 3: 08-04 Ranking+DriverDetails, 08-05 Viagens+EvaluationForm(shell), 08-06 Qualidade(Chart.js), 08-07 Bloqueios+Rotas, 08-08 Logs(shell). Build integrado das 6 abas exit 0. W1: 09-01 writes/audit/cache (ranking.writes/audit/cache.ts) + 09-02 GET /logs · W2: 09-03 POST /evaluations (upsert CRIAÇÃO/EDIÇÃO + auto-block NO_SHOW) + POST /blocks + PATCH /blocks/:id (requireRole admin|supervisor, plugin path) — **checkpoint paridade VERIFICADO 11/11 live** · W3: 09-04 route-scores CRUD · W4: 09-05 mutation hooks + useCanWriteRanking · W5: 09-06 EvalForm/Bloqueios/Viagens wiring + 09-07 Rotas CRUD + LogsTab live. Verif: backend tsc 0, frontend tsc -b 0, vite build 0, 25 tests pass. Fluxo avaliar→pontuar→bloquear→desbloquear end-to-end provado.
 - **Phase 08 (anterior):** ✅ COMPLETE (8/8 plans). Wave 1: 08-01 hooks + 08-02 mojibake · Wave 2: 08-03 /ranking shell navegável · Wave 3: 08-04 Ranking+DriverDetails, 08-05 Viagens+EvaluationForm(shell), 08-06 Qualidade(Chart.js), 08-07 Bloqueios+Rotas, 08-08 Logs(shell). Build integrado das 6 abas exit 0.

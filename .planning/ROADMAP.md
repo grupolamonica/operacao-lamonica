@@ -257,10 +257,10 @@ Plans:
 **Plans:** 4 plans (3 waves)
 
 Plans:
-- [ ] 10-01-PLAN.md — W1: schema Drizzle driver_positions + geocode_cache (UNIQUE motorista_norm+data_posicao) + PostGIS geom Point/GIST via SQL MANUAL
-- [ ] 10-02-PLAN.md — W1: dep xlsx (SheetJS) + parser viagens.parser.ts (só linhas com Motorista, data TZ America/Sao_Paulo, motorista_norm, cellFormula:false) + teste
-- [ ] 10-03-PLAN.md — W2 (dep 01): geocoder.ts Nominatim cache-first + rate-limit 1/s + User-Agent + best-effort + validação de faixa lat/lng + teste
-- [ ] 10-04-PLAN.md — W3 (dep 01,02,03): endpoint inline POST /api/positions/import (requireRole admin) parse→geocode→upsert ON CONFLICT DO NOTHING + geom ST_MakePoint + checkpoint import live (~125, idempotente)
+- [x] 10-01-PLAN.md — W1: schema Drizzle driver_positions + geocode_cache (UNIQUE motorista_norm+data_posicao) + PostGIS geom Point/GIST via SQL MANUAL
+- [x] 10-02-PLAN.md — W1: dep xlsx (SheetJS) + parser viagens.parser.ts (só linhas com Motorista, data TZ America/Sao_Paulo, motorista_norm, cellFormula:false) + teste
+- [x] 10-03-PLAN.md — W2 (dep 01): geocoder.ts Nominatim cache-first + rate-limit 1/s + User-Agent + best-effort + validação de faixa lat/lng + teste
+- [x] 10-04-PLAN.md — W3 (dep 01,02,03): endpoint inline POST /api/positions/import (requireRole admin) parse→geocode→upsert ON CONFLICT DO NOTHING + geom ST_MakePoint + checkpoint import live (~125, idempotente)
 
 ## Phase 11: Mapa — Frota importada [ GEOSPATIAL ]
 **Goal:** camada "frota importada" no LiveMap lendo do DB do Torre, marcadores por status + popup.
