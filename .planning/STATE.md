@@ -2,20 +2,21 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: milestone
-status: phase-complete
-stopped_at: Phase 10 COMPLETE — 4/4 plans; import live VERIFICADO no Supabase Torre (125 inseridos / 69 geocodados / idempotente); 2 deviation fixes
-last_updated: "2026-05-30T16:00:00.000Z"
+status: planning-complete
+stopped_at: Phase 11 PLANEJADA — 2 plans, 2 waves, plan-checker PASS; pronto p/ /gsd-execute-phase 11 (ÚLTIMA do milestone v2.0)
+last_updated: "2026-05-30T16:30:00.000Z"
 progress:
   total_phases: 11
   completed_phases: 4
-  total_plans: 41
+  total_plans: 43
   completed_plans: 41
-  percent: 100
+  percent: 95
 ---
 
 ## Current Position
 
-- **Phase:** 10-importa-o-viagens-xlsx-db-torre-ingestion — ✅ COMPLETE (4/4 plans). W1: 10-01 schema driver_positions+geocode_cache + PostGIS geom (SQL manual, aplicado no Supabase Torre via MCP) ∥ 10-02 parser SheetJS · W2: 10-03 geocoder Nominatim cache-first + extractLocality · W3: 10-04 POST /api/positions/import (admin). **Import live VERIFICADO** no Supabase Torre (ocgifdytaqlubuokjkwv): 125 inseridos, 69 geocodados (best-effort; geom Point 4326), idempotência provada (2º import 0/125 skip), RBAC 401/403. **2 deviation fixes pegos no checkpoint:** parser off-by-one (lia cols 11/14/15/17 em vez de 12/15/16/18 → 0 linhas) + geocoder extractLocality (texto cru não casava no Nominatim). Decisões D-10-01..08 cobertas.
+- **Phase:** 11-mapa-frota-importada-geospatial — 📋 PLANEJADA (2 plans, 2 waves, plan-checker PASS · ÚLTIMA do milestone v2.0). W1: 11-01 `GET /api/positions` (authGuard) — última posição geocodada/motorista (DISTINCT ON) + **join cross-source** com getRankingDrivers por normalizeMotorista (`autonomous:false` checkpoint join live) · W2: 11-02 useFleetPositions + camada "frota importada" no LiveMap (ícone CAMINHÃO SDF por status ATIVO/BLOQUEADO + cluster GeoJSON nativo + popup + toggle). Decisões D-11-01..06 cobertas. 3 warnings menores do checker (verify output, fleetHandlersRef, edições sequenciais LiveMap) — não-bloqueantes. Próximo: `/gsd-execute-phase 11`. NÃO iniciada.
+- **Phase 10 (anterior):** ✅ COMPLETE (4/4 plans). Import live VERIFICADO no Supabase Torre: 125 inseridos, 69 geocodados, idempotente; 2 deviation fixes (parser off-by-one + geocoder extractLocality). W1: 10-01 schema driver_positions+geocode_cache + PostGIS geom (SQL manual, aplicado no Supabase Torre via MCP) ∥ 10-02 parser SheetJS · W2: 10-03 geocoder Nominatim cache-first + extractLocality · W3: 10-04 POST /api/positions/import (admin). **Import live VERIFICADO** no Supabase Torre (ocgifdytaqlubuokjkwv): 125 inseridos, 69 geocodados (best-effort; geom Point 4326), idempotência provada (2º import 0/125 skip), RBAC 401/403. **2 deviation fixes pegos no checkpoint:** parser off-by-one (lia cols 11/14/15/17 em vez de 12/15/16/18 → 0 linhas) + geocoder extractLocality (texto cru não casava no Nominatim). Decisões D-10-01..08 cobertas.
 - **Pilha de ranking não-commitada (WIP do usuário, NÃO tocar):** 14 arquivos (ranking.*.ts, tabs, useRanking, novos DriverImport.tsx/accordion.tsx/driverInsights.ts, torre package.json/bun.lock) — feature de ranking em progresso, deixada intacta no working tree por decisão do usuário.
 - **Phase 09 (anterior):** ✅ COMPLETE (7/7 plans). W1: 09-01 writes/audit/cache + 09-02 GET /logs · W2: 09-03 POST /evaluations (upsert + auto-block NO_SHOW) + blocks (requireRole admin|supervisor) — checkpoint paridade VERIFICADO 11/11 live · W3: 09-04 route-scores CRUD · W4: 09-05 mutation hooks · W5: 09-06/07 wiring UI. tsc/build/25 tests verde.
 - **Phase 08 (anterior):** ✅ COMPLETE (8/8 plans). Wave 1: 08-01 hooks + 08-02 mojibake · Wave 2: 08-03 /ranking shell navegável · Wave 3: 08-04 Ranking+DriverDetails, 08-05 Viagens+EvaluationForm(shell), 08-06 Qualidade(Chart.js), 08-07 Bloqueios+Rotas, 08-08 Logs(shell). Build integrado das 6 abas exit 0. W1: 09-01 writes/audit/cache (ranking.writes/audit/cache.ts) + 09-02 GET /logs · W2: 09-03 POST /evaluations (upsert CRIAÇÃO/EDIÇÃO + auto-block NO_SHOW) + POST /blocks + PATCH /blocks/:id (requireRole admin|supervisor, plugin path) — **checkpoint paridade VERIFICADO 11/11 live** · W3: 09-04 route-scores CRUD · W4: 09-05 mutation hooks + useCanWriteRanking · W5: 09-06 EvalForm/Bloqueios/Viagens wiring + 09-07 Rotas CRUD + LogsTab live. Verif: backend tsc 0, frontend tsc -b 0, vite build 0, 25 tests pass. Fluxo avaliar→pontuar→bloquear→desbloquear end-to-end provado.
