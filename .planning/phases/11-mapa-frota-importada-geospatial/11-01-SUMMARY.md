@@ -32,9 +32,9 @@ decisions:
   - "as unknown as PositionRow[] — double-cast necessário porque db.execute retorna RowList<Record<string,unknown>[]>; não overlaps com PositionRow[] diretamente"
   - "positionsReadPlugin registrado ANTES de wsPlugin (Elysia 1.4 wsPlugin-last rule)"
 metrics:
-  duration: "~20 min"
+  duration: "~25 min"
   completed: "2026-06-01"
-  tasks_completed: 2
+  tasks_completed: 3
   tasks_total: 3
   files_created: 2
   files_modified: 1
@@ -51,10 +51,17 @@ metrics:
 | 1 | positions.service.ts — getFleetPositions | `a7121b3` | `api/src/modules/positions/positions.service.ts` (created) |
 | 2 | positions.plugin.ts + wire index.ts | `3fc20e0` | `api/src/modules/positions/positions.plugin.ts` (created), `api/src/index.ts` (modified) |
 
-## Task 3 — CHECKPOINT (pending)
+## Task 3 — CHECKPOINT (VERIFICADO)
 
 **Type:** `checkpoint:human-verify` (gate: blocking)
-**Status:** Awaiting `RANK_SUPABASE_SERVICE_KEY` no .env + servidor local + verificação curl
+**Status:** VERIFICADO live pelo usuário (getFleetPositions contra Supabase Torre + ranking proxy com RANK_*)
+
+Resultado da verificação live:
+- **69 posições** retornadas, **sem duplicatas** por motorista, lat/lng numéricos ✓
+- **401 sem cookie** (authGuard estrutural) ✓
+- **21/69 posições enriquecidas** (ranked:true) após o fix do ID-suffix no join
+- **ADAUTO SANTOS COSTA:** `ranked=true`, `status=ATIVO`, `rank=1`, `pontuacao=93.2` ✓
+- Posições sem match no ranking → `ranked:false`, `status:null` (marcador neutro) ✓
 
 ## Verification Passed (autonomous)
 
@@ -77,9 +84,16 @@ metrics:
 - **Files modified:** `api/src/modules/positions/positions.service.ts`
 - **Commit:** `a7121b3`
 
+**2. [Rule 1 - Bug] ID-suffix no nome do ranking quebrava o join (0 matches)**
+- **Found during:** Task 3 (verificação live do join, pelo usuário)
+- **Issue:** o `nome` do ranking traz o ID do motorista no fim — `"ADAUTO SANTOS COSTA (2729070)"` — enquanto `driver_positions.motorista_norm` (da planilha) NÃO tem o ID. `normalizeMotorista()` direto nunca batia → 0/69 enriquecidas.
+- **Fix:** strip do sufixo ` (\d+)` via `d.nome.replace(/\s*\(\d+\)\s*$/, '')` ANTES de `normalizeMotorista` na montagem do `byName` Map.
+- **Files modified:** `api/src/modules/positions/positions.service.ts` (linha ~91)
+- **Commit:** corrigido e commitado pelo usuário fora desta task; re-verificado live → 21/69 enriquecidas, ADAUTO ranked=true rank=1 pts=93.2.
+
 ## Known Stubs
 
-None — getFleetPositions() implementado com query real (geom IS NOT NULL), join real (getRankingDrivers), projeção completa. O join live (ranked:true/false) depende de RANK_* envs — verificação adiada para Task 3 checkpoint.
+None — getFleetPositions() implementado com query real (geom IS NOT NULL), join real (getRankingDrivers), projeção completa. Join live VERIFICADO (Task 3): 69 posições, 21 enriquecidas, ADAUTO rank=1.
 
 ## Threat Surface Scan
 
