@@ -287,16 +287,22 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
       const p = f.properties as Record<string, unknown>
       const coords = (f.geometry as GeoJSON.Point).coordinates as [number, number]
 
-      // Build popup DOM safely (T-11-06: no innerHTML with user data)
+      // Build popup DOM safely (T-11-06: no innerHTML with user data).
+      // Estilo: mini-card Argon (tokens var(--card)/--border etc.), mantendo
+      // a montagem 100% por textContent (sem innerHTML).
       const container = document.createElement('div')
-      container.style.cssText = 'font-size:12px;line-height:1.6;min-width:160px;'
+      container.style.cssText =
+        "background: var(--card); color: var(--card-foreground); border-radius: 0.75rem; box-shadow: 0 0 1.5rem 0 rgba(136,152,170,0.25); border: 1px solid var(--border); padding: 0.75rem 0.875rem; font-family: 'Open Sans', system-ui, sans-serif; font-size: 12px; line-height: 1.5; min-width: 190px;"
 
-      function addRow(label: string, value: string) {
+      function addRow(label: string, value: string, opts?: { titleRow?: boolean }) {
         const row = document.createElement('div')
         const strong = document.createElement('strong')
         strong.textContent = label + ': '
         const span = document.createElement('span')
         span.textContent = value
+        if (opts?.titleRow) {
+          row.style.fontWeight = '600'
+        }
         row.appendChild(strong)
         row.appendChild(span)
         container.appendChild(row)
@@ -310,7 +316,7 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
       // ranked may arrive as string 'true'/'false' (maplibre serialises properties)
       const ranked = p['ranked'] === true || p['ranked'] === 'true'
 
-      addRow('Motorista', motorista)
+      addRow('Motorista', motorista, { titleRow: true })
       addRow('Local', uf ? `${cidade}/${uf}` : cidade)
       addRow('Data', dataPosicao ? formatDate(dataPosicao, 'dd/MM/yyyy HH:mm') : '—')
       addRow('Veículo', veiculo)
@@ -432,9 +438,9 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
           {showFleet && (
             <>
               <div className="mt-1 mb-0.5 text-muted-foreground font-medium">Frota importada</div>
-              <div className="flex items-center gap-2 text-foreground"><Truck className="h-2.5 w-2.5 text-[#2dce89]" /> Ativo</div>
-              <div className="flex items-center gap-2 text-foreground"><Truck className="h-2.5 w-2.5 text-[#f5365c]" /> Bloqueado</div>
-              <div className="flex items-center gap-2 text-foreground"><Truck className="h-2.5 w-2.5 text-[#95959e]" /> Sem match</div>
+              <div className="flex items-center gap-2 text-foreground"><Truck className="h-2.5 w-2.5" style={{ color: FLEET_COLORS.ATIVO }} /> Ativo</div>
+              <div className="flex items-center gap-2 text-foreground"><Truck className="h-2.5 w-2.5" style={{ color: FLEET_COLORS.BLOQUEADO }} /> Bloqueado</div>
+              <div className="flex items-center gap-2 text-foreground"><Truck className="h-2.5 w-2.5" style={{ color: FLEET_COLORS.neutral }} /> Sem match</div>
             </>
           )}
         </div>

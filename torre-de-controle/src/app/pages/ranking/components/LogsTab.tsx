@@ -1,8 +1,9 @@
 import { useMemo } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { DataTable } from '@/components/domain/DataTable'
-import { Badge } from '@/components/ui/badge'
 import { fixMojibake } from '@/lib/mojibake'
+import { cn } from '@/lib/utils'
+import { toneText, toneBadge, BADGE_BASE, type StatusTone } from '@/lib/statusColors'
 import { useRankingLogs } from '@/hooks/useRanking'
 import type { EvaluationLogRecord } from '@/hooks/useRanking'
 
@@ -23,43 +24,27 @@ type LogRow = EvaluationLogRecord & { id: string }
 const DIFF_OMIT_KEYS = ['trip_id', 'driver_id', 'driver_name', 'operador'] as const
 
 /**
- * Badge de acao no tom Argon (mesma abordagem de cor inline do DriverStatusBadge
- * em RankingTab — a Badge shadcn nao tem variante `success`).
- * CRIACAO=verde, EDICAO=azul, DESBLOQUEIO=ambar, default=outline.
+ * Tom Argon por ação de auditoria (unificado via toneBadge — tokens oklch).
+ * CRIAÇÃO→success, EDIÇÃO→info, BLOQUEIO_NO_SHOW→danger, BLOQUEIO_MANUAL→warning,
+ * DESBLOQUEIO→neutral. Default (ação desconhecida) → neutral.
  */
+function actionTone(upper: string): StatusTone {
+  if (upper === 'CRIAÇÃO' || upper === 'CRIACAO') return 'success'
+  if (upper === 'EDIÇÃO' || upper === 'EDICAO') return 'info'
+  if (upper === 'BLOQUEIO_NO_SHOW') return 'danger'
+  if (upper === 'BLOQUEIO_MANUAL') return 'warning'
+  if (upper === 'DESBLOQUEIO') return 'neutral'
+  return 'neutral'
+}
+
+/** Badge de ação no tom Argon (toneBadge + BADGE_BASE — sem hex hardcoded). */
 function ActionBadge({ acao }: { acao: string }) {
   const upper = (acao ?? '').toUpperCase()
-  if (upper === 'CRIAÇÃO' || upper === 'CRIACAO') {
-    return (
-      <Badge
-        className="text-[10px]"
-        style={{
-          backgroundColor: 'var(--status-no-prazo-bg)',
-          color: 'var(--status-no-prazo-fg)',
-        }}
-      >
-        {acao}
-      </Badge>
-    )
-  }
-  if (upper === 'EDIÇÃO' || upper === 'EDICAO') {
-    return (
-      <Badge className="text-[10px] bg-blue-500/15 text-blue-600 border-blue-500/20">
-        {acao}
-      </Badge>
-    )
-  }
-  if (upper === 'DESBLOQUEIO') {
-    return (
-      <Badge className="text-[10px] bg-amber-500/15 text-amber-600 border-amber-500/20">
-        {acao}
-      </Badge>
-    )
-  }
+  const tone = actionTone(upper)
   return (
-    <Badge variant="outline" className="text-[10px]">
+    <span className={cn(BADGE_BASE, toneBadge[tone], 'text-[10px]')}>
       {acao || '—'}
-    </Badge>
+    </span>
   )
 }
 
@@ -106,9 +91,9 @@ function renderDiff(
             <span className="text-muted-foreground">{key}:</span>{' '}
             {hasBefore ? (
               <>
-                <span className="text-red-500 line-through">{beforeText}</span>
+                <span className={cn(toneText.danger, 'line-through')}>{beforeText}</span>
                 <span className="text-muted-foreground"> → </span>
-                <span className="text-emerald-500">{afterText}</span>
+                <span className={toneText.success}>{afterText}</span>
               </>
             ) : (
               <span className="text-foreground">{afterText}</span>

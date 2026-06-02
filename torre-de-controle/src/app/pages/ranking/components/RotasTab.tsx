@@ -383,6 +383,7 @@ export function RotasTab() {
             </Button>
             <Button
               type="button"
+              variant="gradient-primary"
               disabled={!canWrite || isPending}
               onClick={handleSave}
             >

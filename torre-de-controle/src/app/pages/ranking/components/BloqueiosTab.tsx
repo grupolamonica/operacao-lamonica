@@ -142,7 +142,7 @@ function ManualBlockDialog({
           </Button>
           <Button
             type="button"
-            variant="destructive"
+            variant="gradient-primary"
             disabled={
               blockDriver.isPending ||
               !driverId.trim() ||

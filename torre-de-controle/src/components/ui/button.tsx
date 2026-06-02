@@ -9,9 +9,9 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        default: "bg-primary text-primary-foreground hover:bg-primary/90 hover:-translate-y-px hover:shadow-md",
         destructive:
-          "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40",
+          "bg-destructive text-white hover:bg-destructive/90 hover:-translate-y-px hover:shadow-md focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40",
         outline:
           "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
         secondary:
@@ -19,8 +19,8 @@ const buttonVariants = cva(
         ghost:
           "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
         link: "text-primary underline-offset-4 hover:underline",
-        success: "bg-success text-white shadow-md hover:bg-success/90",
-        info: "bg-info text-white shadow-md hover:bg-info/90",
+        success: "bg-success text-white shadow-md hover:bg-success/90 hover:-translate-y-px hover:shadow-lg",
+        info: "bg-info text-white shadow-md hover:bg-info/90 hover:-translate-y-px hover:shadow-lg",
         "gradient-primary": "btn-gradient-primary",
         "gradient-dark": "btn-gradient-dark",
       },

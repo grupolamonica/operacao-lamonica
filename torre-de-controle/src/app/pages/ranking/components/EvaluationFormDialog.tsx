@@ -212,6 +212,7 @@ export function EvaluationFormDialog({ tripId, open, onOpenChange }: EvaluationF
             </Button>
             <Button
               type="button"
+              variant="gradient-primary"
               disabled={!canWrite || evaluateTrip.isPending}
               onClick={onSave}
             >

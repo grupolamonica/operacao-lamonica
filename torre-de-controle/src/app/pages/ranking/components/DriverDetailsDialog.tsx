@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import type { ColumnDef } from '@tanstack/react-table'
 import {
   Activity, AlertCircle, Building2, CalendarDays, FileText, MapPinned,
   Route, ShieldAlert, ShieldCheck, TimerReset, Trophy,
@@ -13,6 +14,8 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
+import { PanelCard } from '@/components/domain/PanelCard'
+import { DataTable } from '@/components/domain/DataTable'
 import {
   useRankingTrips,
   useRankingEvaluations,
@@ -102,16 +105,19 @@ function EtaBlock({
   metrics: { onTime: number; early: number; delay: number }
 }) {
   return (
-    <div className="rounded-xl bg-card p-4" style={{ border: '1px solid var(--border)' }}>
-      <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-        <Icon className="h-4 w-4 text-primary" /> {title}
-      </h4>
+    <PanelCard
+      title={
+        <span className="flex items-center gap-2">
+          <Icon className="h-4 w-4 text-primary" /> {title}
+        </span>
+      }
+    >
       <div className="grid grid-cols-3 gap-3">
         <MetricPill label="On Time" value={metrics.onTime} kind="onTime" />
         <MetricPill label="Early" value={metrics.early} kind="early" />
         <MetricPill label="Delay" value={metrics.delay} kind="delay" />
       </div>
-    </div>
+    </PanelCard>
   )
 }
 
@@ -194,6 +200,66 @@ export function DriverDetailsDialog({ driver, open, onOpenChange }: DriverDetail
           )
         : null,
     [driver, driverTrips, evaluationSummary, totalRanked],
+  )
+
+  // Linhas da tabela de rotas: DataTable exige `id`; aliasamos a `key` da rota.
+  const routeRows = useMemo(
+    () => routeSummaries.map((r) => ({ ...r, id: r.key })),
+    [routeSummaries],
+  )
+  type RouteRow = (typeof routeRows)[number]
+
+  const routeColumns = useMemo<ColumnDef<RouteRow, unknown>[]>(
+    () => [
+      {
+        id: 'label',
+        header: 'Rota',
+        cell: ({ row }) => <span className="font-mono text-xs">{row.original.label}</span>,
+      },
+      {
+        id: 'tripCount',
+        header: () => <span className="block text-right">Viagens</span>,
+        cell: ({ row }) => (
+          <span className="block text-right font-mono">{row.original.tripCount}</span>
+        ),
+      },
+      {
+        id: 'totalScore',
+        header: () => <span className="block text-right">Pontos</span>,
+        cell: ({ row }) => (
+          <span className="block text-right font-mono font-semibold">{row.original.totalScore.toFixed(1)}</span>
+        ),
+      },
+      {
+        id: 'averageScore',
+        header: () => <span className="block text-right">Média</span>,
+        cell: ({ row }) => (
+          <span className="block text-right font-mono">{row.original.averageScore.toFixed(1)}</span>
+        ),
+      },
+      {
+        id: 'occurrenceCount',
+        header: () => <span className="block text-right">Ocorr.</span>,
+        cell: ({ row }) => (
+          <span className="block text-right font-mono">{row.original.occurrenceCount}</span>
+        ),
+      },
+      {
+        id: 'evaluatedCount',
+        header: () => <span className="block text-right">Avaliadas</span>,
+        cell: ({ row }) => (
+          <span className="block text-right font-mono">{row.original.evaluatedCount}</span>
+        ),
+      },
+      {
+        id: 'lastTripDate',
+        header: 'Última Viagem',
+        cell: ({ row }) => (
+          <span className="whitespace-nowrap text-xs text-muted-foreground">{row.original.lastTripDate || '—'}</span>
+        ),
+      },
+    ],
+    [],
   )
 
   if (!driver || !evaluationSummary || !analysis) return null
@@ -303,10 +369,13 @@ export function DriverDetailsDialog({ driver, open, onOpenChange }: DriverDetail
                 <EtaBlock title="ETA Destino" icon={CalendarDays} metrics={driver.etaDestMetrics} />
               </div>
 
-              <div className="rounded-xl bg-card p-4" style={{ border: '1px solid var(--border)' }}>
-                <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-                  <MapPinned className="h-4 w-4 text-primary" /> Panorama Rápido
-                </h4>
+              <PanelCard
+                title={
+                  <span className="flex items-center gap-2">
+                    <MapPinned className="h-4 w-4 text-primary" /> Panorama Rápido
+                  </span>
+                }
+              >
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   <DetailItem label="Motorista" value={displayName} />
                   <DetailItem label="Rank no Filtro" value={rankLabel} />
@@ -318,64 +387,30 @@ export function DriverDetailsDialog({ driver, open, onOpenChange }: DriverDetail
                   <DetailItem label="Avaliações" value={evaluationSummary.evaluationCount} />
                   <DetailItem label="No-show" value={evaluationSummary.noShowCount} />
                 </div>
-              </div>
+              </PanelCard>
             </TabsContent>
 
             {/* ---- Rotas ---- */}
             <TabsContent value="rotas">
-              <div className="rounded-xl bg-card overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-                <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
-                  <Route className="h-4 w-4 text-primary" />
-                  <h4 className="text-sm font-semibold text-foreground">Rotas do Motorista</h4>
-                </div>
-                <div className="overflow-x-auto">
-                  {routeSummaries.length === 0 ? (
-                    <p className="px-4 py-8 text-center text-sm text-muted-foreground">Nenhuma rota no recorte.</p>
-                  ) : (
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                          {['Rota', 'Viagens', 'Pontos', 'Média', 'Ocorr.', 'Avaliadas', 'Última Viagem'].map((h, i) => (
-                            <th
-                              key={h}
-                              className={cn('px-4 py-2.5 text-[10px] font-bold uppercase tracking-[0.08em] text-muted-foreground', i === 0 || i === 6 ? 'text-left' : 'text-right')}
-                            >
-                              {h}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {routeSummaries.map((r) => (
-                          <tr key={r.key} style={{ borderBottom: '1px solid var(--border)' }}>
-                            <td className="px-4 py-3 font-mono text-xs">{r.label}</td>
-                            <td className="px-4 py-3 text-right font-mono">{r.tripCount}</td>
-                            <td className="px-4 py-3 text-right font-mono font-semibold">{r.totalScore.toFixed(1)}</td>
-                            <td className="px-4 py-3 text-right font-mono">{r.averageScore.toFixed(1)}</td>
-                            <td className="px-4 py-3 text-right font-mono">{r.occurrenceCount}</td>
-                            <td className="px-4 py-3 text-right font-mono">{r.evaluatedCount}</td>
-                            <td className="px-4 py-3 whitespace-nowrap text-xs text-muted-foreground">{r.lastTripDate || '—'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              </div>
+              <DataTable<RouteRow>
+                data={routeRows}
+                columns={routeColumns}
+                title="Rotas do Motorista"
+                emptyMessage="Nenhuma rota no recorte."
+              />
             </TabsContent>
 
             {/* ---- Viagens ---- */}
             <TabsContent value="viagens">
-              <div className="rounded-xl bg-card overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-                <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-primary" />
-                    <h4 className="text-sm font-semibold text-foreground">Viagens e Informações Completas</h4>
-                  </div>
-                  <span className="text-xs text-muted-foreground">
-                    {tripsLoading ? 'Carregando…' : `${sortedTrips.length} viagens`}
+              <PanelCard
+                title={
+                  <span className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-primary" /> Viagens e Informações Completas
                   </span>
-                </div>
+                }
+                subtitle={tripsLoading ? 'Carregando…' : `${sortedTrips.length} viagens`}
+                noPadding
+              >
                 {sortedTrips.length === 0 ? (
                   <p className="px-4 py-8 text-center text-sm text-muted-foreground">
                     {tripsLoading ? 'Carregando viagens…' : 'Nenhuma viagem para este motorista.'}
@@ -444,7 +479,7 @@ export function DriverDetailsDialog({ driver, open, onOpenChange }: DriverDetail
                     })}
                   </Accordion>
                 )}
-              </div>
+              </PanelCard>
             </TabsContent>
           </Tabs>
         </div>

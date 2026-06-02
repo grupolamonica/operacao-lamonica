@@ -140,7 +140,7 @@ export function DriverImport() {
                 <div className="flex flex-col items-center gap-2">
                   <CheckCircle className="h-8 w-8 text-emerald-500" />
                   <p className="text-sm font-medium">{result.count} motoristas importados</p>
-                  <Button variant="outline" size="sm" onClick={() => setResult(null)}>
+                  <Button variant="gradient-primary" size="sm" onClick={() => setResult(null)}>
                     Importar outra
                   </Button>
                 </div>

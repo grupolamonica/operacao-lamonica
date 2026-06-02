@@ -126,7 +126,7 @@ export function useRankingTrips(opts?: RankingFilterOpts) {
       return ((data ?? []) as Trip[]).map((t) => {
         let out: Record<string, unknown> | null = null
         for (const key in t) {
-          const v = (t as Record<string, unknown>)[key]
+          const v = (t as unknown as Record<string, unknown>)[key]
           if (v instanceof Date) {
             out = out ?? { ...t }
             out[key] = formatDate(v, 'dd/MM/yyyy HH:mm:ss')

@@ -6,6 +6,7 @@ import { useRankingDrivers, type RankedDriver, type RankingFilterOpts } from '@/
 import { fixMojibake } from '@/lib/mojibake'
 import { getDriverVinculoLabel } from '@/lib/driverInsights'
 import { cn } from '@/lib/utils'
+import { toneText } from '@/lib/statusColors'
 import { DriverDetailsDialog } from './DriverDetailsDialog'
 
 /**
@@ -74,9 +75,9 @@ function sortValue(d: RankedDriver, key: SortKey): number {
 
 /** Cor das metricas ETA: onTime = verde, early = azul, delay = vermelho. */
 function metricClass(kind: 'onTime' | 'early' | 'delay'): string {
-  if (kind === 'onTime') return 'text-emerald-500'
-  if (kind === 'early') return 'text-blue-500'
-  return 'text-red-500'
+  if (kind === 'onTime') return toneText.success
+  if (kind === 'early') return toneText.info
+  return toneText.danger
 }
 
 function MetricCell({ value, kind }: { value: number; kind: 'onTime' | 'early' | 'delay' }) {

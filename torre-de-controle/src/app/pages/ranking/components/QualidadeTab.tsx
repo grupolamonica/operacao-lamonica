@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { fixMojibake } from '@/lib/mojibake'
 import { useRankingTrips, useRankingDrivers } from '@/hooks/useRanking'
 import type { Trip, RankedDriver, RankingFilterOpts } from '@/hooks/useRanking'
+import { toneText, toneBadge } from '@/lib/statusColors'
 
 ChartJS.register(BarElement, CategoryScale, LinearScale, Tooltip, Legend)
 
@@ -112,7 +113,7 @@ function RouteSignalList({
   routes: RouteDatum[]
   tone: 'info' | 'warning'
 }) {
-  const toneClass = tone === 'warning' ? 'text-[#fb6340]' : 'text-[#11cdef]'
+  const toneClass = tone === 'warning' ? toneText.warning : toneText.info
   return (
     <div>
       <div className={`text-sm font-semibold ${toneClass}`}>{title}</div>
@@ -148,10 +149,7 @@ function DriverRow({
   driver: RankedDriver
   tone: 'positive' | 'warning'
 }) {
-  const badgeClass =
-    tone === 'positive'
-      ? 'bg-[#2dce89]/15 text-[#2dce89]'
-      : 'bg-[#f5365c]/15 text-[#f5365c]'
+  const badgeClass = tone === 'positive' ? toneBadge.success : toneBadge.danger
   return (
     <div className="rounded-xl bg-muted/40 px-3 py-3">
       <div className="flex items-start justify-between gap-3">
