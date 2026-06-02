@@ -37,6 +37,9 @@ const BiExecutivoPage = lazy(() =>
 const PrevisaoPage = lazy(() =>
   import('./pages/previsao/PrevisaoPage').then(m => ({ default: m.PrevisaoPage })),
 )
+const AssistentePage = lazy(() =>
+  import('./pages/assistente/AssistentePage').then(m => ({ default: m.AssistentePage })),
+)
 const ConfiguracoesPage = lazy(() =>
   import('./pages/configuracoes/ConfiguracoesPage').then(m => ({ default: m.ConfiguracoesPage })),
 )
@@ -72,6 +75,7 @@ export const router = createBrowserRouter([
           { path: 'insights',          element: <L><InsightsPage /></L> },
           { path: 'bi-executivo',      element: <L><BiExecutivoPage /></L> },
           { path: 'previsao',          element: <L><PrevisaoPage /></L> },
+          { path: 'assistente',        element: <L><AssistentePage /></L> },
           { path: 'heatmap',           element: <L><HeatmapPage /></L> },
           { path: 'ranking',           element: <L><RankingPage /></L> },
           { path: 'configuracoes',     element: <L><ConfiguracoesPage /></L> },
