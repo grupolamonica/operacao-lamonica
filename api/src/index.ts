@@ -38,6 +38,8 @@ import { rankingWritePlugin } from './modules/ranking/ranking.write.plugin'
 import { positionsReadPlugin } from './modules/positions/positions.plugin'
 // Sprint 4 — SLA rules engine + dashboard
 import { slaPlugin } from './modules/sla/sla.plugin'
+// Sprint 6 — Heatmap geográfico
+import { heatmapPlugin } from './modules/heatmap/heatmap.plugin'
 import { processAlertDetection } from './jobs/alert-inline'
 import { sql, desc } from 'drizzle-orm'
 import { geofences, geofenceEvents } from './db/schema/geofences'
@@ -188,6 +190,7 @@ export const app = new Elysia()
   // Phase 11 — positions read wired BEFORE wsPlugin (wsPlugin-last rule, Elysia 1.4).
   .use(positionsReadPlugin)
   .use(slaPlugin)
+  .use(heatmapPlugin)
   .use(wsPlugin)
   // Telemetry inlined to avoid Elysia 1.4.28 plugin-composition issue with body schema
   .post('/api/telemetry/ingest', async ({ body, headers, set }) => {
