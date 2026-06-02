@@ -5,6 +5,7 @@ import { trips } from '../db/schema/trips'
 import { alerts } from '../db/schema/alerts'
 import { logger } from '../lib/logger'
 import { dispatchAlertPush } from '../modules/push/push.dispatcher'
+import { processGeofenceDetection } from './geofence-detector'
 
 const DELAY_CRITICAL_MINUTES = 30
 const STOP_MINUTES            = 5
@@ -29,6 +30,11 @@ export async function processAlertDetection(
 
   // Update last_update timestamp
   await redis.set(`last_update:${vehicleId}`, capturedAt, 'EX', 3600)
+
+  // Geofence entry/exit — non-blocking on alert pipeline. Failures must NOT
+  // break alert detection, so wrap in try/catch.
+  processGeofenceDetection({ vehicleId, tripId: trip.id, lat, lng, capturedAt })
+    .catch((e) => logger.error({ error: e?.message ?? String(e), vehicleId, tripId: trip.id }, 'geofence detection failed'))
 
   const detectedAlerts: Array<{ type: string; severity: string; title: string; description: string; delayMinutes?: number }> = []
 

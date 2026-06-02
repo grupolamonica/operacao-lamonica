@@ -1,6 +1,7 @@
 import { Elysia, t } from 'elysia'
 import { authGuard } from '../../lib/rbac'
 import { listTrips, getTripById, getTripStats } from './trips.service'
+import { getTripTimeline } from './timeline.service'
 
 const tripStatus = t.Union([t.Literal('planned'), t.Literal('in_progress'), t.Literal('completed'), t.Literal('delayed'), t.Literal('cancelled')])
 const slaStatus  = t.Union([t.Literal('no_prazo'), t.Literal('em_risco'), t.Literal('atrasado'), t.Literal('sem_sinal')])
@@ -44,5 +45,13 @@ export const tripsPlugin = new Elysia({ name: 'trips' })
       }, {
         params: t.Object({ id: t.String({ format: 'uuid' }) }),
         detail: { tags: ['trips'], summary: 'Get trip by id' },
+      })
+      .get('/:id/timeline', async ({ params, set }) => {
+        const trip = await getTripById(params.id)
+        if (!trip) { set.status = 404; return { error: 'Trip not found' } }
+        return getTripTimeline(params.id)
+      }, {
+        params: t.Object({ id: t.String({ format: 'uuid' }) }),
+        detail: { tags: ['trips'], summary: 'Unified timeline (events + alerts + treatments)' },
       })
   )

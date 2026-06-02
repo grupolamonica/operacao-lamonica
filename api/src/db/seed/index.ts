@@ -3,6 +3,7 @@ import { db } from '../client'
 import {
   users, clients, routes, drivers, driverDocuments, vehicles, trips, alerts,
 } from '../schema'
+import { tripEvents } from '../schema/trip-events'
 import { alertThresholds } from '../schema/alert-thresholds'
 
 const FIRST_NAMES = ['Carlos', 'Lucas', 'Pedro', 'Rafael', 'Tiago', 'Marcos', 'Felipe',
@@ -187,6 +188,49 @@ async function seed() {
   })
   await db.insert(alerts).values(alertRows)
   console.log(`[seed] alerts: ${alertRows.length}`)
+
+  // Seed realistic trip_events per in-progress trip — 3-6 events forming a
+  // coherent timeline (load → depart → in_route → stops → arrival).
+  type EvtType =
+    | 'load_started' | 'load_finished' | 'departed' | 'in_route'
+    | 'stopped' | 'resumed' | 'arrived_client' | 'unload_started' | 'unload_finished'
+  const eventTemplates: Array<{ type: EvtType; offsetMin: number; note?: string }> = [
+    { type: 'load_started',    offsetMin: -360, note: 'CD origem'                          },
+    { type: 'load_finished',   offsetMin: -300                                              },
+    { type: 'departed',        offsetMin: -290, note: 'Saída da origem'                    },
+    { type: 'in_route',        offsetMin: -270                                              },
+    { type: 'stopped',         offsetMin: -180, note: 'Posto de combustível'               },
+    { type: 'resumed',         offsetMin: -160                                              },
+    { type: 'arrived_client',  offsetMin: -45,  note: 'Chegada no cliente'                 },
+    { type: 'unload_started',  offsetMin: -30                                               },
+    { type: 'unload_finished', offsetMin: -10                                               },
+  ]
+  const evtRows: Array<typeof tripEvents.$inferInsert> = []
+  for (const t of insertedTrips) {
+    const baseTime = t.departedAt?.getTime() ?? Date.now()
+    // pick the prefix of template that matches trip status
+    const stopIdx =
+      t.status === 'completed'     ? eventTemplates.length :
+      t.status === 'in_progress'   ? int(4, 6)             :
+      t.status === 'delayed'       ? int(3, 5)             :
+      t.status === 'planned'       ? 0                     :
+      eventTemplates.length
+    for (let i = 0; i < stopIdx; i++) {
+      const tpl = eventTemplates[i]!
+      evtRows.push({
+        tripId:     t.id,
+        eventType:  tpl.type,
+        occurredAt: new Date(baseTime + tpl.offsetMin * 60_000),
+        notes:      tpl.note,
+        lat:        t.originLat ?? null,
+        lng:        t.originLng ?? null,
+      })
+    }
+  }
+  if (evtRows.length > 0) {
+    await db.insert(tripEvents).values(evtRows)
+  }
+  console.log(`[seed] trip_events: ${evtRows.length}`)
 
   // Phase 6 / CONTEXT D-19: seed default alert engine thresholds.
   // Idempotent via onConflictDoNothing — re-running seed never clobbers
