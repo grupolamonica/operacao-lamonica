@@ -48,6 +48,8 @@ import { biPlugin } from './modules/bi/bi.plugin'
 import { forecastPlugin } from './modules/forecast/forecast.plugin'
 // Sprint 10 — Assistente Operacional
 import { assistantPlugin } from './modules/assistant/assistant.plugin'
+// Sprint 11 — Simulador de Rotas
+import { simulatorPlugin } from './modules/simulator/simulator.plugin'
 import { processAlertDetection } from './jobs/alert-inline'
 import { sql, desc } from 'drizzle-orm'
 import { geofences, geofenceEvents } from './db/schema/geofences'
@@ -203,6 +205,7 @@ export const app = new Elysia()
   .use(biPlugin)
   .use(forecastPlugin)
   .use(assistantPlugin)
+  .use(simulatorPlugin)
   .use(wsPlugin)
   // Telemetry inlined to avoid Elysia 1.4.28 plugin-composition issue with body schema
   .post('/api/telemetry/ingest', async ({ body, headers, set }) => {
