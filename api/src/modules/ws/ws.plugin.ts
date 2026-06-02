@@ -13,6 +13,13 @@ const subscriber = new Redis(process.env.REDIS_URL, {
 
 const POSITIONS_CHANNEL = 'positions:update'
 const ALERTS_CHANNEL    = 'alerts:new'
+const TIMELINE_CHANNEL  = 'timeline:new'
+
+const CHANNEL_TO_TYPE: Record<string, string> = {
+  [POSITIONS_CHANNEL]: 'position:update',
+  [ALERTS_CHANNEL]:    'alert:new',
+  [TIMELINE_CHANNEL]:  'timeline:new',
+}
 
 // Connected WebSocket clients
 const clients = new Set<{ send: (msg: string) => void; id: string }>()
@@ -22,13 +29,15 @@ let subscribed = false
 async function ensureSubscribed() {
   if (subscribed) return
   await subscriber.connect().catch(() => {})
-  await subscriber.subscribe(POSITIONS_CHANNEL, ALERTS_CHANNEL)
+  await subscriber.subscribe(POSITIONS_CHANNEL, ALERTS_CHANNEL, TIMELINE_CHANNEL)
   subscriber.on('message', (channel, message) => {
-    const eventType = channel === POSITIONS_CHANNEL ? 'position:update' : 'alert:new'
+    const eventType = CHANNEL_TO_TYPE[channel] ?? channel
+    let parsed: unknown
+    try { parsed = JSON.parse(message) } catch { parsed = { raw: message } }
     const dead: Array<{ send: (msg: string) => void; id: string }> = []
     for (const client of clients) {
       try {
-        client.send(JSON.stringify({ type: eventType, data: JSON.parse(message) }))
+        client.send(JSON.stringify({ type: eventType, data: parsed }))
       } catch {
         dead.push(client)
       }
@@ -36,7 +45,7 @@ async function ensureSubscribed() {
     for (const d of dead) clients.delete(d)
   })
   subscribed = true
-  logger.info({ channel: POSITIONS_CHANNEL }, 'WS hub subscribed to Redis PubSub')
+  logger.info({ channels: Object.keys(CHANNEL_TO_TYPE) }, 'WS hub subscribed to Redis PubSub')
 }
 
 export const wsPlugin = new Elysia({ name: 'ws' })

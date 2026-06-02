@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { create } from 'zustand'
+import { useQueryClient } from '@tanstack/react-query'
 
 export type VehiclePosition = {
   vehicleId: string
@@ -43,6 +44,7 @@ const WS_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:3000')
 export function useVehiclePositions() {
   const wsRef    = useRef<WebSocket | null>(null)
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const qc       = useQueryClient()
 
   useEffect(() => {
     function connect() {
@@ -64,6 +66,20 @@ export function useVehiclePositions() {
             usePositionsStore.getState().setPosition(msg.data as VehiclePosition)
           } else if (msg.type === 'alert:new') {
             usePositionsStore.getState().incrementAlerts()
+            // Sprint 5 — refresh affected views without a manual reload.
+            // WS hub wraps the original payload in `data`, so read fields off `data`.
+            const tripId = msg.data?.tripId as string | undefined
+            qc.invalidateQueries({ queryKey: ['alerts'] })
+            qc.invalidateQueries({ queryKey: ['alert-stats'] })
+            qc.invalidateQueries({ queryKey: ['vehicle-context'] })
+            if (tripId) {
+              qc.invalidateQueries({ queryKey: ['trip-timeline', tripId] })
+              qc.invalidateQueries({ queryKey: ['trip-risk',     tripId] })
+            }
+          } else if (msg.type === 'timeline:new') {
+            const tripId = msg.data?.tripId as string | undefined
+            if (tripId) qc.invalidateQueries({ queryKey: ['trip-timeline', tripId] })
+            qc.invalidateQueries({ queryKey: ['vehicle-context'] })
           }
         } catch { /* ignore malformed */ }
       }
