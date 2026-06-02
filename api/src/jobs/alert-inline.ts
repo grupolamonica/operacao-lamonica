@@ -7,6 +7,7 @@ import { logger } from '../lib/logger'
 import { dispatchAlertPush } from '../modules/push/push.dispatcher'
 import { processGeofenceDetection } from './geofence-detector'
 import { recalcTripRisk } from '../modules/risk/risk.service'
+import { evaluateTripSla } from '../modules/sla/sla.service'
 
 const DELAY_CRITICAL_MINUTES = 30
 const STOP_MINUTES            = 5
@@ -41,6 +42,11 @@ export async function processAlertDetection(
   // is reflected. Non-blocking; never fails the telemetry path.
   recalcTripRisk(trip.id)
     .catch((e) => logger.error({ error: e?.message ?? String(e), tripId: trip.id }, 'risk recalc failed'))
+
+  // SLA evaluation — Sprint 4. autoAlert=true raises sla_em_risco/sla_quebrado/
+  // sla_multa alerts (debounced 30min per status). Non-blocking.
+  evaluateTripSla(trip.id, { autoAlert: true })
+    .catch((e) => logger.error({ error: e?.message ?? String(e), tripId: trip.id }, 'sla evaluation failed'))
 
   const detectedAlerts: Array<{ type: string; severity: string; title: string; description: string; delayMinutes?: number }> = []
 

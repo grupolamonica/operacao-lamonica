@@ -9,6 +9,7 @@ export * from './trip-events'
 export * from './alerts'
 export * from './treatments'
 export * from './geofences'
+export * from './sla-rules'
 // Phase 6 / Wave 0 — Insights+Polish+Deploy auxiliary tables
 export * from './push-subscriptions'
 export * from './alert-thresholds'

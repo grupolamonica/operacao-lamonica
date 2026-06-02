@@ -3,6 +3,7 @@ import { TripsInProgressTable } from './components/TripsInProgressTable'
 import { ExceptionsAlertsPanel } from './components/ExceptionsAlertsPanel'
 import { OperationalSummary } from './components/OperationalSummary'
 import { LiveMap } from '@/components/domain/LiveMap'
+import { SlaDashboardWidget } from '@/components/domain/SlaDashboardWidget'
 
 export function DashboardPage() {
   return (
@@ -20,6 +21,7 @@ export function DashboardPage() {
           <TripsInProgressTable />
         </div>
         <div className="lg:col-span-3 space-y-5">
+          <SlaDashboardWidget />
           <ExceptionsAlertsPanel />
           <OperationalSummary />
         </div>
