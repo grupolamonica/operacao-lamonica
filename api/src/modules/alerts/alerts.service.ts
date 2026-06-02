@@ -8,7 +8,7 @@ import { routes } from '../../db/schema/routes'
 
 export type AlertFilters = {
   severity?:   'critico'|'medio'|'baixo'
-  status?:     'aberto'|'em_tratativa'|'resolvido'
+  status?:     'aberto'|'em_analise'|'em_tratativa'|'resolvido'|'encerrado'
   type?:       string
   clientName?: string
   routeCode?:  string
@@ -89,6 +89,7 @@ export async function listAlerts(f: AlertFilters) {
       type:         r.type,
       severity:     r.severity,
       status:       r.status,
+      priority:     r.priority ?? 'media',
       tripId:       r.tripId ?? '',
       tripCode:     r.trip?.code ?? '',
       driverId:     r.driverId ?? '',
@@ -145,17 +146,29 @@ export async function resolveAlert(alertId: string) {
 export async function getAlertStats() {
   const all = await db.select().from(alerts)
   const startToday = new Date(); startToday.setHours(0, 0, 0, 0)
-  const criticos       = all.filter(a => a.severity === 'critico' && a.status !== 'resolvido').length
+  const terminal = new Set(['resolvido', 'encerrado'])
+  const criticos       = all.filter(a => a.severity === 'critico' && !terminal.has(a.status)).length
   const abertos        = all.filter(a => a.status === 'aberto').length
+  const emAnalise      = all.filter(a => a.status === 'em_analise').length
+  const emTratativa    = all.filter(a => a.status === 'em_tratativa').length
+  const resolvidos     = all.filter(a => a.status === 'resolvido').length
+  const encerrados     = all.filter(a => a.status === 'encerrado').length
   const resolvidosHoje = all.filter(a => a.resolvedAt && a.resolvedAt >= startToday).length
-  const closed   = all.filter(a => a.status === 'resolvido' && a.slaDeadline && a.resolvedAt)
+  const closed   = all.filter(a => terminal.has(a.status) && a.slaDeadline && a.resolvedAt)
   const onTime   = closed.filter(a => a.resolvedAt! <= a.slaDeadline!).length
   const slaPct   = closed.length ? Math.round((onTime / closed.length) * 100) : 100
+
+  const altaPrio  = all.filter(a => (a.priority ?? 'media') === 'alta' && !terminal.has(a.status)).length
+  const mediaPrio = all.filter(a => (a.priority ?? 'media') === 'media' && !terminal.has(a.status)).length
+  const baixaPrio = all.filter(a => (a.priority ?? 'media') === 'baixa' && !terminal.has(a.status)).length
 
   return {
     criticos:       { count: criticos },
     abertos:        { count: abertos },
     resolvidosHoje: { count: resolvidosHoje },
     slaTratativas:  { pct: slaPct },
+    // Sprint 2: status breakdown for ocorrências dashboard
+    byStatus:       { aberto: abertos, em_analise: emAnalise, em_tratativa: emTratativa, resolvido: resolvidos, encerrado: encerrados },
+    byPriority:     { alta: altaPrio, media: mediaPrio, baixa: baixaPrio },
   }
 }

@@ -11,7 +11,11 @@ export const alerts = pgTable('alerts', {
   // type values: 'atraso_critico'|'desvio_nao_autorizado'|'parada_nao_planejada'
   // |'sinal_gps_intermitente'|'tempo_parada_elevado'|'entrega_fora_janela'|'checklist_incompleto'
   severity:     varchar('severity', { length: 10 }).notNull(),    // critico|medio|baixo
-  status:       varchar('status', { length: 15 }).default('aberto').notNull(),  // aberto|em_tratativa|resolvido
+  // Workflow state machine (Sprint 2):
+  //   aberto → em_analise → em_tratativa → resolvido → encerrado
+  // Backwards-compatible: legacy rows in (aberto|em_tratativa|resolvido) still valid.
+  status:       varchar('status', { length: 15 }).default('aberto').notNull(),
+  priority:     varchar('priority', { length: 10 }).default('media').notNull(), // alta|media|baixa
   tripId:       uuid('trip_id').references(() => trips.id),
   driverId:     uuid('driver_id').references(() => drivers.id),
   vehicleId:    uuid('vehicle_id').references(() => vehicles.id),

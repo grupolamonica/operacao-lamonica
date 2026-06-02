@@ -1,56 +1,90 @@
-import { Hand, FileEdit, Phone, ArrowUpCircle, CheckCircle2 } from 'lucide-react'
+import { useState } from 'react'
+import { Phone, Loader2, AlertTriangle } from 'lucide-react'
 import { SidePanelLayout } from '@/components/domain/SidePanelLayout'
 import { SeverityBadge } from '@/components/domain/SeverityBadge'
 import { DriverAvatar } from '@/components/domain/DriverAvatar'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { formatDate, formatRelative } from '@/lib/formatters'
-import type { Alert } from '@/data/types'
+import { cn } from '@/lib/utils'
+import type { Alert, AlertStatus, Priority } from '@/data/types'
+import { AlertStatusStepper } from './AlertStatusStepper'
+import { AlertCommentThread } from './AlertCommentThread'
+import {
+  useAlertHistory, useTransitionAlert, useAddAlertComment, useSetAlertPriority,
+} from '@/hooks/useAlertWorkflow'
 
 interface Props {
-  alert: Alert
+  alert:   Alert
   onClose: () => void
 }
 
+const PRIORITY_TONE: Record<Priority, string> = {
+  alta:  'bg-danger/10 text-danger',
+  media: 'bg-warning/10 text-warning',
+  baixa: 'bg-muted text-muted-foreground',
+}
+
 export function AlertDetailPanel({ alert, onClose }: Props) {
-  const handle = (action: string) => () => console.log(`[alert ${alert.id}] ${action}`)
+  const { data: history = [], isLoading: historyLoading } = useAlertHistory(alert.id)
+  const transition = useTransitionAlert(alert.id)
+  const comment    = useAddAlertComment(alert.id)
+  const setPrio    = useSetAlertPriority(alert.id)
+  const [confirmTo, setConfirmTo] = useState<AlertStatus | null>(null)
+
+  const isPending = transition.isPending || comment.isPending || setPrio.isPending
+  const priority  = alert.priority ?? 'media'
+
+  function handleTransitionSelect(to: AlertStatus) {
+    // Direct path for benign moves; confirmation step for terminal-ish ones
+    if (to === 'resolvido' || to === 'encerrado') {
+      setConfirmTo(to)
+      return
+    }
+    transition.mutate({ to })
+  }
+
+  function confirmTransition() {
+    if (!confirmTo) return
+    transition.mutate({ to: confirmTo }, { onSettled: () => setConfirmTo(null) })
+  }
 
   return (
     <SidePanelLayout
       title={alert.title}
-      subtitle={`Alerta #${alert.id.toUpperCase()} · ${alert.tripCode}`}
+      subtitle={`Alerta #${alert.id.slice(0, 8).toUpperCase()} · ${alert.tripCode}`}
       onClose={onClose}
       footer={
         <div className="flex flex-col gap-2">
-          <Button size="sm" className="w-full text-xs gap-2" onClick={handle('assumir')}>
-            <Hand className="h-3.5 w-3.5" /> Assumir alerta
+          {transition.isError && (
+            <div className="flex items-start gap-1.5 text-[11px] text-danger px-1">
+              <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+              <span>{(transition.error as Error)?.message}</span>
+            </div>
+          )}
+          <Button size="sm" variant="outline" className="w-full text-xs gap-1.5">
+            <Phone className="h-3.5 w-3.5" /> Ligar para motorista
           </Button>
-          <div className="grid grid-cols-2 gap-2">
-            <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={handle('registrar_tratativa')}>
-              <FileEdit className="h-3.5 w-3.5" /> Registrar tratativa
-            </Button>
-            <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={handle('ligar')}>
-              <Phone className="h-3.5 w-3.5" /> Ligar para motorista
-            </Button>
-            <Button size="sm" variant="outline" className="text-xs gap-1.5" onClick={handle('escalar')}>
-              <ArrowUpCircle className="h-3.5 w-3.5" /> Escalar alerta
-            </Button>
-            <Button size="sm" variant="success" className="text-xs gap-1.5" onClick={handle('resolver')}>
-              <CheckCircle2 className="h-3.5 w-3.5" /> Marcar como resolvido
-            </Button>
-          </div>
         </div>
       }
     >
       <div className="space-y-4">
+        {/* Severity + priority chips */}
         <div className="flex items-center gap-2 flex-wrap">
           <SeverityBadge severity={alert.severity} size="md" />
-          <span
-            className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize"
-            style={{ backgroundColor: 'var(--status-sem-sinal-bg)', color: 'var(--status-sem-sinal-fg)' }}
+          <select
+            value={priority}
+            onChange={(e) => setPrio.mutate(e.target.value as Priority)}
+            disabled={isPending}
+            className={cn(
+              'text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 border-0 outline-none focus:ring-2 focus:ring-primary/30',
+              PRIORITY_TONE[priority],
+            )}
           >
-            {alert.status.replace('_', ' ')}
-          </span>
+            <option value="alta">Prioridade alta</option>
+            <option value="media">Prioridade média</option>
+            <option value="baixa">Prioridade baixa</option>
+          </select>
           <span
             className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
             style={{ backgroundColor: 'color-mix(in oklch, var(--primary) 15%, transparent)', color: 'var(--primary)' }}
@@ -59,11 +93,36 @@ export function AlertDetailPanel({ alert, onClose }: Props) {
           </span>
         </div>
 
+        {/* Status stepper */}
+        <div className="rounded-md border border-border p-2.5 bg-card">
+          <AlertStatusStepper
+            current={alert.status}
+            onSelect={handleTransitionSelect}
+            isPending={isPending}
+          />
+          {transition.isPending && (
+            <div className="flex items-center gap-1.5 mt-2 text-[11px] text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" /> Aplicando transição...
+            </div>
+          )}
+        </div>
+
+        {/* Confirmation banner for terminal transitions */}
+        {confirmTo && (
+          <div className="rounded-md border border-warning/40 bg-warning/5 p-3 text-xs space-y-2">
+            <p className="text-foreground">
+              Confirmar transição para <strong className="capitalize">{confirmTo.replace('_', ' ')}</strong>?
+            </p>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={confirmTransition} disabled={transition.isPending}>Confirmar</Button>
+              <Button size="sm" variant="outline" onClick={() => setConfirmTo(null)}>Cancelar</Button>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-3 text-xs">
           <Field label="Abertura" value={formatDate(alert.occurredAt, 'dd/MM HH:mm')} />
-          <Field label="Tempo em andamento" value={formatRelative(alert.occurredAt)} />
-          <Field label="Origem do alerta" value={alert.source} />
-          <Field label="Prioridade" value={alert.severity} capitalize />
+          <Field label="Em andamento há" value={formatRelative(alert.occurredAt)} />
         </div>
 
         <Separator />
@@ -102,16 +161,31 @@ export function AlertDetailPanel({ alert, onClose }: Props) {
             </div>
           </>
         )}
+
+        <Separator />
+
+        {/* Comment thread + composer */}
+        {historyLoading ? (
+          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <Loader2 className="h-3 w-3 animate-spin" /> Carregando histórico...
+          </div>
+        ) : (
+          <AlertCommentThread
+            items={history}
+            onSubmit={(text) => comment.mutate(text)}
+            isPending={comment.isPending}
+          />
+        )}
       </div>
     </SidePanelLayout>
   )
 }
 
-function Field({ label, value, capitalize }: { label: string; value: string; capitalize?: boolean }) {
+function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</p>
-      <p className={`text-sm font-medium text-foreground ${capitalize ? 'capitalize' : ''}`}>{value}</p>
+      <p className="text-sm font-medium text-foreground">{value}</p>
     </div>
   )
 }

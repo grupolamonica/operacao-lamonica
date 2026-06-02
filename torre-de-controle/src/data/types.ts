@@ -2,7 +2,7 @@
 export type SlaStatus = 'no_prazo' | 'em_risco' | 'atrasado' | 'sem_sinal'
 export type TripStatus = 'planned' | 'in_progress' | 'completed' | 'delayed' | 'cancelled'
 export type AlertSeverity = 'critico' | 'medio' | 'baixo'
-export type AlertStatus = 'aberto' | 'em_tratativa' | 'resolvido'
+export type AlertStatus = 'aberto' | 'em_analise' | 'em_tratativa' | 'resolvido' | 'encerrado'
 export type DriverStatus = 'available' | 'on_route' | 'unavailable'
 export type Priority = 'alta' | 'media' | 'baixa'
 export type DocStatus = 'valido' | 'vence_em_breve' | 'vencido'
@@ -82,6 +82,7 @@ export interface Alert {
   type: AlertType
   severity: AlertSeverity
   status: AlertStatus
+  priority?: Priority
   tripId: string
   tripCode: string
   driverId: string
@@ -155,6 +156,9 @@ export interface KPIAlertas {
   abertos:         { count: number }
   resolvidosHoje:  { count: number }
   slaTratativas:   { pct: number }   // gauge 0-100
+  // Sprint 2 — status & priority breakdown for ocorrências dashboard
+  byStatus?:       { aberto: number; em_analise: number; em_tratativa: number; resolvido: number; encerrado: number }
+  byPriority?:     { alta: number; media: number; baixa: number }
 }
 
 // ===== Filters =====

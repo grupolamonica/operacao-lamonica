@@ -41,6 +41,11 @@ const EVENT_LABELS: Record<string, { kind: TimelineKind; title: string }> = {
   unload_finished:   { kind: 'delivery',  title: 'Descarga concluída'            },
   closed:            { kind: 'delivery',  title: 'Viagem encerrada'              },
   manual_note:       { kind: 'pending',   title: 'Observação'                    },
+  // Sprint 2 — alert workflow lifecycle events
+  alert_under_review: { kind: 'alert',    title: 'Ocorrência em análise'         },
+  alert_in_treatment: { kind: 'alert',    title: 'Ocorrência em tratativa'       },
+  alert_resolved:     { kind: 'delivery', title: 'Ocorrência resolvida'          },
+  alert_closed:       { kind: 'delivery', title: 'Ocorrência encerrada'          },
 }
 
 const ALERT_LABELS: Record<string, string> = {
