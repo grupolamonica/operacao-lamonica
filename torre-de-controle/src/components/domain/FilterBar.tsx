@@ -71,6 +71,7 @@ export function MultiSelectFilter({
   icon: Icon = Filter,
   countNoun = 'selecionada',
   width = 'w-80',
+  isLoading = false,
 }: {
   label: string
   options: string[]
@@ -80,6 +81,7 @@ export function MultiSelectFilter({
   icon?: typeof Filter
   countNoun?: string
   width?: string
+  isLoading?: boolean
 }) {
   const count = selected.length
   const toggle = (o: string) =>
@@ -98,7 +100,7 @@ export function MultiSelectFilter({
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className={cn('max-h-80 overflow-y-auto', width)}>
+      <DropdownMenuContent align="end" className={cn('max-h-[min(480px,70vh)] overflow-y-auto', width)}>
         <div
           className="flex items-center justify-between px-2 py-1.5"
           style={{ borderBottom: '1px solid var(--border)' }}
@@ -127,6 +129,9 @@ export function MultiSelectFilter({
             )}
           </div>
         </div>
+        {isLoading && options.length === 0 && (
+          <div className="px-3 py-3 text-xs text-muted-foreground text-center">Carregando…</div>
+        )}
         {options.map((o) => (
           <DropdownMenuCheckboxItem
             key={o}

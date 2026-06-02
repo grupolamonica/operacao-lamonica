@@ -3,8 +3,8 @@ FROM oven/bun:1
 WORKDIR /app
 
 # Install deps first (cache layer)
-COPY package.json bun.lockb* ./
-RUN bun install --frozen-lockfile || bun install
+COPY package.json bun.lock* bun.lockb* ./
+RUN bun install
 
 # Copy source
 COPY . .

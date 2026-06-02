@@ -55,7 +55,7 @@ export function RankingPage() {
 
   // Filter OPTIONS derive from the (filtered) data — shared cache with the tabs.
   const { data: drivers } = useRankingDrivers(opts)
-  const { data: trips } = useRankingTrips(opts)
+  const { data: trips, isLoading: tripsLoading } = useRankingTrips(opts)
 
   const vinculoOptions = useMemo(() => {
     const s = new Set<string>()
@@ -69,7 +69,12 @@ export function RankingPage() {
     return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1])).map(([value, label]) => ({ value, label }))
   }, [trips])
 
-  const occurrenceOptions = useMemo(() => extractUniqueOccurrences(trips), [trips])
+  // Merge selected items so they always appear even before trips finish loading
+  const occurrenceOptions = useMemo(() => {
+    const set = new Set(extractUniqueOccurrences(trips))
+    for (const o of ignored) set.add(o)
+    return [...set].sort((a, b) => a.localeCompare(b))
+  }, [trips, ignored])
 
   return (
     <div className="space-y-5">
@@ -89,6 +94,7 @@ export function RankingPage() {
               onChange={setIgnored}
               onReset={() => setIgnored(DEFAULT_IGNORED_OCCURRENCES)}
               countNoun="ignorada"
+              isLoading={tripsLoading}
             />
             <DateRangeFilter from={from} to={to} onFrom={setFrom} onTo={setTo} />
             {canWrite && <DriverImport />}

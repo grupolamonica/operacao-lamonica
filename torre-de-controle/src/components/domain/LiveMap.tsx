@@ -5,6 +5,7 @@ import { Map as MapIcon, Satellite, Truck, Wifi, WifiOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePositionsStore } from '@/hooks/useVehiclePositions'
 import { useFleetPositions, type FleetPosition } from '@/hooks/useFleetPositions'
+import { useGeofences, type Geofence } from '@/hooks/useGeofences'
 import { formatDate } from '@/lib/formatters'
 
 const SLA_COLORS: Record<string, string> = {
@@ -126,6 +127,35 @@ function renderFleet(map: maplibregl.Map, fleet: FleetPosition[]) {
   })
 }
 
+/** Add/update geofence fill + outline layers. Only active fences rendered. */
+function renderGeofences(map: maplibregl.Map, fences: Geofence[]) {
+  const active = fences.filter((f) => f.isActive)
+  const geojson: GeoJSON.FeatureCollection = {
+    type: 'FeatureCollection',
+    features: active.map((f) => ({
+      type: 'Feature' as const,
+      properties: { color: f.color, name: f.name, type: f.type },
+      geometry: { type: 'Polygon' as const, coordinates: f.coordinates },
+    })),
+  }
+
+  if (map.getSource('fences')) {
+    ;(map.getSource('fences') as maplibregl.GeoJSONSource).setData(geojson)
+    return
+  }
+
+  map.addSource('fences', { type: 'geojson', data: geojson })
+  map.addLayer({ id: 'fences-fill', type: 'fill',   source: 'fences', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.15 } })
+  map.addLayer({ id: 'fences-line', type: 'line',   source: 'fences', paint: { 'line-color': ['get', 'color'], 'line-width': 2 } })
+}
+
+/** Remove geofence layers + source */
+function removeGeofences(map: maplibregl.Map) {
+  if (map.getLayer('fences-fill')) map.removeLayer('fences-fill')
+  if (map.getLayer('fences-line')) map.removeLayer('fences-line')
+  if (map.getSource('fences'))     map.removeSource('fences')
+}
+
 /** Remove all fleet layers + source from map */
 function removeFleet(map: maplibregl.Map) {
   if (map.getLayer('fleet-cluster-count')) map.removeLayer('fleet-cluster-count')
@@ -152,6 +182,9 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
 
   // Fleet positions — only fetch when layer is on (enabled gate)
   const { data: fleet } = useFleetPositions({ enabled: showFleet })
+
+  // Geofences — always fetch; render when map is ready
+  const { data: geofences } = useGeofences()
 
   // Init map once — guard prevents React StrictMode double-init
   useEffect(() => {
@@ -203,12 +236,13 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
     // Re-register truck image + fleet layers after style swap
     map.once('styledata', () => {
       registerTruckImage(map)
-      // Give the image load callback a tick, then re-render fleet if it was on
-      // We use a short delay to let img.onload fire before addLayer
       setTimeout(() => {
-        if (showFleet && fleet.length > 0 && map.isStyleLoaded()) {
-          renderFleet(map, fleet)
-          registerFleetHandlers(map)
+        if (map.isStyleLoaded()) {
+          if (geofences.length > 0) renderGeofences(map, geofences)
+          if (showFleet && fleet.length > 0) {
+            renderFleet(map, fleet)
+            registerFleetHandlers(map)
+          }
         }
       }, 100)
     })
@@ -348,6 +382,18 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
       map.getCanvas().style.cursor = ''
     })
   }
+
+  // Geofence layer — render active fences when map is ready or data changes
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    const doRender = () => {
+      if (!map.isStyleLoaded()) { map.once('idle', doRender); return }
+      if (geofences.length > 0) renderGeofences(map, geofences)
+      else removeGeofences(map)
+    }
+    doRender()
+  }, [geofences, mapReady])
 
   // Update vehicle markers (live layer — DO NOT TOUCH markersRef/usePositionsStore)
   useEffect(() => {
