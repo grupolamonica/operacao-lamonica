@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { db } from '../db/client'
 import { redis } from '../redis/client'
 import { geofences } from '../db/schema/geofences'

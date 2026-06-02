@@ -1,4 +1,4 @@
-import { and, eq, asc } from 'drizzle-orm'
+import { eq, asc } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { tripEvents } from '../../db/schema/trip-events'
 import { alerts } from '../../db/schema/alerts'

@@ -34,7 +34,7 @@ export function BiExecutivoPage() {
   const [dimension, setDimension] = useState<BiDimension>('client')
   const [metric, setMetric] = useState<BiMetric>('deliveries')
 
-  const { data: kpis,      isLoading: kpisLoading      } = useBiKpis({ period })
+  const { data: kpis } = useBiKpis({ period })
   const { data: breakdown, isLoading: breakdownLoading } = useBiBreakdown({ period, dimension })
   const { data: trend,     isLoading: trendLoading     } = useBiTrend({ period, metric })
 

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MapPin, Truck, Loader2, Trophy, Zap, DollarSign, Shield, Info } from 'lucide-react'
+import { MapPin, Loader2, Trophy, Zap, DollarSign, Shield, Info } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { useSimulateRoutes, type SimRequest, type RouteAlternative } from '@/hooks/useSimulator'

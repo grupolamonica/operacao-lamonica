@@ -3,7 +3,6 @@ import { db } from '../../db/client'
 import { vehicles } from '../../db/schema/vehicles'
 import { trips } from '../../db/schema/trips'
 import { alerts } from '../../db/schema/alerts'
-import { tripEvents } from '../../db/schema/trip-events'
 import { drivers } from '../../db/schema/drivers'
 import { getTripTimeline } from '../trips/timeline.service'
 

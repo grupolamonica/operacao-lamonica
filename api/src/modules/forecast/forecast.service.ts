@@ -1,4 +1,4 @@
-import { and, gte, inArray, isNotNull } from 'drizzle-orm'
+import { and, gte, isNotNull } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { trips } from '../../db/schema/trips'
 import { drivers } from '../../db/schema/drivers'

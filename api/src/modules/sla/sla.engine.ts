@@ -80,8 +80,14 @@ export function evaluateSla(input: SlaInput, rule: SlaRule): SlaEvaluation {
   }
 }
 
+/** Loaded rule shape — what services pass in. Adds clientId scope + active flag. */
+export interface LoadedSlaRule extends SlaRule {
+  clientId: string | null
+  active:   boolean
+}
+
 /** Pick the most specific active rule for a trip. clientId match beats global default. */
-export function resolveRule(trip: { clientId: string | null }, rules: SlaRule[] & Array<SlaRule & { clientId: string | null; active: boolean }>): (SlaRule & { clientId: string | null }) | null {
+export function resolveRule(trip: { clientId: string | null }, rules: LoadedSlaRule[]): LoadedSlaRule | null {
   const active = rules.filter((r) => r.active !== false)
   const specific = active.find((r) => r.clientId === trip.clientId && trip.clientId != null)
   if (specific) return specific
