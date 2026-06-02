@@ -31,6 +31,9 @@ const RankingPage = lazy(() =>
 const HeatmapPage = lazy(() =>
   import('./pages/heatmap/HeatmapPage').then(m => ({ default: m.HeatmapPage })),
 )
+const BiExecutivoPage = lazy(() =>
+  import('./pages/bi-executivo/BiExecutivoPage').then(m => ({ default: m.BiExecutivoPage })),
+)
 const ConfiguracoesPage = lazy(() =>
   import('./pages/configuracoes/ConfiguracoesPage').then(m => ({ default: m.ConfiguracoesPage })),
 )
@@ -64,6 +67,7 @@ export const router = createBrowserRouter([
           { path: 'geofences',         element: <L><GeofencesPage /></L> },
           { path: 'alertas',           element: <L><AlertasPage /></L> },
           { path: 'insights',          element: <L><InsightsPage /></L> },
+          { path: 'bi-executivo',      element: <L><BiExecutivoPage /></L> },
           { path: 'heatmap',           element: <L><HeatmapPage /></L> },
           { path: 'ranking',           element: <L><RankingPage /></L> },
           { path: 'configuracoes',     element: <L><ConfiguracoesPage /></L> },
