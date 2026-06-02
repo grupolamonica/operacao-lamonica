@@ -6,6 +6,7 @@ import { alerts } from '../db/schema/alerts'
 import { logger } from '../lib/logger'
 import { dispatchAlertPush } from '../modules/push/push.dispatcher'
 import { processGeofenceDetection } from './geofence-detector'
+import { recalcTripRisk } from '../modules/risk/risk.service'
 
 const DELAY_CRITICAL_MINUTES = 30
 const STOP_MINUTES            = 5
@@ -35,6 +36,11 @@ export async function processAlertDetection(
   // break alert detection, so wrap in try/catch.
   processGeofenceDetection({ vehicleId, tripId: trip.id, lat, lng, capturedAt })
     .catch((e) => logger.error({ error: e?.message ?? String(e), vehicleId, tripId: trip.id }, 'geofence detection failed'))
+
+  // Risk recalc — Sprint 3. Runs after alerts so the latest open-alert count
+  // is reflected. Non-blocking; never fails the telemetry path.
+  recalcTripRisk(trip.id)
+    .catch((e) => logger.error({ error: e?.message ?? String(e), tripId: trip.id }, 'risk recalc failed'))
 
   const detectedAlerts: Array<{ type: string; severity: string; title: string; description: string; delayMinutes?: number }> = []
 

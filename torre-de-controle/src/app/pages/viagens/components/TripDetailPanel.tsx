@@ -3,8 +3,10 @@ import { SidePanelLayout } from '@/components/domain/SidePanelLayout'
 import { LiveMap } from '@/components/domain/LiveMap'
 import { TripTimeline } from '@/components/domain/TripTimeline'
 import { StatusBadge } from '@/components/domain/StatusBadge'
+import { RiskBadge } from '@/components/domain/RiskBadge'
 import { Button } from '@/components/ui/button'
 import { useTripTimeline } from '@/hooks/useTripTimeline'
+import { useTripRisk } from '@/hooks/useTripRisk'
 import { formatTime, formatKm, minutesBetween } from '@/lib/formatters'
 import type { Trip } from '@/data/types'
 
@@ -15,6 +17,7 @@ interface Props {
 
 export function TripDetailPanel({ trip, onClose }: Props) {
   const { data: events } = useTripTimeline(trip.id)
+  const { data: risk }   = useTripRisk(trip.id)
   const remainingKm = Math.max(0, trip.distanceTotal - trip.distanceDone)
 
   return (
@@ -31,10 +34,32 @@ export function TripDetailPanel({ trip, onClose }: Props) {
       }
     >
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <StatusBadge status={trip.slaStatus} size="md" />
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <StatusBadge status={trip.slaStatus} size="md" />
+            <RiskBadge level={risk?.level ?? trip.riskLevel} score={risk?.score ?? trip.riskScore} size="md" />
+          </div>
           <span className="text-xs text-muted-foreground">Prioridade: <strong className="text-foreground capitalize">{trip.priority}</strong></span>
         </div>
+
+        {risk && risk.factors.length > 0 && (
+          <div className="rounded-md border border-border p-2.5 bg-card space-y-1.5">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Score de risco · {risk.score}</p>
+            <ul className="space-y-1">
+              {risk.factors.map((f) => (
+                <li key={f.key} className="flex items-center gap-2 text-[11px]">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-foreground truncate">{f.label}</span>
+                      <span className="text-muted-foreground tabular-nums shrink-0">{f.contribution}/{f.weight}</span>
+                    </div>
+                    {f.detail && <p className="text-[10px] text-muted-foreground truncate">{f.detail}</p>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <LiveMap height={160} showLegend={false} />
 

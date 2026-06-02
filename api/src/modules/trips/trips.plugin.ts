@@ -2,6 +2,7 @@ import { Elysia, t } from 'elysia'
 import { authGuard } from '../../lib/rbac'
 import { listTrips, getTripById, getTripStats } from './trips.service'
 import { getTripTimeline } from './timeline.service'
+import { getTripRisk, recalcTripRisk } from '../risk/risk.service'
 
 const tripStatus = t.Union([t.Literal('planned'), t.Literal('in_progress'), t.Literal('completed'), t.Literal('delayed'), t.Literal('cancelled')])
 const slaStatus  = t.Union([t.Literal('no_prazo'), t.Literal('em_risco'), t.Literal('atrasado'), t.Literal('sem_sinal')])
@@ -53,5 +54,24 @@ export const tripsPlugin = new Elysia({ name: 'trips' })
       }, {
         params: t.Object({ id: t.String({ format: 'uuid' }) }),
         detail: { tags: ['trips'], summary: 'Unified timeline (events + alerts + treatments)' },
+      })
+      .get('/:id/risk', async ({ params, set }) => {
+        // Try persisted snapshot first; fall back to live recompute when missing
+        const persisted = await getTripRisk(params.id)
+        if (persisted) return persisted
+        const live = await recalcTripRisk(params.id)
+        if (!live) { set.status = 404; return { error: 'Trip not found' } }
+        return live
+      }, {
+        params: t.Object({ id: t.String({ format: 'uuid' }) }),
+        detail: { tags: ['trips'], summary: 'Delivery risk score + factor breakdown' },
+      })
+      .post('/:id/risk/recalc', async ({ params, set }) => {
+        const r = await recalcTripRisk(params.id)
+        if (!r) { set.status = 404; return { error: 'Trip not found' } }
+        return r
+      }, {
+        params: t.Object({ id: t.String({ format: 'uuid' }) }),
+        detail: { tags: ['trips'], summary: 'Force risk recompute (admin/debug)' },
       })
   )

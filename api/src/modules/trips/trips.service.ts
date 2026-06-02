@@ -102,6 +102,7 @@ function toTripDto(row: any) {
     id:            row.id,
     code:          row.code,
     driverId:      row.driverId,
+    vehicleId:     row.vehicleId,
     driverName:    row.driver?.name ?? '',
     driverPhoto:   row.driver?.photoUrl ?? null,
     plate:         row.vehicle?.plate ?? '',
@@ -125,5 +126,9 @@ function toTripDto(row: any) {
     progressPct:   row.progressPct,
     distanceTotal: row.distanceTotal ? Number(row.distanceTotal) : 0,
     distanceDone:  row.distanceDone  ? Number(row.distanceDone)  : 0,
+    // Sprint 3 — risk snapshot (nullable until first recalc)
+    riskScore:     row.riskScore ?? null,
+    riskLevel:     row.riskLevel ?? null,
+    riskFactors:   row.riskFactors ?? null,
   }
 }

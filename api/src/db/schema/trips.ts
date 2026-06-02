@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, smallint, timestamp, decimal, index } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, varchar, smallint, timestamp, decimal, jsonb, index } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { drivers } from './drivers'
 import { vehicles } from './vehicles'
@@ -29,12 +29,20 @@ export const trips = pgTable('trips', {
   distanceDone:   decimal('distance_done',  { precision: 8, scale: 2 }),
   departedAt:     timestamp('departed_at', { withTimezone: true }),
   arrivedAt:      timestamp('arrived_at',  { withTimezone: true }),
+  // Sprint 3 — Delivery risk engine snapshot. Recomputed on every position
+  // update by risk.service.recalcTripRisk(). riskFactors carries the
+  // per-factor breakdown for the UI to explain the score.
+  riskScore:          smallint('risk_score'),
+  riskLevel:          varchar('risk_level', { length: 10 }),    // baixo|medio|alto|critico
+  riskFactors:        jsonb('risk_factors').$type<Array<{ key: string; label: string; weight: number; contribution: number; detail?: string }>>(),
+  riskCalculatedAt:   timestamp('risk_calculated_at', { withTimezone: true }),
   createdAt:      timestamp('created_at',  { withTimezone: true }).defaultNow().notNull(),
   updatedAt:      timestamp('updated_at',  { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
   statusIdx:    index('idx_trips_status').on(t.status),
   slaStatusIdx: index('idx_trips_sla_status').on(t.slaStatus),
   windowIdx:    index('idx_trips_window').on(t.windowStart, t.windowEnd),
+  riskIdx:      index('idx_trips_risk_level').on(t.riskLevel),
 }))
 
 export type SelectTrip = typeof trips.$inferSelect

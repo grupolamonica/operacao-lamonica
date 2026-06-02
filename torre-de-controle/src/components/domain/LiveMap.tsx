@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { Map as MapIcon, Satellite, Truck, Wifi, WifiOff } from 'lucide-react'
@@ -6,7 +6,10 @@ import { cn } from '@/lib/utils'
 import { usePositionsStore } from '@/hooks/useVehiclePositions'
 import { useFleetPositions, type FleetPosition } from '@/hooks/useFleetPositions'
 import { useGeofences, type Geofence } from '@/hooks/useGeofences'
+import { useTrips } from '@/hooks/useTrips'
+import { RISK_HEX } from '@/components/domain/RiskBadge'
 import { formatDate } from '@/lib/formatters'
+import type { RiskLevel } from '@/data/types'
 
 const SLA_COLORS: Record<string, string> = {
   no_prazo:  '#2dce89',
@@ -185,6 +188,17 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
 
   // Geofences — always fetch; render when map is ready
   const { data: geofences } = useGeofences()
+
+  // Trips for risk-tinting the marker border. Light fetch; reused across panels.
+  const { data: tripsForRisk } = useTrips({ status: 'in_progress' })
+  const riskByVehicleId = useMemo(() => {
+    const m = new Map<string, RiskLevel>()
+    for (const t of tripsForRisk ?? []) {
+      if (t.riskLevel && (t as any).vehicleId) m.set((t as any).vehicleId, t.riskLevel)
+      // Fallback: try matching by plate when vehicleId is not in the DTO
+    }
+    return m
+  }, [tripsForRisk])
 
   // Init map once — guard prevents React StrictMode double-init
   useEffect(() => {
@@ -411,13 +425,15 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
 
     for (const [id, pos] of positions) {
       const color      = SLA_COLORS[pos.slaStatus] ?? SLA_COLORS.sem_sinal
+      const risk       = riskByVehicleId.get(id)
+      const riskColor  = risk ? RISK_HEX[risk] : 'white'
       const isSelected = id === selectedVehicleId
       const size       = isSelected ? '20px' : '14px'
 
       if (!markersRef.current.has(id)) {
         const el = document.createElement('div')
-        el.style.cssText = `width:${size};height:${size};border-radius:50%;background:${color};border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,.4);cursor:pointer;transition:all .15s;`
-        el.title = `${id.slice(0, 8)} — ${pos.slaStatus}`
+        el.style.cssText = `width:${size};height:${size};border-radius:50%;background:${color};border:2px solid ${riskColor};box-shadow:0 2px 4px rgba(0,0,0,.4);cursor:pointer;transition:all .15s;`
+        el.title = `${id.slice(0, 8)} — ${pos.slaStatus}${risk ? ` · risco ${risk}` : ''}`
         el.addEventListener('click', () => onVehicleClick?.(id))
 
         const marker = new maplibregl.Marker({ element: el })
@@ -429,11 +445,12 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
         marker.setLngLat([Number(pos.lng), Number(pos.lat)])
         const el = marker.getElement() as HTMLDivElement
         el.style.background = color
+        el.style.borderColor = riskColor
         el.style.width  = size
         el.style.height = size
       }
     }
-  }, [positions, selectedVehicleId, onVehicleClick, mapReady])
+  }, [positions, selectedVehicleId, onVehicleClick, mapReady, riskByVehicleId])
 
   return (
     <div className="relative rounded-lg border border-border overflow-hidden" style={{ height }}>
@@ -481,6 +498,11 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
           <div className="flex items-center gap-2 text-foreground"><span className="h-2.5 w-2.5 rounded-full bg-[#fb6340]" /> Em risco</div>
           <div className="flex items-center gap-2 text-foreground"><span className="h-2.5 w-2.5 rounded-full bg-[#f5365c]" /> Atrasado</div>
           <div className="flex items-center gap-2 text-foreground"><span className="h-2.5 w-2.5 rounded-full bg-[#95959e]" /> Sem sinal</div>
+          <div className="mt-1 mb-0.5 text-muted-foreground font-medium">Risco (borda)</div>
+          <div className="flex items-center gap-2 text-foreground"><span className="h-2.5 w-2.5 rounded-full bg-transparent border-2" style={{ borderColor: RISK_HEX.critico }} /> Crítico</div>
+          <div className="flex items-center gap-2 text-foreground"><span className="h-2.5 w-2.5 rounded-full bg-transparent border-2" style={{ borderColor: RISK_HEX.alto }} /> Alto</div>
+          <div className="flex items-center gap-2 text-foreground"><span className="h-2.5 w-2.5 rounded-full bg-transparent border-2" style={{ borderColor: RISK_HEX.medio }} /> Médio</div>
+          <div className="flex items-center gap-2 text-foreground"><span className="h-2.5 w-2.5 rounded-full bg-transparent border-2" style={{ borderColor: RISK_HEX.baixo }} /> Baixo</div>
           {showFleet && (
             <>
               <div className="mt-1 mb-0.5 text-muted-foreground font-medium">Frota importada</div>

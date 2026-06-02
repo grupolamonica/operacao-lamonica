@@ -1,4 +1,21 @@
 // ===== Enums / unions =====
+export type RiskLevel = 'baixo' | 'medio' | 'alto' | 'critico'
+
+export interface RiskFactor {
+  key:          string
+  label:        string
+  weight:       number
+  contribution: number
+  detail?:      string
+}
+
+export interface RiskSnapshot {
+  score:   number
+  level:   RiskLevel
+  factors: RiskFactor[]
+}
+
+
 export type SlaStatus = 'no_prazo' | 'em_risco' | 'atrasado' | 'sem_sinal'
 export type TripStatus = 'planned' | 'in_progress' | 'completed' | 'delayed' | 'cancelled'
 export type AlertSeverity = 'critico' | 'medio' | 'baixo'
@@ -74,6 +91,10 @@ export interface Trip {
   progressPct: number             // 0-100
   distanceTotal: number           // km
   distanceDone: number            // km
+  // Sprint 3 — delivery risk snapshot (nullable until first recalc)
+  riskScore?: number | null
+  riskLevel?: RiskLevel | null
+  riskFactors?: RiskFactor[] | null
 }
 
 // ===== Alert =====

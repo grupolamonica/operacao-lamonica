@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Search, Filter, ArrowUpDown, MoreVertical } from 'lucide-react'
 import { TableWithSidePanel } from '@/components/domain/TableWithSidePanel'
 import { StatusBadge } from '@/components/domain/StatusBadge'
+import { RiskBadge } from '@/components/domain/RiskBadge'
 import { DriverAvatar } from '@/components/domain/DriverAvatar'
 import { ProgressBar } from '@/components/domain/ProgressBar'
 import { ExportButton } from '@/components/common/ExportButton'
@@ -42,6 +43,10 @@ const columns: ColumnDef<Trip>[] = [
   { accessorKey: 'clientName', header: 'Cliente', cell: (i) => <span className="text-sm text-foreground truncate">{i.getValue<string>()}</span> },
   { id: 'eta', header: 'ETA', size: 70, cell: ({ row }) => <span className="text-sm tabular-nums text-foreground">{formatTime(row.original.eta)}</span> },
   { id: 'status', header: 'Status', cell: ({ row }) => <StatusBadge status={row.original.slaStatus} /> },
+  {
+    id: 'risk', header: 'Risco', size: 90,
+    cell: ({ row }) => <RiskBadge level={row.original.riskLevel} score={row.original.riskScore} />,
+  },
   {
     id: 'progress', header: 'Progresso', size: 120,
     cell: ({ row }) => (
