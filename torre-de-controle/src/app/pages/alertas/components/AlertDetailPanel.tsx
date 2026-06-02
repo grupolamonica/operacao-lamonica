@@ -3,6 +3,8 @@ import { Phone, Loader2, AlertTriangle } from 'lucide-react'
 import { SidePanelLayout } from '@/components/domain/SidePanelLayout'
 import { SeverityBadge } from '@/components/domain/SeverityBadge'
 import { DriverAvatar } from '@/components/domain/DriverAvatar'
+import { CommunicationsLog } from '@/components/domain/CommunicationsLog'
+import { LogCallDialog } from '@/components/domain/LogCallDialog'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { formatDate, formatRelative } from '@/lib/formatters'
@@ -30,7 +32,8 @@ export function AlertDetailPanel({ alert, onClose }: Props) {
   const transition = useTransitionAlert(alert.id)
   const comment    = useAddAlertComment(alert.id)
   const setPrio    = useSetAlertPriority(alert.id)
-  const [confirmTo, setConfirmTo] = useState<AlertStatus | null>(null)
+  const [confirmTo,      setConfirmTo]      = useState<AlertStatus | null>(null)
+  const [callDialogOpen, setCallDialogOpen] = useState(false)
 
   const isPending = transition.isPending || comment.isPending || setPrio.isPending
   const priority  = alert.priority ?? 'media'
@@ -62,7 +65,13 @@ export function AlertDetailPanel({ alert, onClose }: Props) {
               <span>{(transition.error as Error)?.message}</span>
             </div>
           )}
-          <Button size="sm" variant="outline" className="w-full text-xs gap-1.5">
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full text-xs gap-1.5"
+            onClick={() => setCallDialogOpen(true)}
+            disabled={!alert.driverId}
+          >
             <Phone className="h-3.5 w-3.5" /> Ligar para motorista
           </Button>
         </div>
@@ -176,7 +185,21 @@ export function AlertDetailPanel({ alert, onClose }: Props) {
             isPending={comment.isPending}
           />
         )}
+
+        {/* Communications log for this alert — Sprint 7 */}
+        <Separator />
+        <div>
+          <h4 className="text-xs font-semibold text-foreground uppercase tracking-wide mb-2">Comunicações</h4>
+          <CommunicationsLog scope={{ alertId: alert.id }} emptyMessage="Sem ligações registradas para esta ocorrência." />
+        </div>
       </div>
+
+      {/* Call log dialog */}
+      <LogCallDialog
+        scope={{ alertId: alert.id, driverId: alert.driverId, tripId: alert.tripId }}
+        open={callDialogOpen}
+        onClose={() => setCallDialogOpen(false)}
+      />
     </SidePanelLayout>
   )
 }

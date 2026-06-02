@@ -40,6 +40,8 @@ import { positionsReadPlugin } from './modules/positions/positions.plugin'
 import { slaPlugin } from './modules/sla/sla.plugin'
 // Sprint 6 — Heatmap geográfico
 import { heatmapPlugin } from './modules/heatmap/heatmap.plugin'
+// Sprint 7 — Central de comunicações
+import { communicationsPlugin } from './modules/communications/communications.plugin'
 import { processAlertDetection } from './jobs/alert-inline'
 import { sql, desc } from 'drizzle-orm'
 import { geofences, geofenceEvents } from './db/schema/geofences'
@@ -191,6 +193,7 @@ export const app = new Elysia()
   .use(positionsReadPlugin)
   .use(slaPlugin)
   .use(heatmapPlugin)
+  .use(communicationsPlugin)
   .use(wsPlugin)
   // Telemetry inlined to avoid Elysia 1.4.28 plugin-composition issue with body schema
   .post('/api/telemetry/ingest', async ({ body, headers, set }) => {

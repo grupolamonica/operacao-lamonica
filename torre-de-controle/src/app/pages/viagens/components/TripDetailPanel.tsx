@@ -4,6 +4,7 @@ import { LiveMap } from '@/components/domain/LiveMap'
 import { TripTimeline } from '@/components/domain/TripTimeline'
 import { StatusBadge } from '@/components/domain/StatusBadge'
 import { RiskBadge } from '@/components/domain/RiskBadge'
+import { CommunicationsLog } from '@/components/domain/CommunicationsLog'
 import { Button } from '@/components/ui/button'
 import { useTripTimeline } from '@/hooks/useTripTimeline'
 import { useTripRisk } from '@/hooks/useTripRisk'
@@ -77,6 +78,11 @@ export function TripDetailPanel({ trip, onClose }: Props) {
         <div>
           <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Linha do tempo</h4>
           {events.length > 0 ? <TripTimeline events={events} /> : <p className="text-xs text-muted-foreground">Sem eventos registrados.</p>}
+        </div>
+
+        <div>
+          <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Comunicações</h4>
+          <CommunicationsLog scope={{ tripId: trip.id }} emptyMessage="Sem comunicações registradas para esta viagem." />
         </div>
       </div>
     </SidePanelLayout>

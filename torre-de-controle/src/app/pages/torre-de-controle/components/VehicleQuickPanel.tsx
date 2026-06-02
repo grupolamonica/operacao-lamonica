@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Phone, ExternalLink, Hand, FileEdit, Loader2, Truck, MapPin, AlertCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { SidePanelLayout } from '@/components/domain/SidePanelLayout'
@@ -5,6 +6,8 @@ import { DriverAvatar } from '@/components/domain/DriverAvatar'
 import { StatusBadge } from '@/components/domain/StatusBadge'
 import { RiskBadge } from '@/components/domain/RiskBadge'
 import { SeverityBadge } from '@/components/domain/SeverityBadge'
+import { CommunicationsLog } from '@/components/domain/CommunicationsLog'
+import { LogCallDialog } from '@/components/domain/LogCallDialog'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { formatTime, formatRelative } from '@/lib/formatters'
@@ -18,6 +21,7 @@ interface Props {
 
 export function VehicleQuickPanel({ vehicleId, onClose }: Props) {
   const { data, isLoading, isError } = useVehicleContext(vehicleId)
+  const [callDialogOpen, setCallDialogOpen] = useState(false)
 
   if (isLoading) {
     return (
@@ -54,7 +58,13 @@ export function VehicleQuickPanel({ vehicleId, onClose }: Props) {
             </Button>
           )}
           <div className="grid grid-cols-2 gap-2">
-            <Button size="sm" variant="outline" className="text-xs gap-1.5" disabled={!driver?.phone}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs gap-1.5"
+              disabled={!driver}
+              onClick={() => setCallDialogOpen(true)}
+            >
               <Phone className="h-3.5 w-3.5" /> Ligar
             </Button>
             <Button size="sm" variant="outline" className="text-xs gap-1.5">
@@ -159,7 +169,28 @@ export function VehicleQuickPanel({ vehicleId, onClose }: Props) {
             </div>
           </>
         )}
+
+        {/* Communications log — Sprint 7 */}
+        {driver && (
+          <>
+            <Separator />
+            <div>
+              <p className="text-xs font-semibold text-foreground uppercase tracking-wide mb-2">Comunicações</p>
+              <CommunicationsLog scope={{ driverId: driver.id }} emptyMessage="Sem ligações registradas." />
+            </div>
+          </>
+        )}
       </div>
+
+      {/* Call log dialog */}
+      {driver && (
+        <LogCallDialog
+          scope={{ driverId: driver.id, tripId: activeTrip?.id ?? null }}
+          open={callDialogOpen}
+          onClose={() => setCallDialogOpen(false)}
+          phone={driver.phone}
+        />
+      )}
     </SidePanelLayout>
   )
 }
