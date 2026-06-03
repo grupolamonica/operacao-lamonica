@@ -1,28 +1,16 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { kpisDashboard, kpisViagens, kpisMotoristas, kpisAlertas } from '@/data/mocks'
 import type { KPIDashboard, KPITorre, KPIViagens, KPIMotoristas, KPIAlertas } from '@/data/types'
 
-export function useDashboardKPIs() {
-  const q = useQuery({
-    queryKey: ['dashboard-kpis'],
-    queryFn: async () => {
-      const { data, error } = await api.api.dashboard.kpis.get()
-      if (error) return kpisDashboard
-      return (data ?? kpisDashboard) as KPIDashboard
-    },
-    refetchInterval: 30_000,
-  })
-  return {
-    data:      q.data ?? kpisDashboard,
-    isLoading: q.isLoading,
-    isError:   q.isError,
-    error:     q.error,
-    refetch:   q.refetch,
-  }
+// Phase 12 — mocks removidos (D-12-31). Defaults vazios (zero) só para o estado
+// inicial/erro não quebrar a UI; os dados vêm sempre do backend real.
+const EMPTY_DASHBOARD: KPIDashboard = {
+  entregas:             { onTime: 0, total: 0, pct: 0 },
+  sla:                  { pct: 0, meta: 95 },
+  motoristasEmRisco:    { count: 0, total: 0, sparkline: [] },
+  atrasosCriticos:      { count: 0, total: 0, sparkline: [] },
+  paradasNaoPlanejadas: { count: 0, total: 0, sparkline: [] },
 }
-
-// Torre KPIs — Phase 12: served by real backend /api/torre/kpis (D-12-34).
 const EMPTY_TORRE: KPITorre = {
   viagensAtivas:   { count: 0, total: 0 },
   emRisco:         { count: 0, total: 0 },
@@ -30,6 +18,32 @@ const EMPTY_TORRE: KPITorre = {
   semSinal:        { count: 0, total: 0 },
   ocorrencias:     { criticas: 0, medias: 0 },
 }
+const EMPTY_VIAGENS: KPIViagens = {
+  total: { count: 0 }, noPrazo: { count: 0, pct: 0 }, emRisco: { count: 0, pct: 0 },
+  atrasadas: { count: 0, pct: 0 }, progressoMedio: { pct: 0 },
+}
+const EMPTY_MOTORISTAS: KPIMotoristas = {
+  ativos: { count: 0, total: 0 }, disponiveis: { count: 0 }, emRota: { count: 0 },
+  comAtraso: { count: 0 }, documentosVencendo: { count: 0 },
+}
+const EMPTY_ALERTAS: KPIAlertas = {
+  criticos: { count: 0 }, abertos: { count: 0 }, resolvidosHoje: { count: 0 }, slaTratativas: { pct: 100 },
+}
+
+export function useDashboardKPIs() {
+  const q = useQuery({
+    queryKey: ['dashboard-kpis'],
+    queryFn: async () => {
+      const { data, error } = await api.api.dashboard.kpis.get()
+      if (error) throw error
+      return (data ?? EMPTY_DASHBOARD) as KPIDashboard
+    },
+    refetchInterval: 30_000,
+  })
+  return { data: q.data ?? EMPTY_DASHBOARD, isLoading: q.isLoading, isError: q.isError, error: q.error, refetch: q.refetch }
+}
+
+// Torre KPIs — Phase 12: backend real /api/torre/kpis (D-12-34).
 export function useTorreKPIs() {
   const q = useQuery({
     queryKey: ['torre-kpis'],
@@ -40,13 +54,7 @@ export function useTorreKPIs() {
     },
     refetchInterval: 30_000,
   })
-  return {
-    data:      q.data ?? EMPTY_TORRE,
-    isLoading: q.isLoading,
-    isError:   q.isError,
-    error:     q.error,
-    refetch:   q.refetch,
-  }
+  return { data: q.data ?? EMPTY_TORRE, isLoading: q.isLoading, isError: q.isError, error: q.error, refetch: q.refetch }
 }
 
 export function useViagensKPIs() {
@@ -54,18 +62,12 @@ export function useViagensKPIs() {
     queryKey: ['trips-kpis'],
     queryFn: async () => {
       const { data, error } = await api.api.trips.stats.get()
-      if (error) return kpisViagens
-      return (data ?? kpisViagens) as KPIViagens
+      if (error) throw error
+      return (data ?? EMPTY_VIAGENS) as KPIViagens
     },
     refetchInterval: 30_000,
   })
-  return {
-    data:      q.data ?? kpisViagens,
-    isLoading: q.isLoading,
-    isError:   q.isError,
-    error:     q.error,
-    refetch:   q.refetch,
-  }
+  return { data: q.data ?? EMPTY_VIAGENS, isLoading: q.isLoading, isError: q.isError, error: q.error, refetch: q.refetch }
 }
 
 export function useMotoristasKPIs() {
@@ -73,18 +75,12 @@ export function useMotoristasKPIs() {
     queryKey: ['drivers-kpis'],
     queryFn: async () => {
       const { data, error } = await api.api.drivers.stats.get()
-      if (error) return kpisMotoristas
-      return (data ?? kpisMotoristas) as KPIMotoristas
+      if (error) throw error
+      return (data ?? EMPTY_MOTORISTAS) as KPIMotoristas
     },
     refetchInterval: 30_000,
   })
-  return {
-    data:      q.data ?? kpisMotoristas,
-    isLoading: q.isLoading,
-    isError:   q.isError,
-    error:     q.error,
-    refetch:   q.refetch,
-  }
+  return { data: q.data ?? EMPTY_MOTORISTAS, isLoading: q.isLoading, isError: q.isError, error: q.error, refetch: q.refetch }
 }
 
 export function useAlertasKPIs() {
@@ -92,16 +88,10 @@ export function useAlertasKPIs() {
     queryKey: ['alerts-kpis'],
     queryFn: async () => {
       const { data, error } = await api.api.alerts.stats.get()
-      if (error) return kpisAlertas
-      return (data ?? kpisAlertas) as KPIAlertas
+      if (error) throw error
+      return (data ?? EMPTY_ALERTAS) as KPIAlertas
     },
     refetchInterval: 30_000,
   })
-  return {
-    data:      q.data ?? kpisAlertas,
-    isLoading: q.isLoading,
-    isError:   q.isError,
-    error:     q.error,
-    refetch:   q.refetch,
-  }
+  return { data: q.data ?? EMPTY_ALERTAS, isLoading: q.isLoading, isError: q.isError, error: q.error, refetch: q.refetch }
 }

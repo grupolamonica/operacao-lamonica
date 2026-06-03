@@ -53,7 +53,7 @@ export interface Driver {
   status: DriverStatus
   operationalScore: number        // 0-100
   plate: string
-  vehicleType: string             // Van, Furgão, VUC
+  vehicleType: string             // Lamonica: TRUCK, CARRETA, CARRETA_EXPRESSA, BITREM
   base: string                    // CD São Paulo, CD Rio, etc
   documents: DriverDocument[]
   deliveriesToday: number
