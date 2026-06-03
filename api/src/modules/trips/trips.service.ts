@@ -4,6 +4,7 @@ import { trips } from '../../db/schema/trips'
 import { drivers } from '../../db/schema/drivers'
 import { clients } from '../../db/schema/clients'
 import { routes } from '../../db/schema/routes'
+import { tripEvents } from '../../db/schema/trip-events'
 
 export type TripFilters = {
   status?:     'planned'|'in_progress'|'completed'|'delayed'|'cancelled'
@@ -131,4 +132,28 @@ function toTripDto(row: any) {
     riskLevel:     row.riskLevel ?? null,
     riskFactors:   row.riskFactors ?? null,
   }
+}
+
+/**
+ * Registra uma nota / intervenção do operador como trip_event (Phase 12, D-12-29).
+ * kind: manual_note | reagendamento | autorizacao_atraso. Torre é read-only sobre
+ * a fonte Lamonica — a intervenção fica como evento local na timeline.
+ */
+export async function addTripNote(input: {
+  tripId: string
+  userId: string
+  text: string
+  kind?: 'manual_note' | 'reagendamento' | 'autorizacao_atraso'
+}) {
+  const [exists] = await db.select({ id: trips.id }).from(trips).where(eq(trips.id, input.tripId)).limit(1)
+  if (!exists) return null
+  const [row] = await db.insert(tripEvents).values({
+    tripId:    input.tripId,
+    eventType: input.kind ?? 'manual_note',
+    notes:     input.text,
+    createdBy: input.userId,
+    occurredAt: new Date(),
+    metadata:  { source: 'operator' },
+  }).returning()
+  return row
 }

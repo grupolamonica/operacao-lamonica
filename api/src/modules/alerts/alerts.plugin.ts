@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia'
 import { authGuard } from '../../lib/rbac'
-import { listAlerts, assignAlert, addTreatment, resolveAlert, getAlertStats } from './alerts.service'
+import { listAlerts, assignAlert, addTreatment, resolveAlert, getAlertStats, createAlert } from './alerts.service'
 import {
   transitionAlert, addComment, setAlertPriority, assignAlertTo, listAlertHistory,
   WorkflowError, ALERT_STATUSES,
@@ -17,6 +17,19 @@ export const alertsPlugin = new Elysia({ name: 'alerts' })
   .group('/api/alerts', (app) =>
     app
       .get('/stats', () => getAlertStats(), { detail: { tags: ['alerts'], summary: 'KPIAlertas' } })
+      // Phase 12 (D-12-29) — abrir ocorrência manual a partir de uma viagem
+      .post('/', async ({ body }) => createAlert(body), {
+        body: t.Object({
+          type:        t.String({ minLength: 1, maxLength: 50 }),
+          severity,
+          title:       t.String({ minLength: 1, maxLength: 150 }),
+          description: t.Optional(t.String({ maxLength: 2000 })),
+          tripId:      t.Optional(t.String({ format: 'uuid' })),
+          driverId:    t.Optional(t.String({ format: 'uuid' })),
+          priority:    t.Optional(priority),
+        }),
+        detail: { tags: ['alerts'], summary: 'Create a manual alert (operator)' },
+      })
       .get('/', ({ query }) => listAlerts({
         severity:   query.severity,
         status:     query.status,

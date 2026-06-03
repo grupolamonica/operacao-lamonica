@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Phone, MessageSquare, Mail, FileCheck2, FileX2, FileWarning } from 'lucide-react'
 import { SidePanelLayout } from '@/components/domain/SidePanelLayout'
 import { DriverAvatar } from '@/components/domain/DriverAvatar'
@@ -60,6 +61,26 @@ export function DriverDetailPanel({ driver, onClose }: Props) {
           </div>
         </div>
 
+        {/* Phase 12 — chips de conformidade Lamonica (Angellira + MH) */}
+        {(driver.angelliraStatus || driver.anttValid || driver.trackingEnabled || driver.operationalBlocked || driver.driverKind) && (
+          <div className="flex flex-wrap gap-1.5">
+            {driver.operationalBlocked && <Chip tone="danger">Bloqueado</Chip>}
+            {driver.angelliraStatus && <Chip tone={driver.angelliraStatus === 'Conforme' ? 'success' : 'warning'}>Angellira: {driver.angelliraStatus}</Chip>}
+            {driver.anttValid && <Chip tone="success">ANTT ✓</Chip>}
+            {driver.trackingEnabled && <Chip tone="success">Rastreamento ✓</Chip>}
+            {driver.driverKind && <Chip tone="muted">{driver.driverKind === 'FUN' ? 'Funcionário' : driver.driverKind === 'AGR' ? 'Agregado' : driver.driverKind}</Chip>}
+          </div>
+        )}
+
+        {(driver.cpf || driver.cnhCategoria || driver.cidade) && (
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+            {driver.cpf && <Detail label="CPF" value={maskCpf(driver.cpf)} />}
+            {driver.cnhCategoria && <Detail label="CNH" value={`cat ${driver.cnhCategoria}${driver.cnhValidade ? ` · ${formatDate(driver.cnhValidade, 'dd/MM/yyyy')}` : ''}`} />}
+            {(driver.cidade || driver.estado) && <Detail label="Cidade/UF" value={[driver.cidade, driver.estado].filter(Boolean).join(' / ')} />}
+            {driver.phone && <Detail label="Telefone" value={driver.phone} />}
+          </div>
+        )}
+
         <div className="grid grid-cols-3 gap-2">
           <Button size="sm" variant="outline" className="text-xs gap-1.5"><Phone className="h-3.5 w-3.5" /> Ligar</Button>
           <Button size="sm" variant="outline" className="text-xs gap-1.5"><MessageSquare className="h-3.5 w-3.5" /> Mensagem</Button>
@@ -118,4 +139,27 @@ export function DriverDetailPanel({ driver, onClose }: Props) {
       </div>
     </SidePanelLayout>
   )
+}
+
+const chipTone: Record<string, string> = {
+  success: 'bg-success/15 text-success border-success/40',
+  warning: 'bg-warning/15 text-warning border-warning/40',
+  danger:  'bg-danger/15 text-danger border-danger/40',
+  muted:   'bg-muted text-muted-foreground border-border',
+}
+function Chip({ tone, children }: { tone: keyof typeof chipTone | string; children: ReactNode }) {
+  return <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium', chipTone[tone] ?? chipTone.muted)}>{children}</span>
+}
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</p>
+      <p className="text-foreground">{value}</p>
+    </div>
+  )
+}
+function maskCpf(cpf: string): string {
+  const d = cpf.replace(/\D/g, '')
+  if (d.length !== 11) return cpf
+  return `${d.slice(0, 3)}.***.***-${d.slice(9)}`
 }

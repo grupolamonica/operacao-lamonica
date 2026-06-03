@@ -172,3 +172,30 @@ export async function getAlertStats() {
     byPriority:     { alta: altaPrio, media: mediaPrio, baixa: baixaPrio },
   }
 }
+
+/**
+ * Cria uma ocorrência manual (Phase 12, D-12-29) — operador abrindo ocorrência
+ * a partir de uma viagem. status/priority usam defaults do schema.
+ */
+export async function createAlert(input: {
+  type: string
+  severity: 'critico' | 'medio' | 'baixo'
+  title: string
+  description?: string
+  tripId?: string | null
+  driverId?: string | null
+  priority?: 'alta' | 'media' | 'baixa'
+}) {
+  const [row] = await db.insert(alerts).values({
+    type:        input.type,
+    severity:    input.severity,
+    title:       input.title,
+    description: input.description ?? null,
+    tripId:      input.tripId ?? null,
+    driverId:    input.driverId ?? null,
+    source:      'Manual',
+    priority:    input.priority ?? 'media',
+    occurredAt:  new Date(),
+  }).returning()
+  return row
+}

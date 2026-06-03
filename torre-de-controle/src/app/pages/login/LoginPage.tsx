@@ -4,8 +4,8 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/useAuthStore'
 
 export function LoginPage() {
-  const [email, setEmail]       = useState('admin@torre.fic')
-  const [password, setPassword] = useState('senha123')
+  const [email, setEmail]       = useState(import.meta.env.DEV ? 'antonio.magalhaes@grupolamonica.com.br' : '')
+  const [password, setPassword] = useState('')
   const [error, setError]       = useState<string | null>(null)
   const { login, isLoading }    = useAuthStore()
   const navigate                = useNavigate()
@@ -59,9 +59,11 @@ export function LoginPage() {
           </button>
         </form>
 
-        <p className="text-xs text-center text-muted-foreground">
-          Demo: admin@torre.fic / senha123
-        </p>
+        {import.meta.env.DEV && (
+          <p className="text-xs text-center text-muted-foreground">
+            Dev: antonio.magalhaes@grupolamonica.com.br
+          </p>
+        )}
       </div>
     </div>
   )

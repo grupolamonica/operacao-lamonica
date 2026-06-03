@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia'
 import { authGuard } from '../../lib/rbac'
-import { listTrips, getTripById, getTripStats } from './trips.service'
+import { listTrips, getTripById, getTripStats, addTripNote } from './trips.service'
 import { getTripTimeline } from './timeline.service'
 import { getTripRisk, recalcTripRisk } from '../risk/risk.service'
 
@@ -73,5 +73,18 @@ export const tripsPlugin = new Elysia({ name: 'trips' })
       }, {
         params: t.Object({ id: t.String({ format: 'uuid' }) }),
         detail: { tags: ['trips'], summary: 'Force risk recompute (admin/debug)' },
+      })
+      // Phase 12 (D-12-29) — nota/intervenção do operador → trip_event local
+      .post('/:id/note', async ({ params, body, user, set }) => {
+        const r = await addTripNote({ tripId: params.id, userId: user.id, text: body.text, kind: body.kind })
+        if (!r) { set.status = 404; return { error: 'Trip not found' } }
+        return r
+      }, {
+        params: t.Object({ id: t.String({ format: 'uuid' }) }),
+        body:   t.Object({
+          text: t.String({ minLength: 1, maxLength: 2000 }),
+          kind: t.Optional(t.Union([t.Literal('manual_note'), t.Literal('reagendamento'), t.Literal('autorizacao_atraso')])),
+        }),
+        detail: { tags: ['trips'], summary: 'Add operator note/intervention to trip timeline' },
       })
   )
