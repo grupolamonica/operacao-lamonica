@@ -28,20 +28,11 @@ const InsightsPage = lazy(() =>
 const RankingPage = lazy(() =>
   import('./pages/ranking/RankingPage').then(m => ({ default: m.RankingPage })),
 )
-const HeatmapPage = lazy(() =>
-  import('./pages/heatmap/HeatmapPage').then(m => ({ default: m.HeatmapPage })),
-)
 const BiExecutivoPage = lazy(() =>
   import('./pages/bi-executivo/BiExecutivoPage').then(m => ({ default: m.BiExecutivoPage })),
 )
 const PrevisaoPage = lazy(() =>
   import('./pages/previsao/PrevisaoPage').then(m => ({ default: m.PrevisaoPage })),
-)
-const AssistentePage = lazy(() =>
-  import('./pages/assistente/AssistentePage').then(m => ({ default: m.AssistentePage })),
-)
-const SimuladorPage = lazy(() =>
-  import('./pages/simulador/SimuladorPage').then(m => ({ default: m.SimuladorPage })),
 )
 const ConfiguracoesPage = lazy(() =>
   import('./pages/configuracoes/ConfiguracoesPage').then(m => ({ default: m.ConfiguracoesPage })),
@@ -78,9 +69,6 @@ export const router = createBrowserRouter([
           { path: 'insights',          element: <L><InsightsPage /></L> },
           { path: 'bi-executivo',      element: <L><BiExecutivoPage /></L> },
           { path: 'previsao',          element: <L><PrevisaoPage /></L> },
-          { path: 'assistente',        element: <L><AssistentePage /></L> },
-          { path: 'simulador',         element: <L><SimuladorPage /></L> },
-          { path: 'heatmap',           element: <L><HeatmapPage /></L> },
           { path: 'ranking',           element: <L><RankingPage /></L> },
           { path: 'configuracoes',     element: <L><ConfiguracoesPage /></L> },
         ],

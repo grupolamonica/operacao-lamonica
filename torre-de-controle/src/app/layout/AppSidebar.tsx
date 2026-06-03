@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Radio, Truck, Users, MapPin,
-  AlertTriangle, BarChart3, Trophy, Settings, Antenna, Flame, LineChart, TrendingUp, Sparkles, Shuffle,
+  AlertTriangle, BarChart3, Trophy, Settings, Antenna, LineChart, TrendingUp,
 } from 'lucide-react'
 import { usePositionsStore } from '@/hooks/useVehiclePositions'
 
@@ -11,13 +11,10 @@ const navItems = [
   { to: '/viagens',           label: 'Viagens',            icon: Truck },
   { to: '/motoristas',        label: 'Motoristas',         icon: Users },
   { to: '/geofences',         label: 'Geofences',          icon: MapPin },
-  { to: '/heatmap',           label: 'Heatmap',            icon: Flame },
   { to: '/alertas',           label: 'Ocorrências',        icon: AlertTriangle },
   { to: '/insights',          label: 'Insights',           icon: BarChart3 },
   { to: '/bi-executivo',      label: 'BI Executivo',       icon: LineChart },
   { to: '/previsao',          label: 'Previsão',           icon: TrendingUp },
-  { to: '/assistente',        label: 'Assistente IA',      icon: Sparkles },
-  { to: '/simulador',         label: 'Simulador',          icon: Shuffle },
   { to: '/ranking',           label: 'Ranking',            icon: Trophy },
   { to: '/configuracoes',     label: 'Configurações',      icon: Settings },
 ] as const

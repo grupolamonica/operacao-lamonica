@@ -38,18 +38,12 @@ import { rankingWritePlugin } from './modules/ranking/ranking.write.plugin'
 import { positionsReadPlugin } from './modules/positions/positions.plugin'
 // Sprint 4 — SLA rules engine + dashboard
 import { slaPlugin } from './modules/sla/sla.plugin'
-// Sprint 6 — Heatmap geográfico
-import { heatmapPlugin } from './modules/heatmap/heatmap.plugin'
 // Sprint 7 — Central de comunicações
 import { communicationsPlugin } from './modules/communications/communications.plugin'
 // Sprint 8 — BI Executivo
 import { biPlugin } from './modules/bi/bi.plugin'
 // Sprint 9 — Módulo de Previsão
 import { forecastPlugin } from './modules/forecast/forecast.plugin'
-// Sprint 10 — Assistente Operacional
-import { assistantPlugin } from './modules/assistant/assistant.plugin'
-// Sprint 11 — Simulador de Rotas
-import { simulatorPlugin } from './modules/simulator/simulator.plugin'
 import { processAlertDetection } from './jobs/alert-inline'
 import { sql, desc } from 'drizzle-orm'
 import { geofences, geofenceEvents } from './db/schema/geofences'
@@ -200,12 +194,9 @@ export const app = new Elysia()
   // Phase 11 — positions read wired BEFORE wsPlugin (wsPlugin-last rule, Elysia 1.4).
   .use(positionsReadPlugin)
   .use(slaPlugin)
-  .use(heatmapPlugin)
   .use(communicationsPlugin)
   .use(biPlugin)
   .use(forecastPlugin)
-  .use(assistantPlugin)
-  .use(simulatorPlugin)
   .use(wsPlugin)
   // Telemetry inlined to avoid Elysia 1.4.28 plugin-composition issue with body schema
   .post('/api/telemetry/ingest', async ({ body, headers, set }) => {
