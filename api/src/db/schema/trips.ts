@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, smallint, timestamp, decimal, jsonb, index } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, varchar, smallint, timestamp, decimal, jsonb, index, integer, text } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { drivers } from './drivers'
 import { vehicles } from './vehicles'
@@ -36,6 +36,19 @@ export const trips = pgTable('trips', {
   riskLevel:          varchar('risk_level', { length: 10 }),    // baixo|medio|alto|critico
   riskFactors:        jsonb('risk_factors').$type<Array<{ key: string; label: string; weight: number; contribution: number; detail?: string }>>(),
   riskCalculatedAt:   timestamp('risk_calculated_at', { withTimezone: true }),
+  // Phase 12 (migration 0003) — rastreabilidade DBLH + ponte Shopee/ranking
+  ordemViagem:     integer('ordem_viagem'),
+  sheetLh:         varchar('sheet_lh', { length: 50 }),
+  sheetMotorista:  text('sheet_motorista'),
+  sheetCavalo:     varchar('sheet_cavalo', { length: 12 }),
+  sheetCarreta:    varchar('sheet_carreta', { length: 12 }),
+  valor:           decimal('valor', { precision: 10, scale: 2 }),
+  bonus:           decimal('bonus', { precision: 10, scale: 2 }),
+  shopeeDriverId:  text('shopee_driver_id'),
+  statusEta:       varchar('status_eta', { length: 20 }),
+  statusCpt:       varchar('status_cpt', { length: 20 }),
+  usedVehicleType: varchar('used_vehicle_type', { length: 30 }),
+  rankingScore:    jsonb('ranking_score'),
   createdAt:      timestamp('created_at',  { withTimezone: true }).defaultNow().notNull(),
   updatedAt:      timestamp('updated_at',  { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
