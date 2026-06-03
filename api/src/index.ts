@@ -46,6 +46,8 @@ import { biPlugin } from './modules/bi/bi.plugin'
 import { forecastPlugin } from './modules/forecast/forecast.plugin'
 // Phase 12 — KPIs da Torre de Controle (D-12-34)
 import { torrePlugin } from './modules/torre/torre.plugin'
+// Phase 12 — jobs Angellira (posições ao vivo + detectores de ocorrência)
+import { startAngelliraJobs } from './jobs/angellira-cron'
 import { processAlertDetection } from './jobs/alert-inline'
 import { sql, desc } from 'drizzle-orm'
 import { geofences, geofenceEvents } from './db/schema/geofences'
@@ -401,6 +403,8 @@ export const app = new Elysia()
   })
   .listen(PORT, () => {
     logger.info({ port: PORT, frontendUrl: FRONTEND_URL }, 'torre-api listening')
+    // Phase 12 — jobs Angellira (posições + detectores). No-op se env ausente.
+    startAngelliraJobs()
   })
 
 // Eden Treaty type export (D-04)

@@ -148,15 +148,29 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_ACTOR: ${{ github.actor }}
           GIT_SHA: ${{ github.sha }}
+          ANGELLIRA_USER: ${{ secrets.ANGELLIRA_USER }}
+          ANGELLIRA_PASS: ${{ secrets.ANGELLIRA_PASS }}
+          ANGELLIRA_EMPRESA: ${{ secrets.ANGELLIRA_EMPRESA }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           command_timeout: 15m
-          envs: GHCR_TOKEN,GHCR_ACTOR,GIT_SHA
+          envs: GHCR_TOKEN,GHCR_ACTOR,GIT_SHA,ANGELLIRA_USER,ANGELLIRA_PASS,ANGELLIRA_EMPRESA
           script: |
             set -euo pipefail
             cd /opt/apps/torre
+
+            # Phase 12 — garante credenciais Angellira no .env (upsert idempotente)
+            touch .env
+            for kv in "ANGELLIRA_USER=${ANGELLIRA_USER}" "ANGELLIRA_PASS=${ANGELLIRA_PASS}" "ANGELLIRA_EMPRESA=${ANGELLIRA_EMPRESA}"; do
+              key="${kv%%=*}"
+              if grep -q "^${key}=" .env; then
+                sed -i "s|^${key}=.*|${kv}|" .env
+              else
+                echo "$kv" >> .env
+              fi
+            done
 
             # Authenticate with GHCR (token valid for the duration of this job)
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_ACTOR" --password-stdin
