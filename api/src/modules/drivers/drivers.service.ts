@@ -51,6 +51,18 @@ export async function listDrivers(f: DriverFilters) {
     lat:              d.lat ? Number(d.lat) : 0,
     lng:              d.lng ? Number(d.lng) : 0,
     address:          d.address ?? '',
+    // Phase 12 — enriquecimento Lamonica (MH + Angellira)
+    cpf:                 d.cpf ?? undefined,
+    cnhCategoria:        d.cnhCategoria ?? undefined,
+    cnhValidade:         d.cnhValidade ?? undefined,
+    cidade:              d.cidade ?? undefined,
+    estado:              d.estado ?? undefined,
+    driverKind:          d.driverKind ?? undefined,
+    angelliraStatus:     d.angelliraStatus ?? undefined,
+    documentsValid:      d.documentsValid ?? undefined,
+    anttValid:           d.anttValid ?? undefined,
+    trackingEnabled:     d.trackingEnabled ?? undefined,
+    operationalBlocked:  d.operationalBlocked ?? undefined,
   }))
 }
 

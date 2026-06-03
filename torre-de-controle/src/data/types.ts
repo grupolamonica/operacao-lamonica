@@ -61,6 +61,18 @@ export interface Driver {
   lat: number
   lng: number
   address: string                 // texto da localização atual
+  // Phase 12 — enriquecimento Lamonica (MH + Angellira), opcionais
+  cpf?: string
+  cnhCategoria?: string
+  cnhValidade?: string
+  cidade?: string
+  estado?: string
+  driverKind?: string             // FUN | AGR
+  angelliraStatus?: string        // Conforme | Vencido | Não conforme
+  documentsValid?: boolean
+  anttValid?: boolean
+  trackingEnabled?: boolean
+  operationalBlocked?: boolean
 }
 
 // ===== Trip =====

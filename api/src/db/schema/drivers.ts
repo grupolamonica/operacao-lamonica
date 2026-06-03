@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, integer, timestamp, text, decimal } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, varchar, integer, timestamp, text, decimal, date, boolean, jsonb } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 
 export const drivers = pgTable('drivers', {
@@ -16,6 +16,27 @@ export const drivers = pgTable('drivers', {
   lat:              decimal('lat', { precision: 10, scale: 8 }),
   lng:              decimal('lng', { precision: 11, scale: 8 }),
   address:          text('address'),
+  // Phase 12 (migration 0003_lamonica_fields) — catálogo rico MH + Angellira
+  cpf:                 varchar('cpf', { length: 14 }),
+  cnh:                 varchar('cnh', { length: 20 }),
+  cnhValidade:         date('cnh_validade'),
+  cnhCategoria:        varchar('cnh_categoria', { length: 5 }),
+  rg:                  varchar('rg', { length: 20 }),
+  nascimento:          date('nascimento'),
+  driverKind:          varchar('driver_kind', { length: 10 }),     // FUN | AGR
+  cidade:              varchar('cidade', { length: 80 }),
+  estado:              varchar('estado', { length: 2 }),
+  trackingEnabled:     boolean('tracking_enabled').default(false),
+  documentsValid:      boolean('documents_valid').default(true),
+  anttValid:           boolean('antt_valid').default(true),
+  insuranceValid:      boolean('insurance_valid').default(false),
+  monitoringCapable:   boolean('monitoring_capable').default(false),
+  operationalBlocked:  boolean('operational_blocked').default(false),
+  allowedRegions:      text('allowed_regions').array(),
+  angelliraStatus:     varchar('angellira_status', { length: 40 }),
+  angelliraValidUntil: date('angellira_valid_until'),
+  shopeeDriverId:      text('shopee_driver_id'),
+  rawJson:             jsonb('raw_json'),
   createdAt:        timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt:        timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
