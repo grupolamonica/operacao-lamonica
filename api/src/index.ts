@@ -44,6 +44,8 @@ import { communicationsPlugin } from './modules/communications/communications.pl
 import { biPlugin } from './modules/bi/bi.plugin'
 // Sprint 9 — Módulo de Previsão
 import { forecastPlugin } from './modules/forecast/forecast.plugin'
+// Phase 12 — KPIs da Torre de Controle (D-12-34)
+import { torrePlugin } from './modules/torre/torre.plugin'
 import { processAlertDetection } from './jobs/alert-inline'
 import { sql, desc } from 'drizzle-orm'
 import { geofences, geofenceEvents } from './db/schema/geofences'
@@ -197,6 +199,8 @@ export const app = new Elysia()
   .use(communicationsPlugin)
   .use(biPlugin)
   .use(forecastPlugin)
+  // Phase 12 — Torre KPIs (BEFORE wsPlugin: Elysia 1.4 plugin-last rule)
+  .use(torrePlugin)
   .use(wsPlugin)
   // Telemetry inlined to avoid Elysia 1.4.28 plugin-composition issue with body schema
   .post('/api/telemetry/ingest', async ({ body, headers, set }) => {

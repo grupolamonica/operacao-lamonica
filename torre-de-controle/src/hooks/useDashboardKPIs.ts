@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { kpisDashboard, kpisTorre, kpisViagens, kpisMotoristas, kpisAlertas } from '@/data/mocks'
+import { kpisDashboard, kpisViagens, kpisMotoristas, kpisAlertas } from '@/data/mocks'
 import type { KPIDashboard, KPITorre, KPIViagens, KPIMotoristas, KPIAlertas } from '@/data/types'
 
 export function useDashboardKPIs() {
@@ -22,9 +22,31 @@ export function useDashboardKPIs() {
   }
 }
 
-// Torre KPIs — served from the mock for now (no dedicated backend endpoint yet)
+// Torre KPIs — Phase 12: served by real backend /api/torre/kpis (D-12-34).
+const EMPTY_TORRE: KPITorre = {
+  viagensAtivas:   { count: 0, total: 0 },
+  emRisco:         { count: 0, total: 0 },
+  atrasosCriticos: { count: 0, total: 0 },
+  semSinal:        { count: 0, total: 0 },
+  ocorrencias:     { criticas: 0, medias: 0 },
+}
 export function useTorreKPIs() {
-  return { data: kpisTorre as KPITorre, isLoading: false as const, isError: false as const, error: null, refetch: () => {} }
+  const q = useQuery({
+    queryKey: ['torre-kpis'],
+    queryFn: async () => {
+      const { data, error } = await api.api.torre.kpis.get()
+      if (error) throw error
+      return (data ?? EMPTY_TORRE) as KPITorre
+    },
+    refetchInterval: 30_000,
+  })
+  return {
+    data:      q.data ?? EMPTY_TORRE,
+    isLoading: q.isLoading,
+    isError:   q.isError,
+    error:     q.error,
+    refetch:   q.refetch,
+  }
 }
 
 export function useViagensKPIs() {
