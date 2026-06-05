@@ -17,19 +17,22 @@ const styleMap = {
 export type SlaStatus = keyof typeof config
 
 interface Props {
-  status: SlaStatus
+  status: SlaStatus | null | undefined
   size?: 'sm' | 'md'
 }
 
 export function StatusBadge({ status, size = 'sm' }: Props) {
-  const { label } = config[status]
+  // Dado real pode trazer sla_status null/desconhecido (viagens sem janela
+  // avaliada, concluídas/canceladas). Fallback tolerante — não quebra a tela. (Phase 12)
+  const label = (status && config[status]?.label) ?? '—'
+  const style = (status && styleMap[status]) || { backgroundColor: 'var(--muted, #e2e8f0)', color: 'var(--muted-foreground, #64748b)' }
   return (
     <span
       className={cn(
         'inline-flex items-center rounded-full font-medium whitespace-nowrap',
         size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-3 py-1 text-sm',
       )}
-      style={styleMap[status]}
+      style={style}
     >
       {label}
     </span>
