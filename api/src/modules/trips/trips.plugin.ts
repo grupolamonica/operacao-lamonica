@@ -35,7 +35,7 @@ export const tripsPlugin = new Elysia({ name: 'trips' })
           routeCode:  t.Optional(t.String()),
           search:     t.Optional(t.String()),
           page:       t.Optional(t.Numeric({ minimum: 0 })),
-          limit:      t.Optional(t.Numeric({ minimum: 1, maximum: 500 })),
+          limit:      t.Optional(t.Numeric({ minimum: 1, maximum: 20000 })),
         }),
         detail: { tags: ['trips'], summary: 'List trips with filters' },
       })

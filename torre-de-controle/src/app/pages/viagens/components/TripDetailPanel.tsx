@@ -13,7 +13,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { api } from '@/lib/api'
 import { useTripTimeline } from '@/hooks/useTripTimeline'
 import { useTripRisk } from '@/hooks/useTripRisk'
-import { formatTime, formatKm, minutesBetween } from '@/lib/formatters'
+import { useDriverDossie } from '@/hooks/useDrivers'
+import { formatTime, formatKm, minutesBetween, formatDate } from '@/lib/formatters'
+import { cn } from '@/lib/utils'
 import type { Trip } from '@/data/types'
 
 interface Props {
@@ -24,6 +26,7 @@ interface Props {
 export function TripDetailPanel({ trip, onClose }: Props) {
   const { data: events } = useTripTimeline(trip.id)
   const { data: risk }   = useTripRisk(trip.id)
+  const { data: dossie } = useDriverDossie(trip.driverId ?? null)
   const qc = useQueryClient()
   const remainingKm = Math.max(0, trip.distanceTotal - trip.distanceDone)
 
@@ -115,6 +118,62 @@ export function TripDetailPanel({ trip, onClose }: Props) {
           <Metric label="Desvio ETA" value={`${minutesBetween(trip.windowEnd, trip.eta) > 0 ? '+' : ''}${minutesBetween(trip.windowEnd, trip.eta)} min`} />
         </div>
 
+        {/* Phase 12 — dossiê do motorista cruzado (identidade, documentos, última localização, frota) */}
+        {dossie && (
+          <div className="rounded-md border border-border bg-card p-2.5 space-y-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Motorista — {dossie.identidade.name}</p>
+            <div className="flex flex-wrap gap-1">
+              {dossie.conformidade.angelliraStatus && <DocTag tone={dossie.conformidade.angelliraStatus === 'Conforme' ? 'ok' : 'warn'}>Angellira: {dossie.conformidade.angelliraStatus}</DocTag>}
+              {dossie.conformidade.anttValid && <DocTag tone="ok">ANTT ✓</DocTag>}
+              {dossie.conformidade.operationalBlocked && <DocTag tone="bad">Bloqueado</DocTag>}
+              {dossie.identidade.driverKind && <DocTag tone="muted">{dossie.identidade.driverKind === 'FUN' ? 'Funcionário' : dossie.identidade.driverKind === 'AGR' ? 'Agregado' : dossie.identidade.driverKind}</DocTag>}
+            </div>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+              {dossie.identidade.cpf && <KV k="CPF" v={maskCpf(dossie.identidade.cpf)} />}
+              {dossie.identidade.cnh && <KV k="CNH" v={`${dossie.identidade.cnhCategoria ?? ''}${dossie.identidade.cnhValidade ? ` · val ${formatDate(new Date(dossie.identidade.cnhValidade), 'dd/MM/yyyy')}` : ''}`} />}
+              {dossie.identidade.phone && <KV k="Telefone" v={dossie.identidade.phone} />}
+              {(dossie.identidade.cidade || dossie.identidade.estado) && <KV k="Cidade/UF" v={[dossie.identidade.cidade, dossie.identidade.estado].filter(Boolean).join('/')} />}
+            </div>
+
+            {dossie.documentos.length > 0 && (
+              <div>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Documentos</p>
+                <div className="flex flex-wrap gap-1">
+                  {dossie.documentos.map((doc, i) => (
+                    <DocTag key={i} tone={doc.status === 'valido' ? 'ok' : doc.status === 'vencido' ? 'bad' : 'warn'}>
+                      {doc.type}{doc.expiresAt ? ` · ${formatDate(new Date(doc.expiresAt), 'dd/MM/yy')}` : ''}
+                    </DocTag>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Última localização</p>
+              {dossie.localizacao.ultimaPosicao ? (
+                <p className="text-[11px] text-foreground">
+                  {[dossie.localizacao.ultimaPosicao.cidade, dossie.localizacao.ultimaPosicao.uf].filter(Boolean).join('/') || '—'}
+                  {dossie.localizacao.ultimaPosicao.at ? ` · ${formatDate(new Date(dossie.localizacao.ultimaPosicao.at), 'dd/MM HH:mm')}` : ''}
+                  {dossie.localizacao.ultimaPosicao.veiculo ? ` · ${dossie.localizacao.ultimaPosicao.veiculo}` : ''}
+                </p>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">{dossie.localizacao.address ?? 'Sem posição recente.'}</p>
+              )}
+            </div>
+
+            {dossie.veiculos.length > 0 && (
+              <div>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Frota ({dossie.veiculos.length})</p>
+                <div className="flex flex-wrap gap-1">
+                  {dossie.veiculos.map(v => (
+                    <DocTag key={v.plate} tone="muted">{v.plate} · {v.plateRole === 'HORSE' ? 'cavalo' : 'carreta'}</DocTag>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <div>
           <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Linha do tempo</h4>
           {events.length > 0 ? <TripTimeline events={events} /> : <p className="text-xs text-muted-foreground">Sem eventos registrados.</p>}
@@ -183,4 +242,27 @@ function Metric({ label, value }: { label: string; value: string | number }) {
       <p className="text-sm font-medium text-foreground truncate">{value}</p>
     </div>
   )
+}
+
+const docToneClass: Record<string, string> = {
+  ok:    'bg-success/15 text-success border-success/40',
+  warn:  'bg-warning/15 text-warning border-warning/40',
+  bad:   'bg-danger/15 text-danger border-danger/40',
+  muted: 'bg-muted text-muted-foreground border-border',
+}
+function DocTag({ tone = 'muted', children }: { tone?: keyof typeof docToneClass; children: React.ReactNode }) {
+  return <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium', docToneClass[tone] ?? docToneClass.muted)}>{children}</span>
+}
+function KV({ k, v }: { k: string; v: string }) {
+  return (
+    <div>
+      <span className="text-muted-foreground">{k}: </span>
+      <span className="text-foreground font-medium">{v}</span>
+    </div>
+  )
+}
+function maskCpf(cpf: string): string {
+  const d = cpf.replace(/\D/g, '')
+  if (d.length !== 11) return cpf
+  return `${d.slice(0, 3)}.***.***-${d.slice(9)}`
 }

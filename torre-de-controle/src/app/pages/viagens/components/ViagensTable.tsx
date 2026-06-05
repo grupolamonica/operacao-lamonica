@@ -1,5 +1,5 @@
 import { type ColumnDef } from '@tanstack/react-table'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Search, Filter, ArrowUpDown, MoreVertical } from 'lucide-react'
 import { TableWithSidePanel } from '@/components/domain/TableWithSidePanel'
 import { StatusBadge } from '@/components/domain/StatusBadge'
@@ -76,14 +76,26 @@ const tabToStatus: Record<string, TripStatus> = {
 export function ViagensTable() {
   const { activeTripsTab, setActiveTripsTab, selectedTripId, setSelectedTripId } = useUIStore()
   const [filters, setFilters] = useState<TripFilters>({})
-  const { data: all } = useTrips()
+  // Phase 12 — busca a base COMPLETA uma vez; filtra/pagina client-side.
+  // Mostra todas as viagens e mantém os contadores das abas corretos.
+  const { data: all } = useTrips({ limit: 20000 } as TripFilters & { limit: number })
 
-  const clients    = Array.from(new Set(all.map(t => t.clientName))).sort()
-
-  const routes     = Array.from(new Set(all.map(t => t.routeCode))).sort()
+  const clients = Array.from(new Set(all.map(t => t.clientName).filter(Boolean))).sort()
+  const routes  = Array.from(new Set(all.map(t => t.routeCode).filter(Boolean))).sort()
 
   const merged: TripFilters = { ...filters, status: tabToStatus[activeTripsTab] }
-  const { data: trips } = useTrips(merged)
+  const trips = useMemo(() => {
+    const q = (filters.driverName ?? '').toLowerCase().trim()
+    return all.filter(t => {
+      if (merged.status && t.status !== merged.status) return false
+      if (filters.clientName && t.clientName !== filters.clientName) return false
+      if (filters.routeCode && t.routeCode !== filters.routeCode) return false
+      if (filters.priority && t.priority !== filters.priority) return false
+      if (filters.slaStatus && t.slaStatus !== filters.slaStatus) return false
+      if (q && !`${t.driverName} ${t.code} ${t.clientName}`.toLowerCase().includes(q)) return false
+      return true
+    })
+  }, [all, merged.status, filters.clientName, filters.routeCode, filters.priority, filters.slaStatus, filters.driverName])
   const { data: selected } = useTrip(selectedTripId)
 
   const set = <K extends keyof TripFilters>(key: K, value: TripFilters[K] | undefined) =>

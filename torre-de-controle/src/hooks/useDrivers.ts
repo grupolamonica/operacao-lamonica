@@ -50,6 +50,13 @@ export interface DriverDossie {
     plate: string; type: string | null; model: string | null; plateRole: string | null
     angelliraStatus: string | null; angelliraValidUntil: string | null
   }>
+  documentos: Array<{
+    type: string; status: string; expiresAt: string | null; issuedAt: string | null
+  }>
+  localizacao: {
+    address: string | null; lat: number | null; lng: number | null
+    ultimaPosicao: { at: string | null; cidade: string | null; uf: string | null; veiculo: string | null } | null
+  }
   ocorrencias: Array<{
     type: string; severity: string; status: string; title: string
     occurredAt: string | null; resolvedAt: string | null

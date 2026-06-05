@@ -84,7 +84,8 @@ export async function getDriverDossie(id: string) {
     SELECT id, code, name, cpf, cnh, cnh_categoria, cnh_validade, rg, nascimento,
            driver_kind, cidade, estado, phone, email, status, operational_score, base,
            tracking_enabled, documents_valid, antt_valid, insurance_valid,
-           operational_blocked, angellira_status, angellira_valid_until, shopee_driver_id
+           operational_blocked, angellira_status, angellira_valid_until, shopee_driver_id,
+           lat, lng, address
     FROM drivers WHERE id = ${id}
   `)) as unknown as any[]
   if (!d) return null
@@ -129,6 +130,19 @@ export async function getDriverDossie(id: string) {
     FROM vehicles
     WHERE driver_id = ${id} OR (${cpf}::text IS NOT NULL AND linked_driver_cpf = ${cpf})
     ORDER BY plate_role NULLS LAST, plate
+  `)) as unknown as any[]
+
+  const documentos = (await db.execute(sql`
+    SELECT type, status, expires_at, issued_at
+    FROM driver_documents WHERE driver_id = ${id}
+    ORDER BY expires_at NULLS LAST
+  `)) as unknown as any[]
+
+  const [pos] = (await db.execute(sql`
+    SELECT data_posicao, cidade, uf, veiculo, lat, lng
+    FROM driver_positions
+    WHERE motorista_norm = upper(${d.name}) OR motorista ILIKE ${'%' + (d.name ?? '') + '%'}
+    ORDER BY data_posicao DESC LIMIT 1
   `)) as unknown as any[]
 
   const t = tr ?? {}
@@ -177,6 +191,18 @@ export async function getDriverDossie(id: string) {
       plateRole: v.plate_role, angelliraStatus: v.angellira_status ?? null,
       angelliraValidUntil: v.angellira_valid_until ?? null,
     })),
+    documentos: documentos.map((doc) => ({
+      type: doc.type, status: doc.status,
+      expiresAt: doc.expires_at ?? null, issuedAt: doc.issued_at ?? null,
+    })),
+    localizacao: {
+      address: d.address ?? null,
+      lat: d.lat != null ? Number(d.lat) : (pos?.lat != null ? Number(pos.lat) : null),
+      lng: d.lng != null ? Number(d.lng) : (pos?.lng != null ? Number(pos.lng) : null),
+      ultimaPosicao: pos
+        ? { at: pos.data_posicao ?? null, cidade: pos.cidade ?? null, uf: pos.uf ?? null, veiculo: pos.veiculo ?? null }
+        : null,
+    },
     ocorrencias: alertas.map((a) => ({
       type: a.type, severity: a.severity, status: a.status, title: a.title,
       occurredAt: a.occurred_at, resolvedAt: a.resolved_at ?? null,

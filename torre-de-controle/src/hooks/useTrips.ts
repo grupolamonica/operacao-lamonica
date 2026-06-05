@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { Trip, TripFilters } from '@/data/types'
 
-export function useTrips(filters?: TripFilters) {
+export function useTrips(filters?: TripFilters & { limit?: number }) {
   const q = useQuery({
     queryKey: ['trips', filters],
     queryFn: async () => {
