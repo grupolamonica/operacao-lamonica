@@ -112,6 +112,7 @@ export function TripDetailPanel({ trip, onClose }: Props) {
           <Metric label="Destino" value={trip.destination} />
           <Metric label="Janela" value={`${formatTime(trip.windowStart)} – ${formatTime(trip.windowEnd)}`} />
           <Metric label="ETA atual" value={formatTime(trip.eta)} />
+          {trip.valor != null && <Metric label="Valor frete" value={`R$ ${trip.valor.toLocaleString('pt-BR')}${trip.bonus ? ` (+${trip.bonus})` : ''}`} />}
           <Metric label="Distância total" value={formatKm(trip.distanceTotal)} />
           <Metric label="Restante" value={formatKm(remainingKm)} />
           <Metric label="Progresso" value={`${trip.progressPct}%`} />

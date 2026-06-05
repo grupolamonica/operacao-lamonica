@@ -127,6 +127,8 @@ function toTripDto(row: any) {
     progressPct:   row.progressPct,
     distanceTotal: row.distanceTotal ? Number(row.distanceTotal) : 0,
     distanceDone:  row.distanceDone  ? Number(row.distanceDone)  : 0,
+    valor:         row.valor != null ? Number(row.valor) : null,
+    bonus:         row.bonus != null ? Number(row.bonus) : null,
     // Sprint 3 — risk snapshot (nullable until first recalc)
     riskScore:     row.riskScore ?? null,
     riskLevel:     row.riskLevel ?? null,

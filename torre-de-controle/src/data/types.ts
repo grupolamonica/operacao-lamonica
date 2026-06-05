@@ -114,6 +114,9 @@ export interface Trip {
   riskScore?: number | null
   riskLevel?: RiskLevel | null
   riskFactors?: RiskFactor[] | null
+  // Phase 12 — financeiro (preço-padrão da rota, sistema Cargas)
+  valor?: number | null
+  bonus?: number | null
 }
 
 // ===== Alert =====
