@@ -16,10 +16,11 @@ export function OperationalQueue({ className }: { className?: string }) {
     return sev[a.severity] - sev[b.severity]
   })
 
-  // Assumir → transiciona a ocorrência para "em_analise" (operador assume a tratativa).
+  // Assumir para mim → auto-atribui a ocorrência ao operador logado (assignedTo = eu)
+  // e move para "em_tratativa". Porte do botão "Assumir" do painel GAS.
   const assume = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await (api.api.alerts as any)[id].transition.post({ to: 'em_analise' })
+      const { error } = await (api.api.alerts as any)[id].assign.patch()
       if (error) throw new Error('Falha ao assumir ocorrência')
     },
     onSuccess: () => {

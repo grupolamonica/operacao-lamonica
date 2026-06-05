@@ -13,6 +13,8 @@ export const users = pgTable('users', {
   // Nullable on purpose — legacy rows pre-Phase-6 may have NULL;
   // backend should fall back to the default object when reading.
   notificationPreferences: jsonb('notification_preferences').default({ critico: true, medio: false, baixo: false }),
+  // Phase 12 — presença de operador (heartbeat) p/ "Fila de Operadores" online
+  lastSeenAt:   timestamp('last_seen_at', { withTimezone: true }),
   createdAt:    timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })
 
