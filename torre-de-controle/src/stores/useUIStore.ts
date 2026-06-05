@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type TripsTab = 'em_andamento' | 'planejadas' | 'concluidas' | 'atrasadas'
+export type TripsTab = 'todas' | 'em_andamento' | 'planejadas' | 'concluidas' | 'atrasadas'
 
 // NOTA: isSidebarCollapsed NÃO está neste store — shadcn SidebarProvider gerencia seu próprio
 // estado de colapso via useSidebar(). Adicionar isSidebarCollapsed aqui criaria dois sources of truth.
@@ -29,6 +29,6 @@ export const useUIStore = create<UIState>((set) => ({
   selectedAlertId: null,
   setSelectedAlertId: (id) => set({ selectedAlertId: id }),
 
-  activeTripsTab: 'em_andamento',
+  activeTripsTab: 'todas',
   setActiveTripsTab: (tab) => set({ activeTripsTab: tab }),
 }))

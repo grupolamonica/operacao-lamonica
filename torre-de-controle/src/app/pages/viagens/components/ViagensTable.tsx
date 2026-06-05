@@ -116,6 +116,7 @@ export function ViagensTable() {
       <Select value={activeTripsTab} onValueChange={(v) => setActiveTripsTab(v as typeof activeTripsTab)}>
         <SelectTrigger className="h-9 w-[170px] text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
         <SelectContent>
+          <SelectItem value="todas">Todas ({all.length})</SelectItem>
           <SelectItem value="em_andamento">Em andamento ({all.filter(t => t.status === 'in_progress').length})</SelectItem>
           <SelectItem value="planejadas">Planejadas ({all.filter(t => t.status === 'planned').length})</SelectItem>
           <SelectItem value="concluidas">Concluídas ({all.filter(t => t.status === 'completed').length})</SelectItem>

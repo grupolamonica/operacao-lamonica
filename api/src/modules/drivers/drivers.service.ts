@@ -103,7 +103,6 @@ export async function getDriverDossie(id: string) {
            min(window_start)                                             AS primeira,
            max(window_start)                                             AS ultima,
            count(DISTINCT sheet_lh)::int                                 AS qtd_lh,
-           round(avg(ranking_score)::numeric, 1)                         AS avg_ranking,
            coalesce(round(sum(valor)::numeric, 2), 0)                    AS total_valor
     FROM trips
     WHERE driver_id = ${id} OR (${shopee}::text IS NOT NULL AND shopee_driver_id = ${shopee})
@@ -175,14 +174,14 @@ export async function getDriverDossie(id: string) {
       emAndamento: n(t.em_andamento), noPrazo: n(t.no_prazo), atrasadas: n(t.atrasadas),
       pctNoPrazo, qtdLh: n(t.qtd_lh),
       primeira: t.primeira ?? null, ultima: t.ultima ?? null,
-      avgRanking: t.avg_ranking != null ? Number(t.avg_ranking) : null,
+      avgRanking: null,
       totalValor: Number(t.total_valor ?? 0),
       recentes: recentes.map((r) => ({
         code: r.code, origin: r.origin, destination: r.destination,
         status: r.status, slaStatus: r.sla_status,
         windowStart: r.window_start, eta: r.eta,
         valor: r.valor != null ? Number(r.valor) : null,
-        rankingScore: r.ranking_score != null ? Number(r.ranking_score) : null,
+        rankingScore: typeof r.ranking_score === 'number' ? r.ranking_score : null,
         sheetLh: r.sheet_lh, cavalo: r.sheet_cavalo, carreta: r.sheet_carreta,
       })),
     },
