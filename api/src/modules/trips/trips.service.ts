@@ -104,7 +104,7 @@ function toTripDto(row: any) {
     code:          row.code,
     driverId:      row.driverId,
     vehicleId:     row.vehicleId,
-    driverName:    row.driver?.name ?? '',
+    driverName:    row.driver?.name || row.sheetMotorista || '',
     driverPhoto:   row.driver?.photoUrl ?? null,
     plate:         row.vehicle?.plate ?? '',
     clientName:    row.client?.name ?? '',
