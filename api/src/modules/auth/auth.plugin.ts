@@ -1,8 +1,11 @@
 import { Elysia, t } from 'elysia'
+import { eq } from 'drizzle-orm'
 import { jwtPlugin } from '../../lib/jwt'
 import { authGuard } from '../../lib/rbac'
 import { redis } from '../../redis/client'
 import { logger } from '../../lib/logger'
+import { db } from '../../db/client'
+import { users } from '../../db/schema/users'
 import { validateCredentials, blacklistJti } from './auth.service'
 
 const LOGIN_RATE_WINDOW_SEC = 60
@@ -72,8 +75,13 @@ export const authPlugin = new Elysia({ name: 'auth' })
 
       .use(authGuard)
 
-      .get('/me', ({ user }) => {
-        return { user: { id: user.id, role: user.role } }
+      .get('/me', async ({ user }) => {
+        const [u] = await db
+          .select({ id: users.id, name: users.name, email: users.email, role: users.role })
+          .from(users)
+          .where(eq(users.id, user.id))
+          .limit(1)
+        return { user: u ?? { id: user.id, role: user.role } }
       }, {
         detail: { tags: ['auth'], summary: 'Current authenticated user' },
       })
