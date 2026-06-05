@@ -128,22 +128,14 @@ jobs:
   deploy-vps:
     name: Deploy VPS
     needs: [build-backend, build-frontend]
-    runs-on: ubuntu-latest
+    # Phase 12 — runner self-hosted NA VPS: deploy roda local (cp + docker compose),
+    # sem scp/ssh de IP dinâmico → elimina o fail2ban que travava os deploys.
+    runs-on: [self-hosted, torre]
     environment: production
     steps:
       - uses: actions/checkout@v4
 
-      - name: Copy compose files to VPS
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          source: "docker-compose.prod.yml,docker-compose.domain.yml"
-          target: "/opt/apps/torre"
-
-      - name: Deploy + smoke test via SSH
-        uses: appleboy/ssh-action@v1.2.0
+      - name: Deploy + smoke test (local, na VPS)
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_ACTOR: ${{ github.actor }}
@@ -151,61 +143,52 @@ jobs:
           ANGELLIRA_USER: ${{ secrets.ANGELLIRA_USER }}
           ANGELLIRA_PASS: ${{ secrets.ANGELLIRA_PASS }}
           ANGELLIRA_EMPRESA: ${{ secrets.ANGELLIRA_EMPRESA }}
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          command_timeout: 15m
-          envs: GHCR_TOKEN,GHCR_ACTOR,GIT_SHA,ANGELLIRA_USER,ANGELLIRA_PASS,ANGELLIRA_EMPRESA
-          script: |
-            set -euo pipefail
-            cd /opt/apps/torre
+        run: |
+          set -euo pipefail
+          # Compose files vêm do checkout do runner; copia p/ o diretório de deploy
+          cp docker-compose.prod.yml docker-compose.domain.yml /opt/apps/torre/
+          cd /opt/apps/torre
 
-            # Phase 12 — garante credenciais Angellira no .env (upsert idempotente)
-            touch .env
-            for kv in "ANGELLIRA_USER=${ANGELLIRA_USER}" "ANGELLIRA_PASS=${ANGELLIRA_PASS}" "ANGELLIRA_EMPRESA=${ANGELLIRA_EMPRESA}"; do
-              key="${kv%%=*}"
-              if grep -q "^${key}=" .env; then
-                sed -i "s|^${key}=.*|${kv}|" .env
-              else
-                echo "$kv" >> .env
-              fi
-            done
+          # Phase 12 — garante credenciais Angellira no .env (upsert idempotente)
+          touch .env
+          for kv in "ANGELLIRA_USER=${ANGELLIRA_USER}" "ANGELLIRA_PASS=${ANGELLIRA_PASS}" "ANGELLIRA_EMPRESA=${ANGELLIRA_EMPRESA}"; do
+            key="${kv%%=*}"
+            if grep -q "^${key}=" .env; then
+              sed -i "s|^${key}=.*|${kv}|" .env
+            else
+              echo "$kv" >> .env
+            fi
+          done
 
-            # Authenticate with GHCR (token valid for the duration of this job)
-            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_ACTOR" --password-stdin
+          # GHCR auth (token válido durante o job)
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_ACTOR" --password-stdin
 
-            # Pull SHA-pinned images
-            docker pull "ghcr.io/grupolamonica/torre-backend:sha-${GIT_SHA}"
-            docker pull "ghcr.io/grupolamonica/torre-frontend:sha-${GIT_SHA}"
+          docker pull "ghcr.io/grupolamonica/torre-backend:sha-${GIT_SHA}"
+          docker pull "ghcr.io/grupolamonica/torre-frontend:sha-${GIT_SHA}"
 
-            # Pin exact SHA tags via deploy override
-            cat > docker-compose.deploy.yml <<EOF
-            services:
-              backend:
-                image: ghcr.io/grupolamonica/torre-backend:sha-${GIT_SHA}
-              frontend:
-                image: ghcr.io/grupolamonica/torre-frontend:sha-${GIT_SHA}
-            EOF
+          cat > docker-compose.deploy.yml <<EOF
+          services:
+            backend:
+              image: ghcr.io/grupolamonica/torre-backend:sha-${GIT_SHA}
+            frontend:
+              image: ghcr.io/grupolamonica/torre-frontend:sha-${GIT_SHA}
+          EOF
 
-            # Bring up the stack (env from /opt/apps/torre/.env, DOMAIN included there)
-            docker compose \
-              -f docker-compose.prod.yml \
-              -f docker-compose.domain.yml \
-              -f docker-compose.deploy.yml \
-              up -d --remove-orphans
+          docker compose \
+            -f docker-compose.prod.yml \
+            -f docker-compose.domain.yml \
+            -f docker-compose.deploy.yml \
+            up -d --remove-orphans
 
-            # Smoke test — wait for backend /health (max ~60s)
-            # oven/bun image has no wget — use Bun fetch; 127.0.0.1 (IPv4-only listener)
-            echo "Waiting for backend health..."
-            ok=0
-            for i in $(seq 1 20); do
-              if docker exec torre-backend bun -e "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" >/dev/null 2>&1; then
-                echo "Backend healthy."; ok=1; break
-              fi
-              sleep 3
-            done
-            if [ "$ok" != "1" ]; then echo "Backend did not become healthy"; docker logs torre-backend --tail 60; exit 1; fi
+          echo "Waiting for backend health..."
+          ok=0
+          for i in $(seq 1 20); do
+            if docker exec torre-backend bun -e "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" >/dev/null 2>&1; then
+              echo "Backend healthy."; ok=1; break
+            fi
+            sleep 3
+          done
+          if [ "$ok" != "1" ]; then echo "Backend did not become healthy"; docker logs torre-backend --tail 60; exit 1; fi
 
-            docker image prune -f >/dev/null 2>&1 || true
-            echo "Deploy complete: ${GIT_SHA}"
+          docker image prune -f >/dev/null 2>&1 || true
+          echo "Deploy complete: ${GIT_SHA}"
