@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { ReactNode, CSSProperties } from 'react'
 import { Phone, MessageSquare, Mail, FileCheck2, FileX2, FileWarning } from 'lucide-react'
 import { SidePanelLayout } from '@/components/domain/SidePanelLayout'
 import { DriverAvatar } from '@/components/domain/DriverAvatar'
@@ -34,7 +34,7 @@ export function DriverDetailPanel({ driver, onClose }: Props) {
     .sort((a, b) => (b.departedAt?.getTime() ?? 0) - (a.departedAt?.getTime() ?? 0))
     .slice(0, 5)
 
-  const sb = statusBadge[driver.status]
+  const sb = statusBadge[driver.status] ?? { label: driver.status ?? '—', style: {} as CSSProperties }
 
   return (
     <SidePanelLayout

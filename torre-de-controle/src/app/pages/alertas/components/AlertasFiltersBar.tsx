@@ -4,6 +4,14 @@ import { useAlerts } from '@/hooks/useAlerts'
 import type { AlertFilters, AlertType } from '@/data/types'
 
 const typeLabels: Record<AlertType, string> = {
+  // Taxonomia real Lamonica (Phase 12) — detectores + histórico
+  atraso:                  'Atraso',
+  parada:                  'Parada',
+  sem_sinal:               'Sem sinal GPS',
+  prazo_proximo:           'Prazo próximo',
+  proximo_entrega:         'Próximo da entrega',
+  manual:                  'Manual',
+  // Legado (mantido p/ retrocompat)
   atraso_critico:          'Atraso crítico',
   desvio_nao_autorizado:   'Desvio não autorizado',
   parada_nao_planejada:    'Parada não planejada',
