@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia'
 import { authGuard } from '../../lib/rbac'
-import { listDrivers, getDriverById, getDriverStats } from './drivers.service'
+import { listDrivers, getDriverById, getDriverStats, getDriverDossie } from './drivers.service'
 
 const driverStatus = t.Union([t.Literal('available'), t.Literal('on_route'), t.Literal('unavailable')])
 
@@ -24,5 +24,13 @@ export const driversPlugin = new Elysia({ name: 'drivers' })
       }, {
         params: t.Object({ id: t.String({ format: 'uuid' }) }),
         detail: { tags: ['drivers'], summary: 'Get driver by id' },
+      })
+      .get('/:id/dossie', async ({ params, set }) => {
+        const dossie = await getDriverDossie(params.id)
+        if (!dossie) { set.status = 404; return { error: 'Driver not found' } }
+        return dossie
+      }, {
+        params: t.Object({ id: t.String({ format: 'uuid' }) }),
+        detail: { tags: ['drivers'], summary: 'Dossiê consolidado do motorista (cruzamento total)' },
       })
   )

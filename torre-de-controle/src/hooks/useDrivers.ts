@@ -20,6 +20,60 @@ export function useDrivers(filters?: DriverFilters) {
   }
 }
 
+export interface DriverDossie {
+  identidade: {
+    id: string; code: string; name: string
+    cpf: string | null; rg: string | null
+    cnh: string | null; cnhCategoria: string | null; cnhValidade: string | null
+    nascimento: string | null; driverKind: string | null
+    cidade: string | null; estado: string | null
+    phone: string | null; email: string | null; shopeeDriverId: string | null
+  }
+  conformidade: {
+    status: string; operationalScore: number
+    angelliraStatus: string | null; angelliraValidUntil: string | null
+    anttValid: boolean | null; documentsValid: boolean | null; insuranceValid: boolean | null
+    trackingEnabled: boolean | null; operationalBlocked: boolean | null
+  }
+  viagens: {
+    total: number; completas: number; canceladas: number; emAndamento: number
+    noPrazo: number; atrasadas: number; pctNoPrazo: number | null; qtdLh: number
+    primeira: string | null; ultima: string | null
+    avgRanking: number | null; totalValor: number
+    recentes: Array<{
+      code: string; origin: string; destination: string; status: string; slaStatus: string | null
+      windowStart: string | null; eta: string | null; valor: number | null
+      rankingScore: number | null; sheetLh: string | null; cavalo: string | null; carreta: string | null
+    }>
+  }
+  veiculos: Array<{
+    plate: string; type: string | null; model: string | null; plateRole: string | null
+    angelliraStatus: string | null; angelliraValidUntil: string | null
+  }>
+  ocorrencias: Array<{
+    type: string; severity: string; status: string; title: string
+    occurredAt: string | null; resolvedAt: string | null
+  }>
+}
+
+export function useDriverDossie(id: string | null) {
+  const q = useQuery({
+    queryKey: ['driver-dossie', id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await (api.api.drivers as any)[id!].dossie.get()
+      if (error) throw new Error((error.value as any)?.error ?? 'Not found')
+      return (data ?? null) as DriverDossie | null
+    },
+  })
+  return {
+    data:      q.data ?? null,
+    isLoading: q.isLoading,
+    isError:   q.isError,
+    error:     q.error,
+  }
+}
+
 export function useDriver(id: string | null) {
   const q = useQuery({
     queryKey: ['driver', id],

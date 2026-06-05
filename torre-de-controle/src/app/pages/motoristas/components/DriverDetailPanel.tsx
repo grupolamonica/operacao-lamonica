@@ -6,6 +6,7 @@ import { LiveMap } from '@/components/domain/LiveMap'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { useTrips } from '@/hooks/useTrips'
+import { useDriverDossie } from '@/hooks/useDrivers'
 import { formatDate } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 import type { Driver, DocStatus } from '@/data/types'
@@ -29,10 +30,13 @@ interface Props {
 
 export function DriverDetailPanel({ driver, onClose }: Props) {
   const { data: allTrips } = useTrips()
+  const { data: dossie } = useDriverDossie(driver.id)
   const recent = allTrips
     .filter(t => t.driverId === driver.id)
     .sort((a, b) => (b.departedAt?.getTime() ?? 0) - (a.departedAt?.getTime() ?? 0))
     .slice(0, 5)
+  const v = dossie?.viagens
+  const recentes = v?.recentes ?? []
 
   const sb = statusBadge[driver.status] ?? { label: driver.status ?? '—', style: {} as CSSProperties }
 
@@ -116,12 +120,65 @@ export function DriverDetailPanel({ driver, onClose }: Props) {
           <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{driver.lat.toFixed(4)}, {driver.lng.toFixed(4)}</p>
         </div>
 
+        {/* Phase 12 — dossiê consolidado (cruzamento total: viagens Shopee + frota Cargas + ocorrências) */}
+        {v && v.total > 0 && (
+          <>
+            <Separator />
+            <div>
+              <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Desempenho ({v.total} viagens)</h4>
+              <div className="grid grid-cols-3 gap-2">
+                <Stat label="No prazo" value={v.pctNoPrazo != null ? `${v.pctNoPrazo}%` : '—'} tone="success" />
+                <Stat label="Atrasadas" value={String(v.atrasadas)} tone={v.atrasadas > 0 ? 'warning' : 'muted'} />
+                <Stat label="Canceladas" value={String(v.canceladas)} tone="muted" />
+              </div>
+              {(v.avgRanking != null || v.totalValor > 0) && (
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  {v.avgRanking != null && <Stat label="Ranking médio" value={String(v.avgRanking)} tone="muted" />}
+                  {v.totalValor > 0 && <Stat label="Valor acum." value={`R$ ${v.totalValor.toLocaleString('pt-BR')}`} tone="muted" />}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {dossie && dossie.veiculos.length > 0 && (
+          <>
+            <Separator />
+            <div>
+              <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Frota vinculada ({dossie.veiculos.length})</h4>
+              <ul className="space-y-1.5">
+                {dossie.veiculos.map(veh => (
+                  <li key={veh.plate} className="flex items-center justify-between text-xs border-b border-border pb-1.5 last:border-0">
+                    <div className="min-w-0">
+                      <p className="font-mono text-foreground">{veh.plate} <span className="text-muted-foreground">· {veh.plateRole === 'HORSE' ? 'cavalo' : 'carreta'}</span></p>
+                      <p className="text-muted-foreground truncate">{veh.model ?? veh.type ?? '—'}</p>
+                    </div>
+                    {veh.angelliraStatus && <Chip tone={veh.angelliraStatus === 'FOUND' || veh.angelliraStatus === 'Conforme' ? 'success' : 'warning'}>{veh.angelliraStatus}</Chip>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </>
+        )}
+
         <Separator />
 
         <div>
           <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Últimas viagens</h4>
-          {recent.length === 0 ? (
+          {recentes.length === 0 && recent.length === 0 ? (
             <p className="text-xs text-muted-foreground">Sem viagens recentes.</p>
+          ) : recentes.length > 0 ? (
+            <ul className="space-y-2">
+              {recentes.map((t, i) => (
+                <li key={`${t.code}-${i}`} className="flex items-center justify-between text-xs border-b border-border pb-1.5 last:border-0">
+                  <div className="min-w-0">
+                    <p className="font-mono text-foreground">{t.code}</p>
+                    <p className="text-muted-foreground truncate">{t.origin} → {t.destination}</p>
+                  </div>
+                  <span className="text-[10px] text-muted-foreground shrink-0 ml-2">{t.windowStart ? formatDate(new Date(t.windowStart), 'dd/MM HH:mm') : '—'}</span>
+                </li>
+              ))}
+            </ul>
           ) : (
             <ul className="space-y-2">
               {recent.map(t => (
@@ -136,6 +193,26 @@ export function DriverDetailPanel({ driver, onClose }: Props) {
             </ul>
           )}
         </div>
+
+        {dossie && dossie.ocorrencias.length > 0 && (
+          <>
+            <Separator />
+            <div>
+              <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Ocorrências ({dossie.ocorrencias.length})</h4>
+              <ul className="space-y-1.5">
+                {dossie.ocorrencias.slice(0, 8).map((o, i) => (
+                  <li key={i} className="flex items-center justify-between text-xs border-b border-border pb-1.5 last:border-0">
+                    <div className="min-w-0">
+                      <p className="text-foreground truncate">{o.title}</p>
+                      <p className="text-muted-foreground">{o.occurredAt ? formatDate(new Date(o.occurredAt), 'dd/MM/yyyy') : '—'} · {o.status}</p>
+                    </div>
+                    <Chip tone={o.severity === 'critico' ? 'danger' : o.severity === 'medio' ? 'warning' : 'muted'}>{o.severity}</Chip>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </>
+        )}
       </div>
     </SidePanelLayout>
   )
@@ -149,6 +226,20 @@ const chipTone: Record<string, string> = {
 }
 function Chip({ tone, children }: { tone: keyof typeof chipTone | string; children: ReactNode }) {
   return <span className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium', chipTone[tone] ?? chipTone.muted)}>{children}</span>
+}
+const statTone: Record<string, string> = {
+  success: 'text-success',
+  warning: 'text-warning',
+  danger:  'text-danger',
+  muted:   'text-foreground',
+}
+function Stat({ label, value, tone = 'muted' }: { label: string; value: string; tone?: keyof typeof statTone }) {
+  return (
+    <div className="rounded-md border border-border bg-muted/30 px-2 py-1.5">
+      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</p>
+      <p className={cn('text-sm font-semibold tabular-nums', statTone[tone] ?? statTone.muted)}>{value}</p>
+    </div>
+  )
 }
 function Detail({ label, value }: { label: string; value: string }) {
   return (
