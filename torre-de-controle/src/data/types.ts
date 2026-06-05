@@ -32,6 +32,13 @@ export type AlertType =
   | 'tempo_parada_elevado'
   | 'entrega_fora_janela'
   | 'checklist_incompleto'
+  // Phase 12 — taxonomia real Lamonica (detectores + histórico Angellira)
+  | 'atraso'
+  | 'parada'
+  | 'sem_sinal'
+  | 'prazo_proximo'
+  | 'proximo_entrega'
+  | 'manual'
 
 export type AlertSource = 'GPS' | 'Checklist' | 'Telemetria' | 'Manual'
 

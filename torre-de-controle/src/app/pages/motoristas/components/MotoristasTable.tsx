@@ -71,7 +71,7 @@ const columns: ColumnDef<Driver>[] = [
     cell: ({ row }) => (
       <div className="flex gap-1.5">
         {row.original.documents.map(d => {
-          const { Icon, color } = docIconByStatus[d.status]
+          const { Icon, color } = docIconByStatus[d.status] ?? { Icon: FileWarning, color: 'text-muted-foreground' }
           return <Icon key={d.type} className={`h-4 w-4 ${color}`} aria-label={`${d.type}: ${d.status}`} />
         })}
       </div>
