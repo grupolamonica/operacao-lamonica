@@ -28,9 +28,11 @@ interface Props {
 
 export function AlertasFiltersBar({ filters, onChange }: Props) {
   const { data: all } = useAlerts()
-  const clients = Array.from(new Set(all.map(a => a.clientName))).sort()
-  const routes = Array.from(new Set(all.map(a => a.routeCode))).sort()
-  const assignees = Array.from(new Set(all.map(a => a.assignedTo).filter((x): x is string => Boolean(x)))).sort()
+  // Radix Select.Item proíbe value="" → filtra vazios (alertas sem cliente/rota crashavam a tela)
+  const nonEmpty = (x: string | null | undefined): x is string => Boolean(x && x.trim())
+  const clients = Array.from(new Set(all.map(a => a.clientName).filter(nonEmpty))).sort()
+  const routes = Array.from(new Set(all.map(a => a.routeCode).filter(nonEmpty))).sort()
+  const assignees = Array.from(new Set(all.map(a => a.assignedTo).filter(nonEmpty))).sort()
 
   const set = <K extends keyof AlertFilters>(key: K, value: AlertFilters[K] | undefined) =>
     onChange({ ...filters, [key]: value })
