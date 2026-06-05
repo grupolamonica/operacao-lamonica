@@ -15,19 +15,21 @@ const styleMap = {
 export type AlertSeverity = keyof typeof config
 
 interface Props {
-  severity: AlertSeverity
+  severity: AlertSeverity | null | undefined
   size?: 'sm' | 'md'
 }
 
 export function SeverityBadge({ severity, size = 'sm' }: Props) {
-  const { label } = config[severity]
+  // Tolerante a severidade null/desconhecida (dado real). (Phase 12)
+  const label = (severity && config[severity]?.label) ?? '—'
+  const style = (severity && styleMap[severity]) || { backgroundColor: 'var(--muted, #e2e8f0)', color: 'var(--muted-foreground, #64748b)' }
   return (
     <span
       className={cn(
         'inline-flex items-center rounded-full font-medium whitespace-nowrap',
         size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-3 py-1 text-sm',
       )}
-      style={styleMap[severity]}
+      style={style}
     >
       {label}
     </span>
