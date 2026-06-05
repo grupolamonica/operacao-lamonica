@@ -48,9 +48,8 @@ import { forecastPlugin } from './modules/forecast/forecast.plugin'
 import { torrePlugin } from './modules/torre/torre.plugin'
 // Phase 12 — presença de operadores (Fila de Operadores online)
 import { operatorsPlugin } from './modules/operators/operators.plugin'
-// Phase 12 — sync da aba Carrega (monitoramento GRIFFI ao vivo) + gatilho manual
+// Phase 12 — sync do monitoramento Angellira ao vivo (gatilho manual)
 import { syncPlugin } from './modules/sync/sync.plugin'
-import { startSheetsJobs } from './jobs/sheets-cron'
 // Phase 12 — jobs Angellira (posições ao vivo + detectores de ocorrência)
 import { startAngelliraJobs } from './jobs/angellira-cron'
 import { processAlertDetection } from './jobs/alert-inline'
@@ -410,10 +409,8 @@ export const app = new Elysia()
   })
   .listen(PORT, () => {
     logger.info({ port: PORT, frontendUrl: FRONTEND_URL }, 'torre-api listening')
-    // Phase 12 — jobs Angellira (posições + detectores). No-op se env ausente.
+    // Phase 12 — jobs Angellira (posições + monitoramento + detectores). No-op se env ausente.
     startAngelliraJobs()
-    // Phase 12 — sync da aba Carrega (GRIFFI ao vivo) */5min. No-op se REDIS ausente.
-    startSheetsJobs()
   })
 
 // Eden Treaty type export (D-04)

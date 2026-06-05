@@ -9,6 +9,7 @@
 import { Queue, Worker, type Job } from 'bullmq'
 import { logger } from '../lib/logger'
 import { syncPositions } from '../adapters/angellira/positions.adapter'
+import { syncMonitoring } from '../adapters/angellira/monitoring.adapter'
 import { runDetectors } from '../modules/alerts/detectors.service'
 
 const QUEUE_NAME = 'angellira-cron'
@@ -38,6 +39,7 @@ export function startAngelliraJobs(): void {
 
   const worker = new Worker(QUEUE_NAME, async (job: Job) => {
     if (job.name === 'positions') return syncPositions()
+    if (job.name === 'monitoring') return syncMonitoring()
     if (job.name === 'detectors') return runDetectors()
   }, { connection })
 
@@ -46,7 +48,8 @@ export function startAngelliraJobs(): void {
 
   // Agenda repeatables (idempotente — mesmo padrão não duplica)
   void queue.add('positions', {}, { repeat: { pattern: '*/3 * * * *' }, jobId: 'angellira-positions' })
+  void queue.add('monitoring', {}, { repeat: { pattern: '*/5 * * * *' }, jobId: 'angellira-monitoring' })
   void queue.add('detectors', {}, { repeat: { pattern: '0 * * * *' },   jobId: 'angellira-detectors' })
 
-  logger.info('[angellira] jobs agendados — positions */3min, detectors hora cheia')
+  logger.info('[angellira] jobs agendados — positions */3min, monitoring */5min, detectors hora cheia')
 }
