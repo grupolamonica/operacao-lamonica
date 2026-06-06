@@ -1,47 +1,27 @@
 import { KPICard } from '@/components/domain/KPICard'
 import { useDashboardKPIs } from '@/hooks/useDashboardKPIs'
 import { formatPercent } from '@/lib/formatters'
+import type { PeriodoSla } from '@/data/types'
 
-export function DashboardKPIRow() {
-  const { data: kpis } = useDashboardKPIs()
+// Phase 13 — métricas iguais ao painel GAS:
+// Total · No Prazo · Atrasadas · Concluídas · Alertas · Tickets Pendentes · % No Prazo
+export function DashboardKPIRow({ periodo = '30d' }: { periodo?: PeriodoSla }) {
+  const { data: k } = useDashboardKPIs(periodo)
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+      <KPICard title="Total de Viagens" value={k.total} color="blue" />
+      <KPICard title="No Prazo" value={k.noPrazo} color="green" />
+      <KPICard title="Atrasadas" value={k.atrasadas} color="red" />
+      <KPICard title="Concluídas" value={k.concluidas} color="green" />
+      <KPICard title="Alertas" value={k.alertas} color="orange" />
+      <KPICard title="🎫 Tickets Pendentes" value={k.ticketsPendentes} color="purple" />
       <KPICard
-        title="Entregas no prazo"
-        value={kpis.entregas.onTime}
-        total={kpis.entregas.total}
-        percent={formatPercent(kpis.entregas.pct)}
-        progressValue={kpis.entregas.pct}
-        color="green"
-      />
-      <KPICard
-        title="% SLA"
-        value={formatPercent(kpis.sla.pct)}
-        subtitle={`Meta: ${kpis.sla.meta}%`}
-        progressValue={kpis.sla.pct}
+        title="% No Prazo"
+        value={formatPercent(k.pctNoPrazo ?? 0)}
+        subtitle={`${k.noPrazo ?? 0} de ${k.aferidas ?? 0} aferidas · ${k.filtroSla ?? '30d'}`}
+        progressValue={k.pctNoPrazo ?? 0}
         color="blue"
-      />
-      <KPICard
-        title="Motoristas em risco"
-        value={kpis.motoristasEmRisco.count}
-        total={kpis.motoristasEmRisco.total}
-        sparklineData={kpis.motoristasEmRisco.sparkline}
-        color="orange"
-      />
-      <KPICard
-        title="Atrasos críticos"
-        value={kpis.atrasosCriticos.count}
-        total={kpis.atrasosCriticos.total}
-        sparklineData={kpis.atrasosCriticos.sparkline}
-        color="red"
-      />
-      <KPICard
-        title="Paradas não planejadas"
-        value={kpis.paradasNaoPlanejadas.count}
-        total={kpis.paradasNaoPlanejadas.total}
-        sparklineData={kpis.paradasNaoPlanejadas.sparkline}
-        color="purple"
       />
     </div>
   )

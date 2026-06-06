@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { AlertasKPIRow } from './components/AlertasKPIRow'
 import { AlertasFiltersBar } from './components/AlertasFiltersBar'
 import { AlertGroupedList } from './components/AlertGroupedList'
@@ -16,6 +17,14 @@ export function AlertasPage() {
   const { selectedAlertId, setSelectedAlertId } = useUIStore()
   const { data: selected } = useAlert(selectedAlertId)
   const isOpen = selected !== null
+
+  // Phase 13 — deep-link do dashboard: /alertas?alert=<id> abre o ticket direto.
+  const [searchParams] = useSearchParams()
+  useEffect(() => {
+    const a = searchParams.get('alert')
+    if (a) setSelectedAlertId(a)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   function handleStatusSelect(s: AlertStatus | null) {
     setFilters((f) => ({ ...f, status: s ?? undefined }))

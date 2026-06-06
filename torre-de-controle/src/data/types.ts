@@ -162,12 +162,20 @@ export interface TimelineEvent {
 }
 
 // ===== KPIs =====
+// Phase 13 — Dashboard com paridade ao painel GAS (agregação SQL real)
+export type PeriodoSla = 'hoje' | '7d' | '30d' | 'tudo'
 export interface KPIDashboard {
-  entregas:              { onTime: number; total: number; pct: number }
-  sla:                   { pct: number; meta: number }
-  motoristasEmRisco:     { count: number; total: number; sparkline: number[] }
-  atrasosCriticos:       { count: number; total: number; sparkline: number[] }
-  paradasNaoPlanejadas:  { count: number; total: number; sparkline: number[] }
+  filtroSla:          PeriodoSla
+  total:              number   // viagens no período
+  concluidas:         number
+  noPrazo:            number   // ativas no prazo
+  atrasadas:          number   // ativas atrasadas
+  aferidas:           number   // noPrazo + atrasadas
+  pctNoPrazo:         number   // noPrazo / aferidas
+  alertas:            number   // exceções abertas de viagens ativas
+  ticketsPendentes:   number   // todos os tickets em aberto
+  motoristasEmRisco:  number
+  meta:               number
 }
 
 export interface KPITorre {

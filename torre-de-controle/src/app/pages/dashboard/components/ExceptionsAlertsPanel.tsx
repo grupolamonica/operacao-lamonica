@@ -1,10 +1,16 @@
+import { useNavigate } from 'react-router-dom'
 import { AlertItem } from '@/components/domain/AlertItem'
 import { useAlerts } from '@/hooks/useAlerts'
+import { useDashboardKPIs } from '@/hooks/useDashboardKPIs'
+import type { PeriodoSla } from '@/data/types'
 
-export function ExceptionsAlertsPanel() {
+// Phase 13 — contagem no padrão do painel (exceções abertas de viagens ATIVAS = kpis.alertas);
+// clicar num ticket leva à tela de Ocorrências já com ele aberto (deep-link).
+export function ExceptionsAlertsPanel({ periodo = '30d' }: { periodo?: PeriodoSla }) {
+  const navigate = useNavigate()
   const { data: alerts } = useAlerts({ status: 'aberto' })
+  const { data: k } = useDashboardKPIs(periodo)
 
-  // Top 5 críticos+médios para o painel
   const top = [...alerts]
     .sort((a, b) => {
       const sev: Record<string, number> = { critico: 0, medio: 1, baixo: 2 }
@@ -16,13 +22,19 @@ export function ExceptionsAlertsPanel() {
     <div className="bg-card border border-border rounded-lg p-4 space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-foreground">Exceções e alertas</h3>
-        <span className="text-xs text-muted-foreground">{alerts.length} abertos</span>
+        <button
+          className="text-xs text-primary hover:underline"
+          onClick={() => navigate('/alertas')}
+        >
+          {k.alertas} abertos →
+        </button>
       </div>
       <div className="space-y-2">
         {top.map(a => (
           <AlertItem
             key={a.id}
             variant="list"
+            onClick={(id) => navigate(`/alertas?alert=${id}`)}
             alert={{
               id: a.id,
               severity: a.severity,
@@ -37,6 +49,7 @@ export function ExceptionsAlertsPanel() {
             }}
           />
         ))}
+        {top.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">Nenhuma exceção aberta.</p>}
       </div>
     </div>
   )

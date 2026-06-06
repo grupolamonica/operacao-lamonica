@@ -1,15 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import type { KPIDashboard, KPITorre, KPIViagens, KPIMotoristas, KPIAlertas } from '@/data/types'
+import type { KPIDashboard, KPITorre, KPIViagens, KPIMotoristas, KPIAlertas, PeriodoSla } from '@/data/types'
 
-// Phase 12 — mocks removidos (D-12-31). Defaults vazios (zero) só para o estado
-// inicial/erro não quebrar a UI; os dados vêm sempre do backend real.
+// Phase 13 — dashboard com paridade painel; default zerado p/ estado inicial/erro.
 const EMPTY_DASHBOARD: KPIDashboard = {
-  entregas:             { onTime: 0, total: 0, pct: 0 },
-  sla:                  { pct: 0, meta: 95 },
-  motoristasEmRisco:    { count: 0, total: 0, sparkline: [] },
-  atrasosCriticos:      { count: 0, total: 0, sparkline: [] },
-  paradasNaoPlanejadas: { count: 0, total: 0, sparkline: [] },
+  filtroSla: '30d', total: 0, concluidas: 0, noPrazo: 0, atrasadas: 0, aferidas: 0,
+  pctNoPrazo: 100, alertas: 0, ticketsPendentes: 0, motoristasEmRisco: 0, meta: 95,
 }
 const EMPTY_TORRE: KPITorre = {
   viagensAtivas:   { count: 0, total: 0 },
@@ -30,11 +26,11 @@ const EMPTY_ALERTAS: KPIAlertas = {
   criticos: { count: 0 }, abertos: { count: 0 }, resolvidosHoje: { count: 0 }, slaTratativas: { pct: 100 },
 }
 
-export function useDashboardKPIs() {
+export function useDashboardKPIs(periodo: PeriodoSla = '30d') {
   const q = useQuery({
-    queryKey: ['dashboard-kpis'],
+    queryKey: ['dashboard-kpis', periodo],
     queryFn: async () => {
-      const { data, error } = await api.api.dashboard.kpis.get()
+      const { data, error } = await api.api.dashboard.kpis.get({ query: { periodo } })
       if (error) throw error
       return (data ?? EMPTY_DASHBOARD) as KPIDashboard
     },
