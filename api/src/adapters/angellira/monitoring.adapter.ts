@@ -92,7 +92,9 @@ function angularVal(html: string, key: string): number {
 /**
  * Distância real da rota (porte de obter_distancias()): POST /veiculo-rota devolve o link
  * do mapa da viagem; GET <link>/sub/2 traz a página com DISTANCE_TOTAL (km totais da rota)
- * e DISTANCE_TRAVELED (km percorridos por GPS). É a fonte que o painel GAS usa para o progresso.
+ * e DISTANCE_DONE (km percorridos por GPS). É a fonte que o painel GAS usa para o progresso.
+ * (O Python original lia DISTANCE_TRAVELED, chave que não existe mais no HTML → sempre caía
+ *  no fallback; aqui usamos DISTANCE_DONE, a chave real do layout atual.)
  */
 async function distancias(token: string, vei: number | string, via: number | string): Promise<{ total: number; perc: number; ok: boolean }> {
   const out = { total: 0, perc: 0, ok: false }
@@ -110,7 +112,7 @@ async function distancias(token: string, vei: number | string, via: number | str
     if (!h.ok) return out
     const html = await h.text()
     out.total = angularVal(html, 'DISTANCE_TOTAL')
-    out.perc = angularVal(html, 'DISTANCE_TRAVELED')
+    out.perc = angularVal(html, 'DISTANCE_DONE')
     if (out.total > 0) out.ok = true
   } catch { /* noop */ }
   return out
@@ -155,7 +157,8 @@ export async function syncMonitoring(): Promise<MonitoringResult> {
       let distDone = (d?.ok && d.perc > 0) ? d.perc : 0
       if (distTotal === 0) distTotal = distOrig + distFalt
       if (distDone === 0 && distTotal > 0) distDone = Math.max(0, distTotal - distFalt)
-      const pct = distTotal > 0 ? Math.round((distDone / distTotal) * 100) : 0
+      // pode haver desvio de rota (percorrido > total) → clampa o % em 0..100 para a barra
+      const pct = distTotal > 0 ? Math.min(100, Math.round((distDone / distTotal) * 100)) : 0
       const ent = Array.isArray(t.entregas) && t.entregas.length ? t.entregas[0] : {}
       const embRaw = t.emb
       const emb = (embRaw && typeof embRaw === 'object') ? embRaw.nome : embRaw
