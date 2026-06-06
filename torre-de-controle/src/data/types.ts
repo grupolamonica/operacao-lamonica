@@ -110,6 +110,12 @@ export interface Trip {
   progressPct: number             // 0-100
   distanceTotal: number           // km
   distanceDone: number            // km
+  // Phase 13 — paridade painel GAS (tabela de viagens)
+  kmFalta?: number                // KM que Falta (= distfaltante)
+  adiantamentoHoras?: number | null // horas; + = ATRASADO
+  atrasoLabel?: string            // "+04:15" / "-01:20"
+  conducaoRegime?: 'intensivo' | 'regular'
+  metaKmDia?: string              // "45 KM/hoje" | "720 KM/dia (Máx.)"
   // Sprint 3 — delivery risk snapshot (nullable until first recalc)
   riskScore?: number | null
   riskLevel?: RiskLevel | null

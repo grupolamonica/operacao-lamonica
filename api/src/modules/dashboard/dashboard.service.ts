@@ -40,22 +40,26 @@ export async function getDashboardKpis(periodo: PeriodoSla = '30d'): Promise<Das
   try { const c = await redis.get(key); if (c) return JSON.parse(c) } catch { /* fall through */ }
 
   const cut = cutoff(periodo)
-  // No Prazo / Atrasadas de viagens ATIVAS: classificação ao vivo (chegada estimada vs prazo),
-  // mesmo princípio do painel — ETA = agora + km_restante/65 (h); prazo = window_end + morosidade.
-  // (Os tickets individuais usam a engine completa da lei do motorista; aqui é o proxy do dashboard.)
-  const [t] = (await db.execute(sql`
+  // Total / Concluídas: universo do período (window_start >= corte).
+  const [tot] = (await db.execute(sql`
     SELECT
-      count(*)::int                                                                          AS total,
-      count(*) FILTER (WHERE status='completed')::int                                        AS concluidas,
-      count(*) FILTER (WHERE status NOT IN ('completed','cancelled') AND window_end IS NOT NULL
-        AND now() + make_interval(secs => 3600 * GREATEST(COALESCE(distance_total,0)-COALESCE(distance_done,0),0)/65.0)
-            <= window_end + make_interval(secs => 3600 * COALESCE(morosidade_horas,0)))::int AS no_prazo,
-      count(*) FILTER (WHERE status NOT IN ('completed','cancelled') AND window_end IS NOT NULL
-        AND now() + make_interval(secs => 3600 * GREATEST(COALESCE(distance_total,0)-COALESCE(distance_done,0),0)/65.0)
-            > window_end + make_interval(secs => 3600 * COALESCE(morosidade_horas,0)))::int AS atrasadas
+      count(*)::int                                   AS total,
+      count(*) FILTER (WHERE status='completed')::int AS concluidas
     FROM trips
     WHERE window_start >= ${cut}
-  `)) as unknown as Array<{ total: number; concluidas: number; no_prazo: number; atrasadas: number }>
+  `)) as unknown as Array<{ total: number; concluidas: number }>
+
+  // No Prazo / Atrasadas: estado ATUAL das viagens ativas, classificado pelo sla_status que o
+  // monitoring.adapter persiste com a lei do motorista (60 km/h, jornada 12h, prazo = previsaochegada)
+  // — exatamente a mesma base do painel. Não filtra por período (é o "agora" operacional).
+  const [t] = (await db.execute(sql`
+    SELECT
+      count(*) FILTER (WHERE sla_status='no_prazo')::int AS no_prazo,
+      count(*) FILTER (WHERE sla_status='atrasado')::int AS atrasadas
+    FROM trips
+    WHERE status NOT IN ('completed','cancelled')
+  `)) as unknown as Array<{ no_prazo: number; atrasadas: number }>
+  const total = tot?.total ?? 0, concluidas = tot?.concluidas ?? 0
 
   const [a] = (await db.execute(sql`
     SELECT
@@ -75,7 +79,7 @@ export async function getDashboardKpis(periodo: PeriodoSla = '30d'): Promise<Das
 
   const kpis: DashboardKpis = {
     filtroSla: periodo,
-    total: n(t?.total), concluidas: n(t?.concluidas),
+    total, concluidas,
     noPrazo, atrasadas, aferidas, pctNoPrazo,
     alertas: n(a?.alertas), ticketsPendentes: n(a?.tickets_pendentes),
     motoristasEmRisco: n(d?.em_risco), meta: 95,

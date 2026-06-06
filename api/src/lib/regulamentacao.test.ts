@@ -6,8 +6,8 @@ import {
 } from './regulamentacao'
 
 describe('regulamentacao (lei do motorista)', () => {
-  it('65km ~= 1h de condução pura (dentro de 1 jornada, sem pausas)', () => {
-    expect(calcularHorasViagemComRegulamentacao(65)).toBeCloseTo(1.0, 1)
+  it('60km ~= 1h de condução pura (60 km/h, dentro de 1 jornada, sem pausas)', () => {
+    expect(calcularHorasViagemComRegulamentacao(60)).toBeCloseTo(1.0, 1)
   })
 
   it('1300km excede jornadas → soma descansos (> condução pura de 20h)', () => {

@@ -46,6 +46,9 @@ export const trips = pgTable('trips', {
   bonus:           decimal('bonus', { precision: 10, scale: 2 }),
   // Phase 12 — morosidade (atraso na origem, horas) — ajusta o prazo no cálculo de SLA (porte do painel GAS)
   morosidadeHoras: decimal('morosidade_horas'),
+  // Phase 13 — paridade painel: regime de condução + atraso computado (lei do motorista)
+  conducaoRegime:    varchar('conducao_regime', { length: 12 }).default('intensivo'),  // intensivo|regular
+  adiantamentoHoras: decimal('adiantamento_horas'),                                    // horas; + = ATRASADO (convenção do painel)
   shopeeDriverId:  text('shopee_driver_id'),
   statusEta:       varchar('status_eta', { length: 20 }),
   statusCpt:       varchar('status_cpt', { length: 20 }),

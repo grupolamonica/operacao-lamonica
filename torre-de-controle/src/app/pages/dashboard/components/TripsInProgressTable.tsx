@@ -22,12 +22,21 @@ const columns: ColumnDef<Trip>[] = [
     },
   },
   { accessorKey: 'clientName', header: 'Cliente', cell: (info) => <span className="text-sm text-foreground truncate">{info.getValue<string>()}</span> },
-  { id: 'eta', header: 'ETA', size: 70, cell: ({ row }) => <span className="text-sm tabular-nums text-foreground">{formatTime(row.original.eta)}</span> },
-  { id: 'status', header: 'Status', size: 110, cell: ({ row }) => <StatusBadge status={row.original.slaStatus} /> },
+  { id: 'prazo', header: 'Prazo Final', size: 100, cell: ({ row }) => <span className="text-xs tabular-nums text-foreground">{formatTime(row.original.windowEnd)}</span> },
+  { id: 'previsao', header: 'Previsão', size: 100, cell: ({ row }) => <span className="text-xs tabular-nums text-foreground">{formatTime(row.original.eta)}</span> },
+  { id: 'status', header: 'Status', size: 100, cell: ({ row }) => <StatusBadge status={row.original.slaStatus} /> },
   {
-    id: 'progress', header: 'Progresso', size: 120,
+    id: 'atraso', header: 'Atraso', size: 78,
+    cell: ({ row }) => {
+      const h = row.original.adiantamentoHoras
+      const cls = h == null ? 'text-muted-foreground' : h > 0.0167 ? 'text-[#f5365c]' : h < -0.0167 ? 'text-[#2dce89]' : 'text-muted-foreground'
+      return <span className={`text-xs tabular-nums font-medium ${cls}`}>{row.original.atrasoLabel || '—'}</span>
+    },
+  },
+  {
+    id: 'progress', header: 'Progresso', size: 110,
     cell: ({ row }) => (
-      <div className="space-y-1 min-w-[90px]">
+      <div className="space-y-1 min-w-[80px]">
         <span className="text-xs text-muted-foreground">{row.original.progressPct}%</span>
         <ProgressBar value={row.original.progressPct} color="#0f62fe" height={4} />
       </div>

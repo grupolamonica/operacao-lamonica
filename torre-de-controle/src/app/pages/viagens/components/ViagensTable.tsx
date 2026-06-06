@@ -18,46 +18,56 @@ import type { Trip, TripFilters, TripStatus, Priority, SlaStatus } from '@/data/
 
 const priorityDot = { alta: 'bg-[#f5365c]', media: 'bg-[#fb6340]', baixa: 'bg-[#2dce89]' } as const
 
+const fmtKm = (km?: number) => (km != null && km > 0 ? `${km.toFixed(2).replace('.', ',')} Km` : '—')
+function atrasoClass(h?: number | null) {
+  if (h == null) return 'text-muted-foreground'
+  return h > 0.0167 ? 'text-[#f5365c]' : h < -0.0167 ? 'text-[#2dce89]' : 'text-muted-foreground'
+}
+
 const columns: ColumnDef<Trip>[] = [
-  {
-    id: 'code', header: 'Código',
-    cell: ({ row }) => (
-      <div className="flex items-center gap-2">
-        <span className={`h-2 w-2 rounded-full shrink-0 ${priorityDot[row.original.priority]}`} />
-        <span className="text-sm font-mono font-medium text-foreground">{row.original.code}</span>
-      </div>
-    ),
-  },
   {
     id: 'driver', header: 'Motorista',
     cell: ({ row }) => (
       <div className="flex items-center gap-2">
+        <span className={`h-2 w-2 rounded-full shrink-0 ${priorityDot[row.original.priority]}`} />
         <DriverAvatar name={row.original.driverName} size="sm" />
         <div className="min-w-0">
           <p className="text-sm truncate text-foreground">{row.original.driverName}</p>
-          <p className="text-xs text-muted-foreground font-mono">{row.original.plate}</p>
+          <p className="text-xs text-muted-foreground font-mono">{row.original.code} · {row.original.plate}</p>
         </div>
       </div>
     ),
   },
-  { accessorKey: 'clientName', header: 'Cliente', cell: (i) => <span className="text-sm text-foreground truncate">{i.getValue<string>()}</span> },
-  { id: 'eta', header: 'ETA', size: 70, cell: ({ row }) => <span className="text-sm tabular-nums text-foreground">{formatTime(row.original.eta)}</span> },
-  { id: 'status', header: 'Status', cell: ({ row }) => <StatusBadge status={row.original.slaStatus} /> },
+  { accessorKey: 'clientName', header: 'Cliente', size: 120, cell: (i) => <span className="text-sm text-foreground truncate">{i.getValue<string>()}</span> },
+  { id: 'kmTotal', header: 'Km Total', size: 90, cell: ({ row }) => <span className="text-xs tabular-nums text-foreground">{fmtKm(row.original.distanceTotal)}</span> },
+  { id: 'kmFalta', header: 'Km que Falta', size: 95, cell: ({ row }) => <span className="text-xs tabular-nums text-foreground">{fmtKm(row.original.kmFalta ?? Math.max(0, row.original.distanceTotal - row.original.distanceDone))}</span> },
   {
-    id: 'risk', header: 'Risco', size: 90,
-    cell: ({ row }) => <RiskBadge level={row.original.riskLevel} score={row.original.riskScore} />,
-  },
-  {
-    id: 'progress', header: 'Progresso', size: 120,
+    id: 'progress', header: 'Progresso', size: 110,
     cell: ({ row }) => (
-      <div className="space-y-1 min-w-[90px]">
+      <div className="space-y-1 min-w-[80px]">
         <span className="text-xs text-muted-foreground tabular-nums">{row.original.progressPct}%</span>
         <ProgressBar value={row.original.progressPct} color="#0f62fe" height={4} />
       </div>
     ),
   },
+  { id: 'prazo', header: 'Prazo Final', size: 110, cell: ({ row }) => <span className="text-xs tabular-nums text-foreground">{formatTime(row.original.windowEnd)}</span> },
+  { id: 'previsao', header: 'Previsão', size: 110, cell: ({ row }) => <span className="text-xs tabular-nums text-foreground">{formatTime(row.original.eta)}</span> },
+  { id: 'status', header: 'Status', size: 100, cell: ({ row }) => <StatusBadge status={row.original.slaStatus} /> },
+  { id: 'atraso', header: 'Atraso', size: 80, cell: ({ row }) => <span className={`text-xs tabular-nums font-medium ${atrasoClass(row.original.adiantamentoHoras)}`}>{row.original.atrasoLabel || '—'}</span> },
   {
-    id: 'actions', header: '', size: 40,
+    id: 'conducao', header: 'Condução', size: 90,
+    cell: ({ row }) => {
+      const r = row.original.conducaoRegime ?? 'intensivo'
+      return <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-semibold ${r === 'intensivo' ? 'bg-[#2dce89]/15 text-[#2dce89]' : 'bg-muted text-muted-foreground'}`}>{r === 'intensivo' ? 'Intensivo' : 'Regular'}</span>
+    },
+  },
+  { id: 'meta', header: 'Meta KM/Dia', size: 110, cell: ({ row }) => <span className="text-xs tabular-nums text-foreground">{row.original.metaKmDia ?? '—'}</span> },
+  {
+    id: 'risk', header: 'Risco', size: 80,
+    cell: ({ row }) => <RiskBadge level={row.original.riskLevel} score={row.original.riskScore} />,
+  },
+  {
+    id: 'actions', header: '', size: 36,
     cell: () => (
       <button className="p-1 rounded hover:bg-accent text-muted-foreground" onClick={(e) => e.stopPropagation()}>
         <MoreVertical className="h-4 w-4" />

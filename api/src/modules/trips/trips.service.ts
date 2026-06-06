@@ -5,6 +5,27 @@ import { drivers } from '../../db/schema/drivers'
 import { clients } from '../../db/schema/clients'
 import { routes } from '../../db/schema/routes'
 import { tripEvents } from '../../db/schema/trip-events'
+import { formatarAtraso, PARAMS_PADRAO, PARAMS_REGULAR } from '../../lib/regulamentacao'
+
+/**
+ * Meta KM/Dia — porte de recalcularStatusLinhaLocal() do painel:
+ * dias-calendário(hoje → ETA); ≤0 → "kmFalta KM/hoje"; senão "kmFalta/ceil(dias) KM/dia";
+ * teto = velocidadeMedia × jornadaDiaria → "(Máx.)".
+ */
+function calcMetaKmDia(kmFalta: number, eta: Date | null, slaStatus: string | null, regime: string | null): string {
+  if (slaStatus == null) return '—'
+  const params = regime === 'regular' ? PARAMS_REGULAR : PARAMS_PADRAO
+  if (!eta || !(kmFalta > 0) || params.velocidadeMedia <= 0 || params.jornadaDiariaConducao <= 0) return 'N/A'
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0)
+  const d1 = new Date(eta); d1.setHours(0, 0, 0, 0)
+  let dias = (d1.getTime() - d0.getTime()) / 86400000
+  const cap = params.velocidadeMedia * params.jornadaDiariaConducao // 60*12 = 720
+  if (dias <= 0.001) return `${Math.round(kmFalta)} KM/hoje`
+  dias = Math.ceil(dias)
+  const meta = kmFalta / dias
+  if (meta > cap) return `${Math.round(cap)} KM/dia (Máx.)`
+  return `${Math.round(meta)} KM/dia`
+}
 
 export type TripFilters = {
   status?:     'planned'|'in_progress'|'completed'|'delayed'|'cancelled'
@@ -127,6 +148,17 @@ function toTripDto(row: any) {
     progressPct:   row.progressPct,
     distanceTotal: row.distanceTotal ? Number(row.distanceTotal) : 0,
     distanceDone:  row.distanceDone  ? Number(row.distanceDone)  : 0,
+    // Phase 13 — paridade painel: KM que Falta, Atraso (±HH:MM), Condução, Meta KM/Dia
+    kmFalta:           Math.max(0, (row.distanceTotal ? Number(row.distanceTotal) : 0) - (row.distanceDone ? Number(row.distanceDone) : 0)),
+    adiantamentoHoras: row.adiantamentoHoras != null ? Number(row.adiantamentoHoras) : null,
+    atrasoLabel:       formatarAtraso(row.adiantamentoHoras != null ? Number(row.adiantamentoHoras) : null),
+    conducaoRegime:    (row.conducaoRegime ?? 'intensivo') as 'intensivo' | 'regular',
+    metaKmDia:         calcMetaKmDia(
+      Math.max(0, (row.distanceTotal ? Number(row.distanceTotal) : 0) - (row.distanceDone ? Number(row.distanceDone) : 0)),
+      row.eta ? new Date(row.eta) : null,
+      row.slaStatus,
+      row.conducaoRegime,
+    ),
     valor:         row.valor != null ? Number(row.valor) : null,
     bonus:         row.bonus != null ? Number(row.bonus) : null,
     // Sprint 3 — risk snapshot (nullable until first recalc)

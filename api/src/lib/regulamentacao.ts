@@ -15,13 +15,23 @@ export interface RegulamentacaoParams {
   kmParaConsiderarChegou: number   // km abaixo do qual considera-se chegada
 }
 
+// Parâmetros oficiais do painel GAS (aba de config da planilha 1vywBfU, coluna "padrão"):
+// Velocidade 60 km/h, Jornada 12h, Pausa contínua vazia (=0), Descanso 11h, KM-chegou 2.
+// → teto diário = 60 × 12 = 720 KM/dia (Máx.), idêntico ao painel.
 export const PARAMS_PADRAO: RegulamentacaoParams = {
-  velocidadeMedia: 65,
+  velocidadeMedia: 60,
   limiteConducaoContinua: 5.5,
-  pausaMinimaContinua: 0.5,
-  jornadaDiariaConducao: 8,
+  pausaMinimaContinua: 0,
+  jornadaDiariaConducao: 12,
   descansoInterJornada: 11,
   kmParaConsiderarChegou: 2,
+}
+
+// Regime "regular" (ignorar lei): condução contínua, sem pausa nem descanso inter-jornada.
+export const PARAMS_REGULAR: RegulamentacaoParams = {
+  ...PARAMS_PADRAO,
+  pausaMinimaContinua: 0,
+  descansoInterJornada: 0,
 }
 
 /**
@@ -97,4 +107,13 @@ export function formatarAdiantamento(horas: number | null): string {
   let m = Math.round((Math.abs(horas) - h) * 60)
   if (m === 60) { h += 1; m = 0 }
   return `${sinal}${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+/**
+ * Formata atraso "+HH:MM" / "-HH:MM" com a convenção do painel (positivo = ATRASADO).
+ * Numericamente idêntico a formatarAdiantamento; o sinal já vem correto no valor passado
+ * (o adapter persiste adiantamento_horas = -calcularAdiantamentoHoras → + = atrasado).
+ */
+export function formatarAtraso(horas: number | null): string {
+  return formatarAdiantamento(horas)
 }

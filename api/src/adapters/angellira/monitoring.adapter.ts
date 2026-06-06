@@ -12,6 +12,7 @@ import { createHash } from 'node:crypto'
 import { db } from '../../db/client'
 import { logger } from '../../lib/logger'
 import { getMapsToken, mapsUrl } from './auth'
+import { calcularHorasViagemComRegulamentacao, calcularAdiantamentoHoras, PARAMS_PADRAO } from '../../lib/regulamentacao'
 
 const CLIENTS: Record<string, string> = {
   shopee: 'c022c1f4-ef0b-4b5b-9044-55ac3f61da1d',
@@ -148,39 +149,75 @@ export async function syncMonitoring(): Promise<MonitoringResult> {
       const viacodigo = String(t.viacodigo ?? t.transporte ?? v.cod ?? '').trim()
       if (!viacodigo) { semViagem++; continue }
 
-      // Progresso = mesma lógica do painel GAS: usa a rota real (DISTANCE_TOTAL/TRAVELED);
-      // só cai no proxy distorigem+distfaltante quando a rota não responde.
+      // Progresso = exatamente como o painel GAS:
+      //  - distTotal = DISTANCE_TOTAL da rota (km fixos do cadastro); fallback distorigem+distfaltante.
+      //  - kmFalta   = distfaltante cru da API (= "KM que Falta" do painel; = DISTANCE_UNDONE).
+      //  - distDone  = distTotal - distfaltante  → progresso = (distTotal-distfaltante)/distTotal.
       const distFalt = num(t.distfaltante)
       const distOrig = num(t.distorigem)
       const d = dists[j]
       let distTotal = d?.ok ? d.total : 0
-      let distDone = (d?.ok && d.perc > 0) ? d.perc : 0
       if (distTotal === 0) distTotal = distOrig + distFalt
-      if (distDone === 0 && distTotal > 0) distDone = Math.max(0, distTotal - distFalt)
-      // pode haver desvio de rota (percorrido > total) → clampa o % em 0..100 para a barra
+      const kmFalta = distFalt > 0 ? distFalt : Math.max(0, distTotal - 0)
+      const distDone = Math.max(0, distTotal - distFalt)
       const pct = distTotal > 0 ? Math.min(100, Math.round((distDone / distTotal) * 100)) : 0
       const ent = Array.isArray(t.entregas) && t.entregas.length ? t.entregas[0] : {}
       const embRaw = t.emb
       const emb = (embRaw && typeof embRaw === 'object') ? embRaw.nome : embRaw
       const motorista = String(t.motorista ?? v.motorista ?? '').trim()
       const ws = iso(t.dataInicio) ?? new Date().toISOString()
-      const we = iso(ent.previsao) ?? iso(t.dataInicio) ?? new Date(Date.now() + 3600000).toISOString()
+
+      // --- SLA (lei do motorista) — paridade com recalcularStatusLinhaLocal() do painel ---
+      const mapped = mapStatus(t.statusnome ?? t.status_viagem)
+      const agora = new Date()
+      const moros = num(t.morosidade ?? 0)
+      // Prazo Final (deadline) = entregas[0].previsaochegada (validado no JSON live; ex. HERCULANO 07:00).
+      // Fallbacks: previsão crua → dataInicio + tempo de rota total.
+      const prazoIso = iso((ent as any).previsaochegada) ?? iso(ent.previsao)
+        ?? (ws ? new Date(new Date(ws).getTime() + calcularHorasViagemComRegulamentacao(distTotal, PARAMS_PADRAO) * 3600000).toISOString() : null)
+      const prazoDate = prazoIso ? new Date(prazoIso) : null
+      const we = prazoIso ?? iso(t.dataInicio) ?? new Date(Date.now() + 3600000).toISOString()
+
+      // Previsão de Chegada computada (agora + tempo de rota restante com pausas/jornada)
+      let etaIso: string
+      if (kmFalta <= PARAMS_PADRAO.kmParaConsiderarChegou) {
+        etaIso = agora.toISOString()
+      } else {
+        const tRest = calcularHorasViagemComRegulamentacao(kmFalta, PARAMS_PADRAO)
+        etaIso = Number.isFinite(tRest)
+          ? new Date(agora.getTime() + tRest * 3600000).toISOString()
+          : (iso(ent.previsao) ?? we)
+      }
+
+      // Atraso (+ = atrasado, igual ao painel) e classificação NO PRAZO / ATRASADO.
+      const adiant = calcularAdiantamentoHoras(kmFalta, prazoDate, agora, moros, PARAMS_PADRAO) // + = adiantado
+      const atrasoHoras = adiant == null ? null : -adiant                                       // inverte → + = atrasado
+      let slaStatus: string | null = null
+      if (mapped === 'completed' || mapped === 'cancelled' || atrasoHoras == null) slaStatus = null
+      else if (atrasoHoras > 0) slaStatus = 'atrasado'
+      else slaStatus = 'no_prazo'
 
       await db.execute(sql`
         INSERT INTO trips (id, code, client_id, origin, destination, window_start, window_end, eta,
-                           status, progress_pct, distance_total, distance_done, departed_at, arrived_at,
+                           status, sla_status, adiantamento_horas, morosidade_horas, conducao_regime,
+                           progress_pct, distance_total, distance_done, departed_at, arrived_at,
                            sheet_motorista, used_vehicle_type, updated_at)
         VALUES (${uuid5('carrega|' + viacodigo)}, ${viacodigo.slice(0, 20)}, ${clientId(emb)},
                 ${String(t.origem ?? '').slice(0, 200) || null}, ${String(t.destino ?? '').slice(0, 200) || null},
-                ${ws}, ${we}, ${iso(ent.previsao)},
-                ${mapStatus(t.statusnome ?? t.status_viagem)}, ${pct},
+                ${ws}, ${we}, ${etaIso},
+                ${mapped}, ${slaStatus}, ${atrasoHoras != null ? String(atrasoHoras) : null},
+                ${moros ? String(moros) : null}, 'intensivo',
+                ${pct},
                 ${distTotal > 0 ? String(distTotal) : null}, ${distTotal > 0 ? String(distDone) : null},
                 ${iso(t.dataInicio)}, ${iso(ent.datachegada)},
                 ${motorista || null}, ${String(jf?.tipo ?? '').slice(0, 30) || null}, now())
         ON CONFLICT (id) DO UPDATE SET
           client_id=EXCLUDED.client_id, origin=EXCLUDED.origin, destination=EXCLUDED.destination,
           window_start=EXCLUDED.window_start, window_end=EXCLUDED.window_end, eta=EXCLUDED.eta,
-          status=EXCLUDED.status, progress_pct=EXCLUDED.progress_pct,
+          status=EXCLUDED.status, sla_status=EXCLUDED.sla_status, adiantamento_horas=EXCLUDED.adiantamento_horas,
+          morosidade_horas=COALESCE(EXCLUDED.morosidade_horas, trips.morosidade_horas),
+          conducao_regime=COALESCE(trips.conducao_regime, EXCLUDED.conducao_regime),
+          progress_pct=EXCLUDED.progress_pct,
           distance_total=EXCLUDED.distance_total, distance_done=EXCLUDED.distance_done,
           departed_at=EXCLUDED.departed_at, arrived_at=EXCLUDED.arrived_at,
           sheet_motorista=EXCLUDED.sheet_motorista, used_vehicle_type=EXCLUDED.used_vehicle_type, updated_at=now()

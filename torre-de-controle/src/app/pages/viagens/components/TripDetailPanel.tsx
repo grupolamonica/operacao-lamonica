@@ -14,7 +14,7 @@ import { api } from '@/lib/api'
 import { useTripTimeline } from '@/hooks/useTripTimeline'
 import { useTripRisk } from '@/hooks/useTripRisk'
 import { useDriverDossie } from '@/hooks/useDrivers'
-import { formatTime, formatKm, minutesBetween, formatDate } from '@/lib/formatters'
+import { formatTime, formatKm, formatDate } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 import type { Trip } from '@/data/types'
 
@@ -110,13 +110,20 @@ export function TripDetailPanel({ trip, onClose }: Props) {
           <Metric label="Motorista" value={trip.driverName} />
           <Metric label="Origem" value={trip.origin} />
           <Metric label="Destino" value={trip.destination} />
-          <Metric label="Janela" value={`${formatTime(trip.windowStart)} – ${formatTime(trip.windowEnd)}`} />
-          <Metric label="ETA atual" value={formatTime(trip.eta)} />
+          <Metric label="Partida" value={formatTime(trip.windowStart)} />
+          <Metric label="Prazo Final" value={formatTime(trip.windowEnd)} />
+          <Metric label="Previsão de Chegada" value={formatTime(trip.eta)} />
+          <Metric
+            label="Atraso"
+            value={trip.atrasoLabel || '—'}
+            valueClass={trip.adiantamentoHoras == null ? undefined : trip.adiantamentoHoras > 0.0167 ? 'text-[#f5365c]' : trip.adiantamentoHoras < -0.0167 ? 'text-[#2dce89]' : undefined}
+          />
           {trip.valor != null && <Metric label="Valor frete" value={`R$ ${trip.valor.toLocaleString('pt-BR')}${trip.bonus ? ` (+${trip.bonus})` : ''}`} />}
           <Metric label="Distância total" value={formatKm(trip.distanceTotal)} />
-          <Metric label="Restante" value={formatKm(remainingKm)} />
+          <Metric label="Km que Falta" value={formatKm(trip.kmFalta ?? remainingKm)} />
           <Metric label="Progresso" value={`${trip.progressPct}%`} />
-          <Metric label="Desvio ETA" value={`${minutesBetween(trip.windowEnd, trip.eta) > 0 ? '+' : ''}${minutesBetween(trip.windowEnd, trip.eta)} min`} />
+          <Metric label="Meta KM/Dia" value={trip.metaKmDia ?? '—'} />
+          <Metric label="Condução" value={(trip.conducaoRegime ?? 'intensivo') === 'intensivo' ? 'Intensivo' : 'Regular'} />
         </div>
 
         {/* Phase 12 — dossiê do motorista cruzado (identidade, documentos, última localização, frota) */}
@@ -236,11 +243,11 @@ export function TripDetailPanel({ trip, onClose }: Props) {
   )
 }
 
-function Metric({ label, value }: { label: string; value: string | number }) {
+function Metric({ label, value, valueClass }: { label: string; value: string | number; valueClass?: string }) {
   return (
     <div>
       <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</p>
-      <p className="text-sm font-medium text-foreground truncate">{value}</p>
+      <p className={`text-sm font-medium truncate ${valueClass ?? 'text-foreground'}`}>{value}</p>
     </div>
   )
 }
