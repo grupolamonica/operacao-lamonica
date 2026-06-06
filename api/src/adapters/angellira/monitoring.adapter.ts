@@ -122,6 +122,7 @@ async function distancias(token: string, vei: number | string, via: number | str
 export interface MonitoringResult { fetched: number; upserted: number; positions: number; semViagem: number }
 
 export async function syncMonitoring(): Promise<MonitoringResult> {
+  const syncStart = new Date()
   const token = await getMapsToken()
   const res = await fetch(mapsUrl(token, 'busca-geral'), {
     method: 'POST',
@@ -194,6 +195,7 @@ export async function syncMonitoring(): Promise<MonitoringResult> {
       const atrasoHoras = adiant == null ? null : -adiant                                       // inverte → + = atrasado
       let slaStatus: string | null = null
       if (mapped === 'completed' || mapped === 'cancelled' || atrasoHoras == null) slaStatus = null
+      else if (kmFalta <= PARAMS_PADRAO.kmParaConsiderarChegou) slaStatus = null  // chegou (painel: CONCLUÍDO) → fora de No Prazo/Atrasadas
       else if (atrasoHoras > 0) slaStatus = 'atrasado'
       else slaStatus = 'no_prazo'
 
@@ -238,6 +240,18 @@ export async function syncMonitoring(): Promise<MonitoringResult> {
     }
   }
 
-  logger.info({ fetched: lista.length, upserted, positions, semViagem }, '[angellira-monitoring] sync ok')
+  // Fecha viagens GRIFFI que saíram do feed da Angellira (não foram tocadas neste sync e estão
+  // paradas há >20min): o painel só mostra o feed atual, então elas já concluíram/foram arquivadas.
+  // Sem isso, viagens antigas ficam presas em in_progress e inflam as "Atrasadas".
+  const closed = await db.execute(sql`
+    UPDATE trips SET status='completed', sla_status=NULL,
+      arrived_at=COALESCE(arrived_at, updated_at), updated_at=now()
+    WHERE status='in_progress' AND code ~ '^[0-9]+$'
+      AND updated_at < ${syncStart.toISOString()}
+      AND updated_at < now() - interval '20 minutes'
+  `)
+  const closedCount = (closed as any)?.rowCount ?? (closed as any)?.count ?? 0
+
+  logger.info({ fetched: lista.length, upserted, positions, semViagem, closedStale: closedCount }, '[angellira-monitoring] sync ok')
   return { fetched: lista.length, upserted, positions, semViagem }
 }
