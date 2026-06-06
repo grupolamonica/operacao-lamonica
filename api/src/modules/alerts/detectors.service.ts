@@ -31,7 +31,7 @@ export async function runDetectors(): Promise<DetectorResult> {
   const trips = (await db.execute(sql`
     SELECT
       t.id, t.code, t.driver_id, t.vehicle_id, t.window_end, t.status,
-      t.distance_total, t.distance_done,
+      t.distance_total, t.distance_done, t.morosidade_horas,
       EXTRACT(EPOCH FROM (now() - max(p.data_posicao))) / 3600.0 AS pos_age_h,
       count(p.*) FILTER (WHERE p.data_posicao > now() - interval '45 minutes')                      AS pos_recent_n,
       EXTRACT(EPOCH FROM (
@@ -48,11 +48,11 @@ export async function runDetectors(): Promise<DetectorResult> {
       'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇç',
       'AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCc'))
     WHERE t.status = 'in_progress'
-    GROUP BY t.id, t.code, t.driver_id, t.vehicle_id, t.window_end, t.status, t.distance_total, t.distance_done
+    GROUP BY t.id, t.code, t.driver_id, t.vehicle_id, t.window_end, t.status, t.distance_total, t.distance_done, t.morosidade_horas
   `)) as unknown as Array<{
     id: string; code: string; driver_id: string | null; vehicle_id: string | null
     window_end: string; status: string
-    distance_total: string | null; distance_done: string | null
+    distance_total: string | null; distance_done: string | null; morosidade_horas: string | null
     pos_age_h: number | null; pos_recent_n: number | null; pos_span_min: number | null
     lat_span: number | null; lng_span: number | null
   }>
@@ -72,7 +72,9 @@ export async function runDetectors(): Promise<DetectorResult> {
 
   const KM_CHEGOU = 2 // km abaixo do qual considera-se chegada (igual ao painel GAS)
   for (const t of trips) {
-    const we = t.window_end ? new Date(t.window_end).getTime() : null
+    // Morosidade (atraso na origem) empurra o prazo — mesma regra do painel GAS
+    const moros = t.morosidade_horas != null ? Number(t.morosidade_horas) : 0
+    const we = t.window_end ? new Date(t.window_end).getTime() + moros * 3600000 : null
     const horasParaPrazo = we != null ? (we - now) / 3600000 : null
     const distTotal = t.distance_total != null ? Number(t.distance_total) : null
     const distDone = t.distance_done != null ? Number(t.distance_done) : null

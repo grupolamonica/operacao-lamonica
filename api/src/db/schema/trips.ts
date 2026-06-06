@@ -44,6 +44,8 @@ export const trips = pgTable('trips', {
   sheetCarreta:    varchar('sheet_carreta', { length: 12 }),
   valor:           decimal('valor', { precision: 10, scale: 2 }),
   bonus:           decimal('bonus', { precision: 10, scale: 2 }),
+  // Phase 12 — morosidade (atraso na origem, horas) — ajusta o prazo no cálculo de SLA (porte do painel GAS)
+  morosidadeHoras: decimal('morosidade_horas'),
   shopeeDriverId:  text('shopee_driver_id'),
   statusEta:       varchar('status_eta', { length: 20 }),
   statusCpt:       varchar('status_cpt', { length: 20 }),
