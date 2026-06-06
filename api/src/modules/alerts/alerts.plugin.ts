@@ -10,7 +10,7 @@ const severity     = t.Union([t.Literal('critico'), t.Literal('medio'), t.Litera
 // Sprint 2: extended status machine (legacy values still accepted)
 const alertStatus  = t.Union(ALERT_STATUSES.map((s) => t.Literal(s)))
 const priority     = t.Union([t.Literal('alta'), t.Literal('media'), t.Literal('baixa')])
-const period       = t.Union([t.Literal('today'), t.Literal('7d'), t.Literal('30d')])
+const period       = t.Union([t.Literal('today'), t.Literal('7d'), t.Literal('30d'), t.Literal('90d'), t.Literal('tudo')])
 
 export const alertsPlugin = new Elysia({ name: 'alerts' })
   .use(authGuard)

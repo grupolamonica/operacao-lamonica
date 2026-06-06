@@ -13,7 +13,7 @@ export type AlertFilters = {
   clientName?: string
   routeCode?:  string
   assignedTo?: string
-  period?:     'today'|'7d'|'30d'
+  period?:     'today'|'7d'|'30d'|'90d'|'tudo'
   search?:     string
 }
 
@@ -23,6 +23,8 @@ function periodCutoff(p?: string): Date | null {
   if (p === 'today') { d.setHours(0, 0, 0, 0); return d }
   if (p === '7d')    { d.setDate(d.getDate() - 7);  return d }
   if (p === '30d')   { d.setDate(d.getDate() - 30); return d }
+  if (p === '90d')   { d.setDate(d.getDate() - 90); return d }
+  // 'tudo' (ou qualquer outro) → sem corte; inclui o histórico de tickets importado do GAS
   return null
 }
 

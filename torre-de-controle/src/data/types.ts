@@ -236,6 +236,6 @@ export interface AlertFilters {
   clientName?: string
   routeCode?: string
   assignedTo?: string
-  period?: 'today' | '7d' | '30d'
+  period?: 'today' | '7d' | '30d' | '90d' | 'tudo'
   search?: string
 }

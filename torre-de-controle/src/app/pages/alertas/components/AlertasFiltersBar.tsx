@@ -87,6 +87,8 @@ export function AlertasFiltersBar({ filters, onChange }: Props) {
             <SelectItem value="today">Hoje</SelectItem>
             <SelectItem value="7d">Últimos 7 dias</SelectItem>
             <SelectItem value="30d">Últimos 30 dias</SelectItem>
+            <SelectItem value="90d">Últimos 90 dias</SelectItem>
+            <SelectItem value="tudo">Tudo (histórico)</SelectItem>
           </SelectContent>
         </Select>
       </Filter>

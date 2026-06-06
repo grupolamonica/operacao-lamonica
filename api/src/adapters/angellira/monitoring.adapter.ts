@@ -76,6 +76,46 @@ async function detalhes(token: string, cod: number | string): Promise<any | null
   } catch { return null }
 }
 
+/**
+ * Lê o valor de uma variável Angular (translate="<chave>") no HTML da rota.
+ * O label tem o atributo translate; o valor (número + "km") fica no elemento irmão seguinte.
+ * Porte do buscar_angular() (BeautifulSoup) → primeiro `>NÚMERO<` após o marcador.
+ */
+function angularVal(html: string, key: string): number {
+  const i = html.indexOf(`translate="${key}"`)
+  if (i < 0) return 0
+  const after = html.slice(i, i + 800)
+  const m = after.match(/>\s*(\d[\d.]*(?:,\d+)?)\s*(?:km)?\s*</i)
+  return m ? num(m[1]) : 0
+}
+
+/**
+ * Distância real da rota (porte de obter_distancias()): POST /veiculo-rota devolve o link
+ * do mapa da viagem; GET <link>/sub/2 traz a página com DISTANCE_TOTAL (km totais da rota)
+ * e DISTANCE_TRAVELED (km percorridos por GPS). É a fonte que o painel GAS usa para o progresso.
+ */
+async function distancias(token: string, vei: number | string, via: number | string): Promise<{ total: number; perc: number; ok: boolean }> {
+  const out = { total: 0, perc: 0, ok: false }
+  try {
+    const r = await fetch(mapsUrl(token, 'veiculo-rota'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' },
+      body: new URLSearchParams({ veiculo: String(vei), viagem: String(via) }).toString(),
+    })
+    if (!r.ok) return out
+    let link = (await r.text()).trim().replace(/^"|"$/g, '')
+    if (!link.includes('http')) return out
+    if (link.endsWith('/')) link = link.slice(0, -1)
+    const h = await fetch(link + '/sub/2')
+    if (!h.ok) return out
+    const html = await h.text()
+    out.total = angularVal(html, 'DISTANCE_TOTAL')
+    out.perc = angularVal(html, 'DISTANCE_TRAVELED')
+    if (out.total > 0) out.ok = true
+  } catch { /* noop */ }
+  return out
+}
+
 export interface MonitoringResult { fetched: number; upserted: number; positions: number; semViagem: number }
 
 export async function syncMonitoring(): Promise<MonitoringResult> {
@@ -92,6 +132,11 @@ export async function syncMonitoring(): Promise<MonitoringResult> {
   for (let i = 0; i < lista.length; i += CONCURRENCY) {
     const slice = lista.slice(i, i + CONCURRENCY)
     const dets = await Promise.all(slice.map((v) => (v.cod != null ? detalhes(token, v.cod) : Promise.resolve(null))))
+    // Distância real da rota (DISTANCE_TOTAL/TRAVELED) em paralelo — depende do viacodigo do detalhe.
+    const dists = await Promise.all(slice.map((v, j) => {
+      const via = dets[j]?.viagens?.[0]?.viacodigo
+      return (v.cod != null && via != null) ? distancias(token, v.cod, via) : Promise.resolve(null)
+    }))
 
     for (let j = 0; j < slice.length; j++) {
       const v = slice[j], jf = dets[j]
@@ -101,10 +146,15 @@ export async function syncMonitoring(): Promise<MonitoringResult> {
       const viacodigo = String(t.viacodigo ?? t.transporte ?? v.cod ?? '').trim()
       if (!viacodigo) { semViagem++; continue }
 
+      // Progresso = mesma lógica do painel GAS: usa a rota real (DISTANCE_TOTAL/TRAVELED);
+      // só cai no proxy distorigem+distfaltante quando a rota não responde.
       const distFalt = num(t.distfaltante)
       const distOrig = num(t.distorigem)
-      const distTotal = distOrig + distFalt
-      const distDone = Math.max(0, distTotal - distFalt)
+      const d = dists[j]
+      let distTotal = d?.ok ? d.total : 0
+      let distDone = (d?.ok && d.perc > 0) ? d.perc : 0
+      if (distTotal === 0) distTotal = distOrig + distFalt
+      if (distDone === 0 && distTotal > 0) distDone = Math.max(0, distTotal - distFalt)
       const pct = distTotal > 0 ? Math.round((distDone / distTotal) * 100) : 0
       const ent = Array.isArray(t.entregas) && t.entregas.length ? t.entregas[0] : {}
       const embRaw = t.emb
