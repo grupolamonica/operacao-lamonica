@@ -73,12 +73,21 @@ export function useDriverDossie(id: string | null) {
       return (data ?? null) as DriverDossie | null
     },
   })
-  return {
-    data:      q.data ?? null,
-    isLoading: q.isLoading,
-    isError:   q.isError,
-    error:     q.error,
-  }
+  return { data: q.data ?? null, isLoading: q.isLoading, isError: q.isError, error: q.error }
+}
+
+/** Dossiê pelo NOME do motorista — usado quando a viagem (painel) não tem driverId. */
+export function useDriverDossieByName(name: string | null) {
+  const q = useQuery({
+    queryKey: ['driver-dossie-name', name],
+    enabled: !!name,
+    queryFn: async () => {
+      const { data, error } = await (api.api.drivers as any).dossie['by-name'].get({ query: { name: name! } })
+      if (error) return null
+      return (data ?? null) as DriverDossie | null
+    },
+  })
+  return { data: q.data ?? null, isLoading: q.isLoading }
 }
 
 export function useDriver(id: string | null) {

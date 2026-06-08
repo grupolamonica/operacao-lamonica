@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { api } from '@/lib/api'
 import { useTripTimeline } from '@/hooks/useTripTimeline'
 import { useTripRisk } from '@/hooks/useTripRisk'
-import { useDriverDossie } from '@/hooks/useDrivers'
+import { useDriverDossie, useDriverDossieByName } from '@/hooks/useDrivers'
 import { formatTime, formatKm, formatDate } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 import type { Trip } from '@/data/types'
@@ -26,7 +26,10 @@ interface Props {
 export function TripDetailPanel({ trip, onClose }: Props) {
   const { data: events } = useTripTimeline(trip.id)
   const { data: risk }   = useTripRisk(trip.id)
-  const { data: dossie } = useDriverDossie(trip.driverId ?? null)
+  // Cruzamento: por driverId quando existe; senão pelo nome do motorista (viagens do painel).
+  const dossieById = useDriverDossie(trip.driverId ?? null)
+  const dossieByName = useDriverDossieByName(trip.driverId ? null : (trip.driverName || null))
+  const dossie = dossieById.data ?? dossieByName.data
   const qc = useQueryClient()
   const remainingKm = Math.max(0, trip.distanceTotal - trip.distanceDone)
 

@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia'
 import { authGuard } from '../../lib/rbac'
-import { listDrivers, getDriverById, getDriverStats, getDriverDossie } from './drivers.service'
+import { listDrivers, getDriverById, getDriverStats, getDriverDossie, getDriverDossieByName } from './drivers.service'
 
 const driverStatus = t.Union([t.Literal('available'), t.Literal('on_route'), t.Literal('unavailable')])
 
@@ -16,6 +16,15 @@ export const driversPlugin = new Elysia({ name: 'drivers' })
           search: t.Optional(t.String()),
         }),
         detail: { tags: ['drivers'], summary: 'List drivers with filters' },
+      })
+      // Dossiê por NOME — usado quando a viagem (snapshot do painel) não tem driverId, só o motorista.
+      .get('/dossie/by-name', async ({ query, set }) => {
+        const dossie = await getDriverDossieByName(query.name ?? '')
+        if (!dossie) { set.status = 404; return { error: 'Driver not found' } }
+        return dossie
+      }, {
+        query: t.Object({ name: t.String() }),
+        detail: { tags: ['drivers'], summary: 'Dossiê consolidado por nome do motorista' },
       })
       .get('/:id', async ({ params, set }) => {
         const d = await getDriverById(params.id)

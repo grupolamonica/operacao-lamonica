@@ -77,6 +77,23 @@ export async function getDriverById(id: string) {
  * identidade + conformidade (Angellira), viagens (Shopee DBLH), veículos
  * (Cargas), ocorrências e sinal de ranking. Junta por driver_id E shopee_driver_id.
  */
+/**
+ * Resolve o dossiê pelo NOME do motorista (viagens do painel não têm driverId, só sheet_motorista).
+ * Casa exato primeiro, depois por similaridade (ILIKE), normalizando acentos.
+ */
+export async function getDriverDossieByName(name: string) {
+  const nm = (name ?? '').trim()
+  if (!nm) return null
+  const ACC = "'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇç','AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCc'"
+  let [d] = (await db.execute(sql`
+    SELECT id FROM drivers
+    WHERE upper(translate(trim(name), ${sql.raw(ACC)})) = upper(translate(trim(${nm}), ${sql.raw(ACC)}))
+    LIMIT 1
+  `)) as unknown as Array<{ id: string }>
+  if (!d) [d] = await db.select({ id: drivers.id }).from(drivers).where(ilike(drivers.name, `%${nm}%`)).limit(1)
+  return d ? getDriverDossie(d.id) : null
+}
+
 export async function getDriverDossie(id: string) {
   const n = (v: unknown) => Number(v ?? 0)
 

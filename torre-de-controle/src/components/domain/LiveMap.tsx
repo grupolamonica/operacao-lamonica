@@ -17,6 +17,9 @@ const SLA_COLORS: Record<string, string> = {
   atrasado:  '#f5365c',
   sem_sinal: '#95959e',
 }
+const SLA_LABEL: Record<string, string> = {
+  no_prazo: 'No prazo', em_risco: 'Em risco', atrasado: 'Atrasado', sem_sinal: 'Sem sinal',
+}
 
 // Status colours for fleet layer (D-11-04, oklch tokens allowlisted in STATE)
 const FLEET_COLORS = {
@@ -426,31 +429,58 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
     for (const [id, pos] of positions) {
       const color      = SLA_COLORS[pos.slaStatus] ?? SLA_COLORS.sem_sinal
       const risk       = riskByVehicleId.get(id)
-      const riskColor  = risk ? RISK_HEX[risk] : 'white'
+      const riskColor  = risk ? RISK_HEX[risk] : '#ffffff'
       const isSelected = id === selectedVehicleId
-      const size       = isSelected ? '20px' : '14px'
+      const size       = isSelected ? 26 : 18
+
+      const applyStyle = (el: HTMLDivElement) => {
+        // Marcador estilo "pino" — disco colorido por SLA, anel branco + borda de risco, sombra.
+        el.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;background:${color};`
+          + `border:3px solid ${riskColor};box-shadow:0 0 0 2px rgba(255,255,255,.9),0 3px 8px rgba(0,0,0,.45);`
+          + `cursor:pointer;transition:all .15s;${isSelected ? 'z-index:10;' : ''}`
+      }
 
       if (!markersRef.current.has(id)) {
         const el = document.createElement('div')
-        el.style.cssText = `width:${size};height:${size};border-radius:50%;background:${color};border:2px solid ${riskColor};box-shadow:0 2px 4px rgba(0,0,0,.4);cursor:pointer;transition:all .15s;`
-        el.title = `${id.slice(0, 8)} — ${pos.slaStatus}${risk ? ` · risco ${risk}` : ''}`
-        el.addEventListener('click', () => onVehicleClick?.(id))
-
-        const marker = new maplibregl.Marker({ element: el })
-          .setLngLat([Number(pos.lng), Number(pos.lat)])
-          .addTo(map)
+        applyStyle(el)
+        el.addEventListener('click', () => { onVehicleClick?.(id); openLivePopup(map, id) })
+        el.addEventListener('mouseenter', () => { el.style.transform = 'scale(1.25)' })
+        el.addEventListener('mouseleave', () => { el.style.transform = '' })
+        const marker = new maplibregl.Marker({ element: el }).setLngLat([Number(pos.lng), Number(pos.lat)]).addTo(map)
         markersRef.current.set(id, marker)
       } else {
         const marker = markersRef.current.get(id)!
         marker.setLngLat([Number(pos.lng), Number(pos.lat)])
-        const el = marker.getElement() as HTMLDivElement
-        el.style.background = color
-        el.style.borderColor = riskColor
-        el.style.width  = size
-        el.style.height = size
+        applyStyle(marker.getElement() as HTMLDivElement)
       }
     }
   }, [positions, selectedVehicleId, onVehicleClick, mapReady, riskByVehicleId])
+
+  /** Popup rico do veículo ao vivo — usa a posição EXTRAÍDA mais recente do store (XSS-safe). */
+  function openLivePopup(map: maplibregl.Map, id: string) {
+    const pos = usePositionsStore.getState().positions.get(id)
+    if (!pos) return
+    const motorista = (tripsForRisk ?? []).find((t) => (t as any).vehicleId === id)
+    const color = SLA_COLORS[pos.slaStatus] ?? SLA_COLORS.sem_sinal
+    const c = document.createElement('div')
+    c.style.cssText = "background:var(--card);color:var(--card-foreground);border-radius:.75rem;box-shadow:0 0 1.5rem 0 rgba(136,152,170,.3);border:1px solid var(--border);padding:.75rem .875rem;font-family:'Open Sans',system-ui,sans-serif;font-size:12px;line-height:1.55;min-width:210px"
+    const head = document.createElement('div')
+    head.style.cssText = 'display:flex;align-items:center;gap:.4rem;font-weight:700;margin-bottom:.35rem'
+    const dot = document.createElement('span'); dot.style.cssText = `width:10px;height:10px;border-radius:50%;background:${color};display:inline-block`
+    const ht = document.createElement('span'); ht.textContent = motorista?.driverName || `Veículo ${id.slice(0, 8)}`
+    head.appendChild(dot); head.appendChild(ht); c.appendChild(head)
+    const row = (k: string, v: string, col?: string) => {
+      const r = document.createElement('div'); const s = document.createElement('strong'); s.textContent = k + ': '
+      const sp = document.createElement('span'); sp.textContent = v; if (col) sp.style.color = col
+      r.appendChild(s); r.appendChild(sp); c.appendChild(r)
+    }
+    row('Status', SLA_LABEL[pos.slaStatus] ?? pos.slaStatus, color)
+    row('Velocidade', `${Math.round(Number(pos.speed ?? 0))} km/h`)
+    if (motorista?.destination) row('Destino', String(motorista.destination))
+    row('Última posição', pos.capturedAt ? formatDate(pos.capturedAt, 'dd/MM/yyyy HH:mm') : '—')
+    row('Coordenadas', `${Number(pos.lat).toFixed(4)}, ${Number(pos.lng).toFixed(4)}`)
+    new maplibregl.Popup({ closeButton: true, offset: 14 }).setLngLat([Number(pos.lng), Number(pos.lat)]).setDOMContent(c).addTo(map)
+  }
 
   return (
     <div className="relative rounded-lg border border-border overflow-hidden" style={{ height }}>
