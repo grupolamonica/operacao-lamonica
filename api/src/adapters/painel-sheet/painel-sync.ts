@@ -1,18 +1,21 @@
 /**
- * Sync do PAINEL GAS (planilha de produção 1_SAEL3...) → trips (source='painel').
+ * Sync do PAINEL GAS (planilha de produção 1_SAEL3...) → trips (source='painel') + Redis (tickets/alertas).
  *
- * Reproduz fielmente o getPainelData() do ScriptControleViagens:
- *   universo = aba "Carrega" (viagens ativas, c/ Cód. Viagem) + aba "HistoricoConcluidas" (concluídas).
- * Campos da Carrega (getDadosColunas): KM Total="Dist. Viagem", KM que Falta="Dist. Destino",
+ * Reproduz fielmente getPainelData() + updateDashboardSummary() do ScriptControleViagens:
+ *   universo = aba "Carrega" (ativas, c/ Cód. Viagem) + "HistoricoConcluidas" (concluídas).
+ *   O painel faz [...ativas, ...concluídas] SEM deduplicar → uma viagem em ambas conta 2× (replicamos
+ *   com ids distintos: PNLA-<cod> ativa / PNLC-<cod> concluída) para o Total bater com o painel.
+ * Campos da Carrega: KM Total="Dist. Viagem", KM que Falta="Dist. Destino",
  *   Prazo Final="Previsão Chegada Destino", Partida="Saída Origem".
- * Status das ATIVAS é computado aqui com a lei do motorista (recalcularStatusLinhaLocal):
- *   chegou(kmFalta<=2)→concluída; ETA(=agora+horasViagem(kmFalta)) > prazo → ATRASADO, senão NO PRAZO.
- *
- * É público (gviz CSV, sem auth). Roda no cron → mantém o dashboard idêntico ao painel, ao vivo.
+ * Status das ATIVAS = lei do motorista (recalcularStatusLinhaLocal): chegou(kmFalta<=2)→concluída;
+ *   ETA(=agora+horasViagem(kmFalta)) > prazo → ATRASADO, senão NO PRAZO.
+ * Tickets Pendentes = nº de tickets ABERTO/EM_TRATAMENTO (aba HistoricoTickets) das viagens ATIVAS.
+ * Alertas = viagens ativas com PARADA aberta recente (proxy de "parado >30min"). Guardados no Redis.
  */
 import { sql } from 'drizzle-orm'
 import { createHash } from 'node:crypto'
 import { db } from '../../db/client'
+import { redis } from '../../redis/client'
 import { logger } from '../../lib/logger'
 import { calcularHorasViagemComRegulamentacao, calcularAdiantamentoHoras, PARAMS_PADRAO } from '../../lib/regulamentacao'
 
@@ -28,7 +31,6 @@ function uuid5(name: string): string {
   return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20, 32)}`
 }
 
-/** Parser CSV mínimo (aspas, vírgulas e quebras dentro de aspas). */
 function parseCsv(text: string): string[][] {
   const rows: string[][] = []
   let row: string[] = [], field = '', q = false
@@ -40,28 +42,23 @@ function parseCsv(text: string): string[][] {
     } else if (c === '"') q = true
     else if (c === ',') { row.push(field); field = '' }
     else if (c === '\n') { row.push(field); rows.push(row); row = []; field = '' }
-    else if (c === '\r') { /* skip */ }
-    else field += c
+    else if (c !== '\r') field += c
   }
   if (field !== '' || row.length) { row.push(field); rows.push(row) }
   return rows
 }
-
-function norm(s: string): string {
-  return (s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
-}
+const norm = (s: string) => (s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
 function num(v: unknown): number | null {
   let x = String(v ?? '').toLowerCase().replace('km', '').trim()
   if (!x) return null
   if (x.includes(',')) x = x.replace(/\./g, '').replace(',', '.')
-  const n = parseFloat(x)
-  return isNaN(n) ? null : n
+  const n = parseFloat(x); return isNaN(n) ? null : n
 }
 function isoDt(v: unknown): string | null {
   const m = String(v ?? '').replace(',', ' ').match(/(\d{2})\/(\d{2})\/(\d{4})\D+(\d{2}):(\d{2})(?::(\d{2}))?/)
-  if (!m) return null
-  return `${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6] || '00'}`
+  return m ? `${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6] || '00'}` : null
 }
+function dateBR(v: unknown): Date | null { const i = isoDt(v); return i ? new Date(i) : null }
 
 async function fetchSheet(name: string): Promise<string[][]> {
   const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(name)}`
@@ -69,13 +66,9 @@ async function fetchSheet(name: string): Promise<string[][]> {
   if (!res.ok) throw new Error(`painel sheet ${name}: ${res.status}`)
   return parseCsv(await res.text())
 }
-
 function colFinder(headers: string[]) {
   const H = headers.map(norm)
-  return (...names: string[]) => {
-    for (const nm of names) { const i = H.indexOf(norm(nm)); if (i >= 0) return i }
-    return -1
-  }
+  return (...names: string[]) => { for (const nm of names) { const i = H.indexOf(norm(nm)); if (i >= 0) return i } return -1 }
 }
 
 interface TripRow {
@@ -83,83 +76,83 @@ interface TripRow {
   distTotal: number | null; distDone: number | null; ws: string; we: string; eta: string | null
   adiant: number | null; origem: string | null; destino: string | null; motorista: string | null
 }
-
-export interface PainelSyncResult { ativas: number; concluidas: number; total: number; noPrazo: number; atrasadas: number }
+export interface PainelSyncResult { ativas: number; concluidas: number; total: number; noPrazo: number; atrasadas: number; ticketsPendentes: number; alertas: number }
 
 export async function syncPainel(): Promise<PainelSyncResult> {
   const agora = new Date()
-  const [carrega, concl] = await Promise.all([fetchSheet('Carrega'), fetchSheet('HistoricoConcluidas')])
+  const [carrega, concl, tickets] = await Promise.all([
+    fetchSheet('Carrega'), fetchSheet('HistoricoConcluidas'), fetchSheet('HistoricoTickets'),
+  ])
   const recs: TripRow[] = []
-  let noPrazo = 0, atrasadas = 0, ativasCount = 0
+  let noPrazo = 0, atrasadas = 0
+  const activeCods = new Set<string>()
 
   // --- ATIVAS (Carrega) ---
   {
     const h = carrega[0] ?? []; const c = colFinder(h)
-    const iCod = c('Cód. Viagem', 'COD. VIAGEM'), iKmT = c('Dist. Viagem', 'KM Total'),
-      iKmF = c('Dist. Destino', 'KM que Falta'), iPz = c('Previsão Chegada Destino', 'Prazo Final'),
-      iPart = c('Saída Origem', 'Partida Programada'), iCheg = c('Chegada Descarga'),
-      iMot = c('Motorista'), iOri = c('Origem'), iDest = c('Destino')
+    const iCod = c('Cód. Viagem'), iKmT = c('Dist. Viagem', 'KM Total'), iKmF = c('Dist. Destino', 'KM que Falta'),
+      iPz = c('Previsão Chegada Destino', 'Prazo Final'), iPart = c('Saída Origem', 'Partida Programada'),
+      iCheg = c('Chegada Descarga'), iMot = c('Motorista'), iOri = c('Origem'), iDest = c('Destino')
     for (const r of carrega.slice(1)) {
-      const cod = String(r[iCod] ?? '').trim()
-      if (!cod) continue
-      ativasCount++
-      const kmT = num(r[iKmT]), kmF = num(r[iKmF])
-      const prazoIso = isoDt(r[iPz]); const prazo = prazoIso ? new Date(prazoIso) : null
-      const cheg = iCheg >= 0 ? isoDt(r[iCheg]) : null
-      const kmFalta = kmF ?? 0
+      const cod = String(r[iCod] ?? '').trim(); if (!cod) continue
+      const kmT = num(r[iKmT]), kmF = num(r[iKmF]); const prazoIso = isoDt(r[iPz]); const prazo = prazoIso ? new Date(prazoIso) : null
+      const cheg = iCheg >= 0 ? isoDt(r[iCheg]) : null; const kmFalta = kmF ?? 0
       const progress = (kmT && kmT > 0) ? Math.max(0, Math.min(100, Math.round(((kmT - kmFalta) / kmT) * 100))) : 0
-      const ws = isoDt(r[iPart]) ?? agora.toISOString()
-      const we = prazoIso ?? ws
+      const ws = isoDt(r[iPart]) ?? agora.toISOString(); const we = prazoIso ?? ws
       let status = 'in_progress', sla: string | null = null, eta: string | null = null, adiant: number | null = null
       if (cheg || kmFalta <= KM_CHEGOU || kmT == null || kmF == null || !prazo) {
-        // concluída por chegada / chegou / dados insuficientes → não entra em No Prazo/Atrasadas
-        if (cheg || kmFalta <= KM_CHEGOU) { status = 'completed' }
+        if (cheg || kmFalta <= KM_CHEGOU) status = 'completed'
         eta = (kmFalta <= KM_CHEGOU) ? agora.toISOString() : null
       } else {
+        activeCods.add(cod)
         const tRest = calcularHorasViagemComRegulamentacao(kmFalta, PARAMS_PADRAO)
         eta = Number.isFinite(tRest) ? new Date(agora.getTime() + tRest * 3600000).toISOString() : prazoIso
         const a = calcularAdiantamentoHoras(kmFalta, prazo, agora, 0, PARAMS_PADRAO)
         adiant = a == null ? null : -a
         if (adiant != null && adiant > 0) { sla = 'atrasado'; atrasadas++ } else { sla = 'no_prazo'; noPrazo++ }
       }
-      recs.push({
-        id: uuid5('painel|' + cod), code: ('PNL-' + cod).slice(0, 20), status, sla, progress,
+      recs.push({ id: uuid5('painel|a|' + cod), code: ('PNLA-' + cod).slice(0, 20), status, sla, progress,
         distTotal: kmT, distDone: (kmT != null) ? Math.max(0, kmT - kmFalta) : null, ws, we, eta, adiant,
         origem: String(r[iOri] ?? '').slice(0, 200) || null, destino: String(r[iDest] ?? '').slice(0, 200) || null,
-        motorista: String(r[iMot] ?? '').trim() || null,
-      })
+        motorista: String(r[iMot] ?? '').trim() || null })
     }
   }
 
-  // --- CONCLUÍDAS (HistoricoConcluidas) ---
+  // --- CONCLUÍDAS (HistoricoConcluidas) — id distinto (double-count igual ao painel) ---
   {
     const h = concl[0] ?? []; const c = colFinder(h)
     const iCod = c('Cód. Viagem'), iMot = c('Motorista'), iOri = c('Origem'), iDest = c('Destino'),
       iPz = c('Prazo Final'), iKmT = c('KM Total'), iKmF = c('KM que Falta'), iConc = c('Data Conclusão')
     for (const r of concl.slice(1)) {
-      const cod = String(r[iCod] ?? '').trim()
-      if (!cod) continue
-      const kmT = num(r[iKmT]), kmF = num(r[iKmF])
-      const prazoIso = isoDt(r[iPz]); const concIso = iConc >= 0 ? isoDt(r[iConc]) : null
+      const cod = String(r[iCod] ?? '').trim(); if (!cod) continue
+      const kmT = num(r[iKmT]), kmF = num(r[iKmF]); const prazoIso = isoDt(r[iPz]); const concIso = iConc >= 0 ? isoDt(r[iConc]) : null
       const we = prazoIso ?? concIso ?? '2026-01-01T00:00:00'
-      recs.push({
-        id: uuid5('painel|' + cod), code: ('PNL-' + cod).slice(0, 20), status: 'completed', sla: null, progress: 100,
-        distTotal: kmT, distDone: (kmT != null && kmF != null) ? Math.max(0, kmT - kmF) : kmT, ws: we, we,
-        eta: concIso, adiant: null,
+      recs.push({ id: uuid5('painel|c|' + cod), code: ('PNLC-' + cod).slice(0, 20), status: 'completed', sla: null, progress: 100,
+        distTotal: kmT, distDone: (kmT != null && kmF != null) ? Math.max(0, kmT - kmF) : kmT, ws: we, we, eta: concIso, adiant: null,
         origem: String(r[iOri] ?? '').slice(0, 200) || null, destino: String(r[iDest] ?? '').slice(0, 200) || null,
-        motorista: String(r[iMot] ?? '').trim() || null,
-      })
+        motorista: String(r[iMot] ?? '').trim() || null })
     }
   }
 
-  // dedup por id (ativa tem prioridade sobre concluída de mesmo cod)
-  const byId = new Map<string, TripRow>()
-  for (const t of recs) { if (!byId.has(t.id) || t.status !== 'completed') byId.set(t.id, t) }
-  const all = [...byId.values()]
+  // --- TICKETS PENDENTES + ALERTAS (HistoricoTickets) sobre as viagens ATIVAS ---
+  let ticketsPendentes = 0; const alertaCods = new Set<string>()
+  {
+    const h = tickets[0] ?? []; const c = colFinder(h)
+    const iCod = c('Cód. Viagem'), iTipo = c('Tipo'), iStatus = c('Status'), iAbert = c('Timestamp Abertura')
+    const limiteParada = agora.getTime() - 2 * 3600000  // PARADA aberta nas últimas 2h ≈ parado agora
+    for (const r of tickets.slice(1)) {
+      const cod = String(r[iCod] ?? '').trim(); if (!cod || !activeCods.has(cod)) continue
+      const stt = String(r[iStatus] ?? '').trim(); const tipo = String(r[iTipo] ?? '').trim()
+      if ((stt !== 'ABERTO' && stt !== 'EM_TRATAMENTO') || tipo === '1H_INTERVALO') continue
+      ticketsPendentes++
+      if (tipo === 'PARADA') { const ab = dateBR(r[iAbert]); if (!ab || ab.getTime() >= limiteParada) alertaCods.add(cod) }
+    }
+  }
+  const alertas = alertaCods.size
 
-  // Upsert do snapshot + remoção das que saíram da planilha. NÃO usa wipe-all (viagens podem ser
-  // referenciadas por alerts via FK). Upsert marca updated_at=now(); o que não veio neste sync
-  // (updated_at < syncStart) e não está referenciado por alerts é removido.
+  // dedup só por id (PNLA-/PNLC- são distintos → double-count mantido; remove cods repetidos na mesma aba)
+  const byId = new Map<string, TripRow>(); for (const t of recs) byId.set(t.id, t)
+  const all = [...byId.values()]
   const syncStart = agora.toISOString()
   await db.transaction(async (tx) => {
     const B = 500
@@ -188,7 +181,10 @@ export async function syncPainel(): Promise<PainelSyncResult> {
     `)
   })
 
-  const res = { ativas: ativasCount, concluidas: all.filter((t) => t.status === 'completed').length, total: all.length, noPrazo, atrasadas }
+  // Tickets/Alertas para o dashboard (Redis — lidos pelo getDashboardKpis)
+  try { await redis.set('painel:tickets', JSON.stringify({ ticketsPendentes, alertas }), 'EX', 1800) } catch { /* noop */ }
+
+  const res: PainelSyncResult = { ativas: activeCods.size, concluidas: all.filter((t) => t.status === 'completed').length, total: all.length, noPrazo, atrasadas, ticketsPendentes, alertas }
   logger.info(res, '[painel-sync] sincronizado com a planilha de produção')
   return res
 }

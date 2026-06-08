@@ -50,13 +50,20 @@ export async function getDashboardKpis(periodo: PeriodoSla = 'tudo'): Promise<Da
   const aferidas = noPrazo + atrasadas
   const pctNoPrazo = aferidas > 0 ? Math.round((noPrazo / aferidas) * 1000) / 10 : 100
 
-  const [a] = (await db.execute(sql`
-    SELECT
-      count(*) FILTER (WHERE status IN ('aberto','em_analise','em_tratativa'))::int AS tickets_pendentes,
-      count(*) FILTER (WHERE status IN ('aberto','em_analise','em_tratativa')
-        AND trip_id IN (SELECT id FROM trips WHERE status NOT IN ('completed','cancelled')))::int AS alertas
-    FROM alerts
-  `)) as unknown as Array<{ tickets_pendentes: number; alertas: number }>
+  // Tickets Pendentes / Alertas: calculados pelo painel-sync a partir da aba HistoricoTickets
+  // (abertos das viagens ativas) e guardados no Redis. Fallback p/ os alertas próprios se ausente.
+  let ticketsPendentes = 0, alertasN = 0
+  try {
+    const t = await redis.get('painel:tickets')
+    if (t) { const o = JSON.parse(t); ticketsPendentes = Number(o.ticketsPendentes ?? 0); alertasN = Number(o.alertas ?? 0) }
+  } catch { /* noop */ }
+  if (!ticketsPendentes) {
+    const [a] = (await db.execute(sql`
+      SELECT count(*) FILTER (WHERE status IN ('aberto','em_analise','em_tratativa'))::int AS tickets_pendentes
+      FROM alerts
+    `)) as unknown as Array<{ tickets_pendentes: number }>
+    ticketsPendentes = Number(a?.tickets_pendentes ?? 0)
+  }
 
   const [d] = (await db.execute(sql`
     SELECT count(*) FILTER (WHERE status='on_route' AND avg_delay_minutes > 10)::int AS em_risco FROM drivers
@@ -66,7 +73,7 @@ export async function getDashboardKpis(periodo: PeriodoSla = 'tudo'): Promise<Da
     filtroSla: periodo,
     total, concluidas,
     noPrazo, atrasadas, aferidas, pctNoPrazo,
-    alertas: n(a?.alertas), ticketsPendentes: n(a?.tickets_pendentes),
+    alertas: alertasN, ticketsPendentes,
     motoristasEmRisco: n(d?.em_risco), meta: 95,
   }
   try { await redis.set(key, JSON.stringify(kpis), 'EX', TTL) } catch { /* noop */ }
