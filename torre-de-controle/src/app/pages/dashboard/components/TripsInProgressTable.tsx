@@ -6,6 +6,8 @@ import { StatusBadge } from '@/components/domain/StatusBadge'
 import { DriverAvatar } from '@/components/domain/DriverAvatar'
 import { ProgressBar } from '@/components/domain/ProgressBar'
 import { useTrips } from '@/hooks/useTrips'
+import { useNow } from '@/hooks/useNow'
+import { recomputeSla, formatarAtraso } from '@/lib/regulamentacao'
 import { formatTime } from '@/lib/formatters'
 import type { Trip } from '@/data/types'
 
@@ -47,14 +49,19 @@ const columns: ColumnDef<Trip>[] = [
 
 export function TripsInProgressTable() {
   const navigate = useNavigate()
-  // Todas as viagens em andamento (ativas), atualizadas a cada 5s. Backend já escopa em source='painel'.
+  const now = useNow(5000)  // relógio ao vivo — ETA/atraso "correndo" a cada 5s, como o painel
+  // Todas as viagens em andamento (ativas), atualizadas a cada 5s (operação Angellira ao vivo).
   const { data: active } = useTrips({ status: 'in_progress' })
 
-  // Ordem: do MAIS ATRASADO para o mais adiantado (adiantamentoHoras: + = atrasado).
+  // Recalcula ETA/atraso/status AO VIVO (now) e ordena do MAIS ATRASADO → adiantado.
   const ordered = useMemo(() => {
-    const at = (t: Trip) => (t.adiantamentoHoras ?? Number.NEGATIVE_INFINITY)
-    return [...active].sort((a, b) => at(b) - at(a))
-  }, [active])
+    return active.map((t) => {
+      const kmFalta = t.kmFalta ?? Math.max(0, t.distanceTotal - t.distanceDone)
+      const live = recomputeSla(t.distanceTotal, kmFalta, t.windowEnd ? new Date(t.windowEnd) : null, t.windowStart ? new Date(t.windowStart) : null, now)
+      const atraso = live.atrasoHoras ?? t.adiantamentoHoras ?? null
+      return { ...t, eta: (live.eta ?? t.eta) as any, adiantamentoHoras: atraso, atrasoLabel: formatarAtraso(atraso), slaStatus: (live.slaStatus ?? t.slaStatus) as Trip['slaStatus'] }
+    }).sort((a, b) => (b.adiantamentoHoras ?? Number.NEGATIVE_INFINITY) - (a.adiantamentoHoras ?? Number.NEGATIVE_INFINITY))
+  }, [active, now])
 
   return (
     <div className="space-y-3">

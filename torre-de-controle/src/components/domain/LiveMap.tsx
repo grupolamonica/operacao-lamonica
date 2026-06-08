@@ -460,14 +460,17 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
   function openLivePopup(map: maplibregl.Map, id: string) {
     const pos = usePositionsStore.getState().positions.get(id)
     if (!pos) return
-    const motorista = (tripsForRisk ?? []).find((t) => (t as any).vehicleId === id)
+    // motorista/destino vêm enriquecidos no payload WS; fallback p/ cruzamento por vehicleId.
+    const trip = (tripsForRisk ?? []).find((t) => (t as any).vehicleId === id)
+    const nomeMotorista = pos.motorista || trip?.driverName || null
+    const destinoViagem = pos.destino || trip?.destination || null
     const color = SLA_COLORS[pos.slaStatus] ?? SLA_COLORS.sem_sinal
     const c = document.createElement('div')
     c.style.cssText = "background:var(--card);color:var(--card-foreground);border-radius:.75rem;box-shadow:0 0 1.5rem 0 rgba(136,152,170,.3);border:1px solid var(--border);padding:.75rem .875rem;font-family:'Open Sans',system-ui,sans-serif;font-size:12px;line-height:1.55;min-width:210px"
     const head = document.createElement('div')
     head.style.cssText = 'display:flex;align-items:center;gap:.4rem;font-weight:700;margin-bottom:.35rem'
     const dot = document.createElement('span'); dot.style.cssText = `width:10px;height:10px;border-radius:50%;background:${color};display:inline-block`
-    const ht = document.createElement('span'); ht.textContent = motorista?.driverName || `Veículo ${id.slice(0, 8)}`
+    const ht = document.createElement('span'); ht.textContent = nomeMotorista || `Veículo ${id.slice(0, 8)}`
     head.appendChild(dot); head.appendChild(ht); c.appendChild(head)
     const row = (k: string, v: string, col?: string) => {
       const r = document.createElement('div'); const s = document.createElement('strong'); s.textContent = k + ': '
@@ -476,7 +479,7 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
     }
     row('Status', SLA_LABEL[pos.slaStatus] ?? pos.slaStatus, color)
     row('Velocidade', `${Math.round(Number(pos.speed ?? 0))} km/h`)
-    if (motorista?.destination) row('Destino', String(motorista.destination))
+    if (destinoViagem) row('Destino', String(destinoViagem))
     row('Última posição', pos.capturedAt ? formatDate(pos.capturedAt, 'dd/MM/yyyy HH:mm') : '—')
     row('Coordenadas', `${Number(pos.lat).toFixed(4)}, ${Number(pos.lng).toFixed(4)}`)
     new maplibregl.Popup({ closeButton: true, offset: 14 }).setLngLat([Number(pos.lng), Number(pos.lat)]).setDOMContent(c).addTo(map)

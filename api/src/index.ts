@@ -222,7 +222,15 @@ export const app = new Elysia()
     await redis.expire(`vehicle:${vehicleId}:position`, 300)
     if (vehicle.driverId) await db.update(drivers).set({ lat: String(lat), lng: String(lng) }).where(eq(drivers.id, vehicle.driverId))
     const slaStatus = await computeSlaStatus(vehicleId)
-    await redis.publish(POSITIONS_CHANNEL, JSON.stringify({ ...pos, slaStatus, lat, lng }))
+    // Enriquece o card do mapa: motorista + destino da viagem ativa deste veículo (via WS).
+    const vtrip = await db.query.trips.findFirst({
+      where: (t, { eq, and }) => and(eq(t.vehicleId, vehicleId), eq(t.status, 'in_progress')),
+      columns: { destination: true, sheetMotorista: true },
+      with: { driver: { columns: { name: true } } },
+    })
+    const motorista = (vtrip as any)?.driver?.name ?? vtrip?.sheetMotorista ?? null
+    const destino = vtrip?.destination ?? null
+    await redis.publish(POSITIONS_CHANNEL, JSON.stringify({ ...pos, slaStatus, lat, lng, motorista, destino }))
 
     // Alert detection (inline async, ~50ms overhead)
     await processAlertDetection(vehicleId, lat, lng, Number(speed ?? 0), capturedAt ?? new Date().toISOString()).catch(e =>

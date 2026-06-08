@@ -10,6 +10,8 @@ export type VehiclePosition = {
   heading: number
   capturedAt: string
   slaStatus: 'no_prazo' | 'em_risco' | 'atrasado' | 'sem_sinal'
+  motorista?: string | null   // enriquecido no broadcast WS (viagem ativa do veículo)
+  destino?: string | null
 }
 
 type PositionsStore = {
