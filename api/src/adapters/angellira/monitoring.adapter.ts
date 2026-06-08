@@ -173,6 +173,9 @@ export async function syncMonitoring(): Promise<MonitoringResult> {
       // Chegou (≤ kmParaConsiderarChegou) → CONCLUÍDA, igual ao painel: sai de "em andamento".
       if (mapped !== 'cancelled' && distTotal > 0 && kmFalta <= PARAMS_PADRAO.kmParaConsiderarChegou) mapped = 'completed'
       const agora = new Date()
+      // Presa: iniciada há > 7 dias e ainda "ativa" = abandonada na Angellira (busca de 60d ainda a
+      // devolve, mas o painel só mantém ~7 dias no feed Carrega). Trata como concluída p/ não inflar ativas/atrasadas.
+      if (mapped !== 'cancelled' && ws && (agora.getTime() - new Date(ws).getTime()) > 7 * 86400000) mapped = 'completed'
       const moros = num(t.morosidade ?? 0)
       // Prazo Final (deadline) = t.dataPrevFim — o prazo final CONTRATADO da viagem, idêntico à coluna
       // "Prazo Final" do painel (validado no JSON live: EDSON 09/06 09:01, RENATO 10/06 07:00 batem exato).
