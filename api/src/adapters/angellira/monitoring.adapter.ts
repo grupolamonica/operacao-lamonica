@@ -174,9 +174,11 @@ export async function syncMonitoring(): Promise<MonitoringResult> {
       if (mapped !== 'cancelled' && distTotal > 0 && kmFalta <= PARAMS_PADRAO.kmParaConsiderarChegou) mapped = 'completed'
       const agora = new Date()
       const moros = num(t.morosidade ?? 0)
-      // Prazo Final (deadline) = entregas[0].previsaochegada (validado no JSON live; ex. HERCULANO 07:00).
-      // Fallbacks: previsão crua → dataInicio + tempo de rota total.
-      const prazoIso = iso((ent as any).previsaochegada) ?? iso(ent.previsao)
+      // Prazo Final (deadline) = t.dataPrevFim — o prazo final CONTRATADO da viagem, idêntico à coluna
+      // "Prazo Final" do painel (validado no JSON live: EDSON 09/06 09:01, RENATO 10/06 07:00 batem exato).
+      // NÃO usar ent.previsaochegada (= previsão de entrega, mais cedo) → causava atraso em dobro.
+      // Fallbacks: previsaochegada → previsão crua → dataInicio + tempo de rota total.
+      const prazoIso = iso(t.dataPrevFim) ?? iso((ent as any).previsaochegada) ?? iso(ent.previsao)
         ?? (ws ? new Date(new Date(ws).getTime() + calcularHorasViagemComRegulamentacao(distTotal, PARAMS_PADRAO) * 3600000).toISOString() : null)
       const prazoDate = prazoIso ? new Date(prazoIso) : null
       const we = prazoIso ?? iso(t.dataInicio) ?? new Date(Date.now() + 3600000).toISOString()
