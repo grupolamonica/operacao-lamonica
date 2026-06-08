@@ -5,7 +5,7 @@ import { drivers } from '../../db/schema/drivers'
 import { clients } from '../../db/schema/clients'
 import { routes } from '../../db/schema/routes'
 import { tripEvents } from '../../db/schema/trip-events'
-import { formatarAtraso, PARAMS_PADRAO, PARAMS_REGULAR } from '../../lib/regulamentacao'
+import { formatarAtraso, calcularHorasViagemComRegulamentacao, calcularAdiantamentoHoras, PARAMS_PADRAO, PARAMS_REGULAR } from '../../lib/regulamentacao'
 
 /**
  * Meta KM/Dia — porte de recalcularStatusLinhaLocal() do painel:
@@ -120,6 +120,31 @@ export async function getTripStats() {
 }
 
 function toTripDto(row: any) {
+  const distanceTotal = row.distanceTotal ? Number(row.distanceTotal) : 0
+  const distanceDone  = row.distanceDone  ? Number(row.distanceDone)  : 0
+  const kmFalta = Math.max(0, distanceTotal - distanceDone)
+
+  // SLA recomputado AO VIVO (now) para viagens GRIFFI ativas — igual ao painel (recalc 5s no cliente).
+  // Para concluídas/imports, usa o valor persistido. Mantém eta/atraso/status sempre frescos.
+  const ativa = row.status !== 'completed' && row.status !== 'cancelled' && /^[0-9]+$/.test(row.code ?? '')
+  let eta: any = row.eta
+  let slaStatus: string | null = row.slaStatus
+  let adiant: number | null = row.adiantamentoHoras != null ? Number(row.adiantamentoHoras) : null
+  if (ativa && row.windowEnd) {
+    const agora = new Date()
+    const params = row.conducaoRegime === 'regular' ? PARAMS_REGULAR : PARAMS_PADRAO
+    if (kmFalta <= params.kmParaConsiderarChegou) {
+      eta = agora; slaStatus = null; adiant = null
+    } else {
+      const tRest = calcularHorasViagemComRegulamentacao(kmFalta, params)
+      eta = Number.isFinite(tRest) ? new Date(agora.getTime() + tRest * 3600000) : row.eta
+      const a = calcularAdiantamentoHoras(kmFalta, new Date(row.windowEnd), agora, Number(row.morosidadeHoras ?? 0), params)
+      adiant = a == null ? null : -a
+      if (row.windowStart && new Date(row.windowStart) > agora) slaStatus = 'no_prazo'  // aguardando partida
+      else slaStatus = adiant == null ? null : adiant > 0 ? 'atrasado' : 'no_prazo'
+    }
+  }
+
   return {
     id:            row.id,
     code:          row.code,
@@ -140,25 +165,20 @@ function toTripDto(row: any) {
     destLng:       row.destLng ? Number(row.destLng) : 0,
     windowStart:   row.windowStart,
     windowEnd:     row.windowEnd,
-    eta:           row.eta,
+    eta,
     departedAt:    row.departedAt,
     arrivedAt:     row.arrivedAt,
     status:        row.status,
-    slaStatus:     row.slaStatus,
+    slaStatus,
     progressPct:   row.progressPct,
-    distanceTotal: row.distanceTotal ? Number(row.distanceTotal) : 0,
-    distanceDone:  row.distanceDone  ? Number(row.distanceDone)  : 0,
-    // Phase 13 — paridade painel: KM que Falta, Atraso (±HH:MM), Condução, Meta KM/Dia
-    kmFalta:           Math.max(0, (row.distanceTotal ? Number(row.distanceTotal) : 0) - (row.distanceDone ? Number(row.distanceDone) : 0)),
-    adiantamentoHoras: row.adiantamentoHoras != null ? Number(row.adiantamentoHoras) : null,
-    atrasoLabel:       formatarAtraso(row.adiantamentoHoras != null ? Number(row.adiantamentoHoras) : null),
+    distanceTotal,
+    distanceDone,
+    // Phase 13 — paridade painel: KM que Falta, Atraso (±HH:MM), Condução, Meta KM/Dia (recomputados ao vivo)
+    kmFalta,
+    adiantamentoHoras: adiant,
+    atrasoLabel:       formatarAtraso(adiant),
     conducaoRegime:    (row.conducaoRegime ?? 'intensivo') as 'intensivo' | 'regular',
-    metaKmDia:         calcMetaKmDia(
-      Math.max(0, (row.distanceTotal ? Number(row.distanceTotal) : 0) - (row.distanceDone ? Number(row.distanceDone) : 0)),
-      row.eta ? new Date(row.eta) : null,
-      row.slaStatus,
-      row.conducaoRegime,
-    ),
+    metaKmDia:         calcMetaKmDia(kmFalta, eta ? new Date(eta) : null, slaStatus, row.conducaoRegime),
     valor:         row.valor != null ? Number(row.valor) : null,
     bonus:         row.bonus != null ? Number(row.bonus) : null,
     // Sprint 3 — risk snapshot (nullable until first recalc)

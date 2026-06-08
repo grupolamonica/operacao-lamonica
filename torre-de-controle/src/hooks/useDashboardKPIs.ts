@@ -34,7 +34,8 @@ export function useDashboardKPIs(periodo: PeriodoSla = '30d') {
       if (error) throw error
       return (data ?? EMPTY_DASHBOARD) as KPIDashboard
     },
-    refetchInterval: 30_000,
+    refetchInterval: 15_000,        // dashboard sempre fresco (KPI recomputado ao vivo no backend)
+    refetchOnWindowFocus: true,
   })
   return { data: q.data ?? EMPTY_DASHBOARD, isLoading: q.isLoading, isError: q.isError, error: q.error, refetch: q.refetch }
 }

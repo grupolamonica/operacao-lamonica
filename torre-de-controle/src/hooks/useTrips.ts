@@ -10,6 +10,9 @@ export function useTrips(filters?: TripFilters & { limit?: number }) {
       if (error) throw new Error((error.value as any)?.error ?? 'Failed to fetch trips')
       return (data ?? []) as Trip[]
     },
+    // Sempre fresco, como o painel: o backend recalcula SLA/ETA ao vivo a cada request.
+    refetchInterval: 20_000,
+    refetchOnWindowFocus: true,
   })
   return {
     data:      q.data ?? [],

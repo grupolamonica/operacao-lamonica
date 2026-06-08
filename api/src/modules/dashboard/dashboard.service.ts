@@ -1,17 +1,21 @@
 import { sql } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { redis } from '../../redis/client'
+import { calcularAdiantamentoHoras, PARAMS_PADRAO } from '../../lib/regulamentacao'
 
 /**
  * KPIs do Dashboard (Phase 13) — paridade com o painel GAS.
- * Agregação 100% em SQL (sem carregar trips em memória, sem dados fake).
  *
- * Decisões (13-CONTEXT):
- *  - filtro de período (default 30d) sobre window_start.
- *  - % No Prazo = noPrazo / (noPrazo + atrasadas) das viagens ATIVAS com SLA aferido.
+ * Decisões:
+ *  - Universo = OPERAÇÃO GRIFFI ao vivo (códigos numéricos Angellira/GAS), igual ao painel.
+ *    Exclui o histórico multi-fonte (cargas/DBLH/ranking) que infla para 13k.
+ *  - No Prazo / Atrasadas: recomputado AO VIVO a cada request (now()), como o painel recalcula
+ *    no cliente a cada 5s — não fica congelado no valor do último sync.
+ *  - % No Prazo = noPrazo / (noPrazo + atrasadas).
  *  - Alertas = exceções abertas de viagens ATIVAS; Tickets Pendentes = todos os abertos.
  */
-const TTL = 30
+const TTL = 10                                  // cache curto: mantém o dashboard sempre fresco
+const GRIFFI = sql`code ~ '^[0-9]+$'`           // marcador da operação GRIFFI/Angellira (vs imports)
 export type PeriodoSla = 'hoje' | '7d' | '30d' | 'tudo'
 
 function cutoff(p: PeriodoSla) {
@@ -40,26 +44,38 @@ export async function getDashboardKpis(periodo: PeriodoSla = '30d'): Promise<Das
   try { const c = await redis.get(key); if (c) return JSON.parse(c) } catch { /* fall through */ }
 
   const cut = cutoff(periodo)
-  // Total / Concluídas: universo do período (window_start >= corte).
+  // Total / Concluídas: universo do período (window_start >= corte), SÓ operação GRIFFI ao vivo.
   const [tot] = (await db.execute(sql`
     SELECT
       count(*)::int                                   AS total,
       count(*) FILTER (WHERE status='completed')::int AS concluidas
     FROM trips
-    WHERE window_start >= ${cut}
+    WHERE ${GRIFFI} AND window_start >= ${cut}
   `)) as unknown as Array<{ total: number; concluidas: number }>
-
-  // No Prazo / Atrasadas: estado ATUAL das viagens ativas, classificado pelo sla_status que o
-  // monitoring.adapter persiste com a lei do motorista (60 km/h, jornada 12h, prazo = previsaochegada)
-  // — exatamente a mesma base do painel. Não filtra por período (é o "agora" operacional).
-  const [t] = (await db.execute(sql`
-    SELECT
-      count(*) FILTER (WHERE sla_status='no_prazo')::int AS no_prazo,
-      count(*) FILTER (WHERE sla_status='atrasado')::int AS atrasadas
-    FROM trips
-    WHERE status NOT IN ('completed','cancelled')
-  `)) as unknown as Array<{ no_prazo: number; atrasadas: number }>
   const total = tot?.total ?? 0, concluidas = tot?.concluidas ?? 0
+
+  // No Prazo / Atrasadas: recomputado AO VIVO (now()) sobre as ATIVAS GRIFFI — lei do motorista
+  // (60 km/h, jornada 12h), prazo = window_end (+morosidade). kmFalta<=2 = chegou (fora); antes da
+  // partida = não conta. Isso espelha o recalc client-side do painel (5s) → nunca fica defasado.
+  const ativas = (await db.execute(sql`
+    SELECT distance_total, distance_done, window_end, window_start, morosidade_horas
+    FROM trips
+    WHERE ${GRIFFI} AND status NOT IN ('completed','cancelled')
+  `)) as unknown as Array<{ distance_total: string | null; distance_done: string | null; window_end: string | null; window_start: string | null; morosidade_horas: string | null }>
+
+  const agora = new Date()
+  let noPrazo = 0, atrasadas = 0
+  for (const r of ativas) {
+    const kmFalta = Math.max(0, Number(r.distance_total ?? 0) - Number(r.distance_done ?? 0))
+    if (kmFalta <= PARAMS_PADRAO.kmParaConsiderarChegou) continue          // chegou → painel: CONCLUÍDO
+    if (!r.window_end) continue
+    if (r.window_start && new Date(r.window_start) > agora) continue        // aguardando partida
+    const adiant = calcularAdiantamentoHoras(kmFalta, new Date(r.window_end), agora, Number(r.morosidade_horas ?? 0), PARAMS_PADRAO)
+    if (adiant == null) continue
+    if (-adiant > 0) atrasadas++; else noPrazo++
+  }
+  const aferidas = noPrazo + atrasadas
+  const pctNoPrazo = aferidas > 0 ? Math.round((noPrazo / aferidas) * 1000) / 10 : 100
 
   const [a] = (await db.execute(sql`
     SELECT
@@ -74,8 +90,6 @@ export async function getDashboardKpis(periodo: PeriodoSla = '30d'): Promise<Das
   `)) as unknown as Array<{ em_risco: number }>
 
   const n = (v: unknown) => Number(v ?? 0)
-  const noPrazo = n(t?.no_prazo), atrasadas = n(t?.atrasadas), aferidas = noPrazo + atrasadas
-  const pctNoPrazo = aferidas > 0 ? Math.round((noPrazo / aferidas) * 1000) / 10 : 100
 
   const kpis: DashboardKpis = {
     filtroSla: periodo,
