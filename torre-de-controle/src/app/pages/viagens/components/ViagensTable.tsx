@@ -1,5 +1,6 @@
 import { type ColumnDef } from '@tanstack/react-table'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Search, Filter, ArrowUpDown, MoreVertical } from 'lucide-react'
 import { TableWithSidePanel } from '@/components/domain/TableWithSidePanel'
 import { StatusBadge } from '@/components/domain/StatusBadge'
@@ -87,8 +88,16 @@ export function ViagensTable() {
   const { activeTripsTab, setActiveTripsTab, selectedTripId, setSelectedTripId } = useUIStore()
   const [filters, setFilters] = useState<TripFilters>({})
   // Phase 12 — busca a base COMPLETA uma vez; filtra/pagina client-side.
-  // Mostra todas as viagens e mantém os contadores das abas corretos.
-  const { data: all } = useTrips({ limit: 20000 } as TripFilters & { limit: number })
+  // Lista grande → refetch mais lento (30s); os detalhes/KPIs ao vivo ficam no dashboard (5s).
+  const { data: all } = useTrips({ limit: 20000 } as TripFilters & { limit: number }, { refetchMs: 30_000 })
+
+  // Deep-link do dashboard: /viagens?trip=<id> abre o detalhe da viagem direto.
+  const [searchParams] = useSearchParams()
+  useEffect(() => {
+    const t = searchParams.get('trip')
+    if (t) setSelectedTripId(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   const clients = Array.from(new Set(all.map(t => t.clientName).filter(Boolean))).sort()
   const routes  = Array.from(new Set(all.map(t => t.routeCode).filter(Boolean))).sort()

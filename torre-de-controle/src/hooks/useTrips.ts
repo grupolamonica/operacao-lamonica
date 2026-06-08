@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import type { Trip, TripFilters } from '@/data/types'
 
-export function useTrips(filters?: TripFilters & { limit?: number }) {
+export function useTrips(filters?: TripFilters & { limit?: number }, opts?: { refetchMs?: number }) {
   const q = useQuery({
     queryKey: ['trips', filters],
     queryFn: async () => {
@@ -10,8 +10,8 @@ export function useTrips(filters?: TripFilters & { limit?: number }) {
       if (error) throw new Error((error.value as any)?.error ?? 'Failed to fetch trips')
       return (data ?? []) as Trip[]
     },
-    // Sempre fresco, como o painel: o backend recalcula SLA/ETA ao vivo a cada request.
-    refetchInterval: 20_000,
+    // Atualização ao vivo (default 5s, como o painel). Listas grandes podem passar um intervalo maior.
+    refetchInterval: opts?.refetchMs ?? 5_000,
     refetchOnWindowFocus: true,
   })
   return {
