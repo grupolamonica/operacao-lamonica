@@ -55,11 +55,11 @@ export function TripsInProgressTable() {
 
   // Recalcula ETA/atraso/status AO VIVO (now) e ordena do MAIS ATRASADO → adiantado.
   const ordered = useMemo(() => {
-    return active.map((t) => {
+    return active.map((t): Trip => {
       const kmFalta = t.kmFalta ?? Math.max(0, t.distanceTotal - t.distanceDone)
       const live = recomputeSla(t.distanceTotal, kmFalta, t.windowEnd ? new Date(t.windowEnd) : null, t.windowStart ? new Date(t.windowStart) : null, now)
       const atraso = live.atrasoHoras ?? t.adiantamentoHoras ?? null
-      return { ...t, eta: (live.eta ?? t.eta) as any, adiantamentoHoras: atraso, atrasoLabel: formatarAtraso(atraso), slaStatus: (live.slaStatus ?? t.slaStatus) as Trip['slaStatus'] }
+      return { ...t, eta: (live.eta ?? t.eta) as Trip['eta'], adiantamentoHoras: atraso, atrasoLabel: formatarAtraso(atraso), slaStatus: (live.slaStatus ?? t.slaStatus) as Trip['slaStatus'] }
     }).sort((a, b) => (b.adiantamentoHoras ?? Number.NEGATIVE_INFINITY) - (a.adiantamentoHoras ?? Number.NEGATIVE_INFINITY))
   }, [active, now])
 
