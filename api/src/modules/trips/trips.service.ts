@@ -39,6 +39,10 @@ export type TripFilters = {
 
 export async function listTrips(filters: TripFilters, page = 0, limit = 100) {
   const conditions = []
+  // Universo operacional = snapshot do painel (export "Monitoramento"). Mantém Viagens/Dashboard
+  // alinhados aos KPIs e ao painel GAS. Os registros antigos (Angellira numérico / imports) ficam
+  // no banco para mapa/dossiê mas fora das listagens.
+  conditions.push(eq(trips.source, 'painel'))
   if (filters.status)    conditions.push(eq(trips.status, filters.status))
   if (filters.slaStatus) conditions.push(eq(trips.slaStatus, filters.slaStatus))
   if (filters.priority)  conditions.push(eq(trips.priority, filters.priority))
@@ -99,11 +103,14 @@ export async function getTripById(id: string) {
 }
 
 export async function getTripStats() {
-  const allActive = await db.select().from(trips).where(or(
-    eq(trips.status, 'in_progress'),
-    eq(trips.status, 'planned'),
-    eq(trips.status, 'delayed'),
-  )!)
+  const allActive = await db.select().from(trips).where(and(
+    eq(trips.source, 'painel'),
+    or(
+      eq(trips.status, 'in_progress'),
+      eq(trips.status, 'planned'),
+      eq(trips.status, 'delayed'),
+    )!,
+  ))
   const total    = allActive.length
   const noPrazo  = allActive.filter(t => t.slaStatus === 'no_prazo').length
   const emRisco  = allActive.filter(t => t.slaStatus === 'em_risco').length
@@ -170,6 +177,7 @@ function toTripDto(row: any) {
     arrivedAt:     row.arrivedAt,
     status:        row.status,
     slaStatus,
+    source:        row.source ?? null,
     progressPct:   row.progressPct,
     distanceTotal,
     distanceDone,

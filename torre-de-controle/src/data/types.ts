@@ -116,6 +116,7 @@ export interface Trip {
   atrasoLabel?: string            // "+04:15" / "-01:20"
   conducaoRegime?: 'intensivo' | 'regular'
   metaKmDia?: string              // "45 KM/hoje" | "720 KM/dia (Máx.)"
+  source?: string                 // 'painel' = snapshot do export do painel GAS
   // Sprint 3 — delivery risk snapshot (nullable until first recalc)
   riskScore?: number | null
   riskLevel?: RiskLevel | null

@@ -49,6 +49,8 @@ export const trips = pgTable('trips', {
   // Phase 13 — paridade painel: regime de condução + atraso computado (lei do motorista)
   conducaoRegime:    varchar('conducao_regime', { length: 12 }).default('intensivo'),  // intensivo|regular
   adiantamentoHoras: decimal('adiantamento_horas'),                                    // horas; + = ATRASADO (convenção do painel)
+  // Phase 13 — origem do registro. 'painel' = snapshot importado do export do painel GAS (verdade do painel).
+  source:            varchar('source', { length: 20 }),
   shopeeDriverId:  text('shopee_driver_id'),
   statusEta:       varchar('status_eta', { length: 20 }),
   statusCpt:       varchar('status_cpt', { length: 20 }),

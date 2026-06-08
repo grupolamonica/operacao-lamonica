@@ -52,6 +52,7 @@ export function TripsInProgressTable() {
     const km = (t: Trip) => (t.distanceTotal ?? 0) - (t.distanceDone ?? 0)
     const etaMs = (t: Trip) => (t.eta ? new Date(t.eta).getTime() : Number.POSITIVE_INFINITY)
     return all
+      .filter(t => t.source === 'painel')   // mesmo universo dos KPIs (snapshot do painel)
       .filter(t => t.status !== 'completed' && t.status !== 'cancelled')
       .sort((a, b) => {
         const d = etaMs(a) - etaMs(b)
