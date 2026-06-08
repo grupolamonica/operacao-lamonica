@@ -169,7 +169,9 @@ export async function syncMonitoring(): Promise<MonitoringResult> {
       const ws = iso(t.dataInicio) ?? new Date().toISOString()
 
       // --- SLA (lei do motorista) — paridade com recalcularStatusLinhaLocal() do painel ---
-      const mapped = mapStatus(t.statusnome ?? t.status_viagem)
+      let mapped = mapStatus(t.statusnome ?? t.status_viagem)
+      // Chegou (≤ kmParaConsiderarChegou) → CONCLUÍDA, igual ao painel: sai de "em andamento".
+      if (mapped !== 'cancelled' && distTotal > 0 && kmFalta <= PARAMS_PADRAO.kmParaConsiderarChegou) mapped = 'completed'
       const agora = new Date()
       const moros = num(t.morosidade ?? 0)
       // Prazo Final (deadline) = entregas[0].previsaochegada (validado no JSON live; ex. HERCULANO 07:00).
@@ -211,7 +213,7 @@ export async function syncMonitoring(): Promise<MonitoringResult> {
                 ${moros ? String(moros) : null}, 'intensivo',
                 ${pct},
                 ${distTotal > 0 ? String(distTotal) : null}, ${distTotal > 0 ? String(distDone) : null},
-                ${iso(t.dataInicio)}, ${iso(ent.datachegada)},
+                ${iso(t.dataInicio)}, ${iso(ent.datachegada) ?? (mapped === 'completed' ? agora.toISOString() : null)},
                 ${motorista || null}, ${String(jf?.tipo ?? '').slice(0, 30) || null}, now())
         ON CONFLICT (id) DO UPDATE SET
           client_id=EXCLUDED.client_id, origin=EXCLUDED.origin, destination=EXCLUDED.destination,
