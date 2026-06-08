@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { PeriodoSla } from '@/data/types'
 
 export function DashboardPage() {
-  const [periodo, setPeriodo] = useState<PeriodoSla>('30d')
+  const [periodo, setPeriodo] = useState<PeriodoSla>('tudo')  // abre mostrando toda a operação, como o painel
 
   return (
     <div className="space-y-5">
