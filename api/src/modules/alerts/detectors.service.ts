@@ -47,7 +47,7 @@ export async function runDetectors(): Promise<DetectorResult> {
     LEFT JOIN driver_positions p ON p.motorista_norm = upper(translate(trim(d.name),
       'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇç',
       'AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCc'))
-    WHERE t.status = 'in_progress'
+    WHERE t.status = 'in_progress' AND (t.source IS NULL OR t.source <> 'painel')
     GROUP BY t.id, t.code, t.driver_id, t.vehicle_id, t.window_end, t.status, t.distance_total, t.distance_done, t.morosidade_horas
   `)) as unknown as Array<{
     id: string; code: string; driver_id: string | null; vehicle_id: string | null

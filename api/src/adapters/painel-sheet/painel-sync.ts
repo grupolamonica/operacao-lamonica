@@ -157,9 +157,11 @@ export async function syncPainel(): Promise<PainelSyncResult> {
   for (const t of recs) { if (!byId.has(t.id) || t.status !== 'completed') byId.set(t.id, t) }
   const all = [...byId.values()]
 
-  // wipe + reload (snapshot do painel) em transação
+  // Upsert do snapshot + remoção das que saíram da planilha. NÃO usa wipe-all (viagens podem ser
+  // referenciadas por alerts via FK). Upsert marca updated_at=now(); o que não veio neste sync
+  // (updated_at < syncStart) e não está referenciado por alerts é removido.
+  const syncStart = agora.toISOString()
   await db.transaction(async (tx) => {
-    await tx.execute(sql`DELETE FROM trips WHERE source='painel'`)
     const B = 500
     for (let i = 0; i < all.length; i += B) {
       const batch = all.slice(i, i + B)
@@ -173,11 +175,17 @@ export async function syncPainel(): Promise<PainelSyncResult> {
           sheet_motorista, conducao_regime, created_at, updated_at)
         VALUES ${sql.join(values, sql`, `)}
         ON CONFLICT (id) DO UPDATE SET
+          code=EXCLUDED.code, origin=EXCLUDED.origin, destination=EXCLUDED.destination,
+          window_start=EXCLUDED.window_start, window_end=EXCLUDED.window_end, eta=EXCLUDED.eta,
           status=EXCLUDED.status, sla_status=EXCLUDED.sla_status, progress_pct=EXCLUDED.progress_pct,
-          window_end=EXCLUDED.window_end, eta=EXCLUDED.eta, adiantamento_horas=EXCLUDED.adiantamento_horas,
-          distance_total=EXCLUDED.distance_total, distance_done=EXCLUDED.distance_done, updated_at=now()
+          distance_total=EXCLUDED.distance_total, distance_done=EXCLUDED.distance_done,
+          adiantamento_horas=EXCLUDED.adiantamento_horas, sheet_motorista=EXCLUDED.sheet_motorista, updated_at=now()
       `)
     }
+    await tx.execute(sql`
+      DELETE FROM trips WHERE source='painel' AND updated_at < ${syncStart}
+        AND id NOT IN (SELECT trip_id FROM alerts WHERE trip_id IS NOT NULL)
+    `)
   })
 
   const res = { ativas: ativasCount, concluidas: all.filter((t) => t.status === 'completed').length, total: all.length, noPrazo, atrasadas }
