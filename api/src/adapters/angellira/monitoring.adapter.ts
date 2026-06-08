@@ -244,15 +244,16 @@ export async function syncMonitoring(): Promise<MonitoringResult> {
     }
   }
 
-  // Fecha viagens GRIFFI que saíram do feed da Angellira (não foram tocadas neste sync e estão
-  // paradas há >20min): o painel só mostra o feed atual, então elas já concluíram/foram arquivadas.
-  // Sem isso, viagens antigas ficam presas em in_progress e inflam as "Atrasadas".
+  // Fecha viagens GRIFFI que saíram do feed da Angellira (não vistas neste sync e ausentes há >10min,
+  // ~2 ciclos): o painel só mostra o feed atual (Carrega), então elas já concluíram/saíram da rota.
+  // Sem isso, viagens antigas ficam presas em in_progress com prazo vencido e inflam as "Atrasadas".
+  // Se a viagem reaparecer no feed, o upsert acima a reabre (status=mapped) — auto-corrige.
   const closed = await db.execute(sql`
     UPDATE trips SET status='completed', sla_status=NULL,
       arrived_at=COALESCE(arrived_at, updated_at), updated_at=now()
     WHERE status='in_progress' AND code ~ '^[0-9]+$'
       AND updated_at < ${syncStart.toISOString()}
-      AND updated_at < now() - interval '20 minutes'
+      AND updated_at < now() - interval '10 minutes'
   `)
   const closedCount = (closed as any)?.rowCount ?? (closed as any)?.count ?? 0
 
