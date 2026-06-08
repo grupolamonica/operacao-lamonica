@@ -80,9 +80,8 @@ export interface PainelSyncResult { ativas: number; concluidas: number; total: n
 
 export async function syncPainel(): Promise<PainelSyncResult> {
   const agora = new Date()
-  const [carrega, concl, tickets] = await Promise.all([
-    fetchSheet('Carrega'), fetchSheet('HistoricoConcluidas'), fetchSheet('HistoricoTickets'),
-  ])
+  // Abas LEVES (Carrega ~600 + HistoricoConcluidas ~5k) toda execução.
+  const [carrega, concl] = await Promise.all([fetchSheet('Carrega'), fetchSheet('HistoricoConcluidas')])
   const recs: TripRow[] = []
   let noPrazo = 0, atrasadas = 0
   const activeCods = new Set<string>()
@@ -134,21 +133,31 @@ export async function syncPainel(): Promise<PainelSyncResult> {
     }
   }
 
-  // --- TICKETS PENDENTES + ALERTAS (HistoricoTickets) sobre as viagens ATIVAS ---
-  let ticketsPendentes = 0; const alertaCods = new Set<string>()
-  {
+  // --- TICKETS PENDENTES + ALERTAS (HistoricoTickets, 75k linhas = aba PESADA) ---
+  // Para NÃO sobrecarregar a planilha (compartilhada com o painel GAS), só baixamos HistoricoTickets
+  // no máximo a cada ~30min; entre isso reusamos o último valor do Redis. Tickets mudam devagar.
+  let ticketsPendentes = 0, alertas = 0, ticketsFresco = false
+  let prevTs = 0
+  try {
+    const prev = await redis.get('painel:tickets')
+    if (prev) { const o = JSON.parse(prev); ticketsPendentes = Number(o.ticketsPendentes ?? 0); alertas = Number(o.alertas ?? 0); prevTs = Number(o.ts ?? 0) }
+  } catch { /* noop */ }
+
+  if (agora.getTime() - prevTs >= 28 * 60000) {
+    const tickets = await fetchSheet('HistoricoTickets')
     const h = tickets[0] ?? []; const c = colFinder(h)
     const iCod = c('Cód. Viagem'), iTipo = c('Tipo'), iStatus = c('Status'), iAbert = c('Timestamp Abertura')
-    const limiteParada = agora.getTime() - 2 * 3600000  // PARADA aberta nas últimas 2h ≈ parado agora
+    const limiteParada = agora.getTime() - 2 * 3600000
+    let tp = 0; const alertaCods = new Set<string>()
     for (const r of tickets.slice(1)) {
       const cod = String(r[iCod] ?? '').trim(); if (!cod || !activeCods.has(cod)) continue
       const stt = String(r[iStatus] ?? '').trim(); const tipo = String(r[iTipo] ?? '').trim()
       if ((stt !== 'ABERTO' && stt !== 'EM_TRATAMENTO') || tipo === '1H_INTERVALO') continue
-      ticketsPendentes++
+      tp++
       if (tipo === 'PARADA') { const ab = dateBR(r[iAbert]); if (!ab || ab.getTime() >= limiteParada) alertaCods.add(cod) }
     }
+    ticketsPendentes = tp; alertas = alertaCods.size; ticketsFresco = true
   }
-  const alertas = alertaCods.size
 
   // dedup só por id (PNLA-/PNLC- são distintos → double-count mantido; remove cods repetidos na mesma aba)
   const byId = new Map<string, TripRow>(); for (const t of recs) byId.set(t.id, t)
@@ -181,8 +190,8 @@ export async function syncPainel(): Promise<PainelSyncResult> {
     `)
   })
 
-  // Tickets/Alertas para o dashboard (Redis — lidos pelo getDashboardKpis)
-  try { await redis.set('painel:tickets', JSON.stringify({ ticketsPendentes, alertas }), 'EX', 1800) } catch { /* noop */ }
+  // Tickets/Alertas para o dashboard (Redis). ts só avança quando a aba foi REALMENTE relida (gate 30min).
+  try { await redis.set('painel:tickets', JSON.stringify({ ticketsPendentes, alertas, ts: ticketsFresco ? agora.getTime() : prevTs }), 'EX', 3600) } catch { /* noop */ }
 
   const res: PainelSyncResult = { ativas: activeCods.size, concluidas: all.filter((t) => t.status === 'completed').length, total: all.length, noPrazo, atrasadas, ticketsPendentes, alertas }
   logger.info(res, '[painel-sync] sincronizado com a planilha de produção')
