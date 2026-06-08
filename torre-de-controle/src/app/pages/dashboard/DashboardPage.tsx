@@ -4,7 +4,6 @@ import { TripsInProgressTable } from './components/TripsInProgressTable'
 import { ExceptionsAlertsPanel } from './components/ExceptionsAlertsPanel'
 import { OperationalSummary } from './components/OperationalSummary'
 import { LiveMap } from '@/components/domain/LiveMap'
-import { SlaDashboardWidget } from '@/components/domain/SlaDashboardWidget'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { PeriodoSla } from '@/data/types'
 
@@ -40,9 +39,9 @@ export function DashboardPage() {
           <TripsInProgressTable />
         </div>
         <div className="lg:col-span-3 space-y-5">
-          <SlaDashboardWidget />
-          <ExceptionsAlertsPanel periodo={periodo} />
+          {/* SLA removido — Resumo operacional no topo (pedido do usuário) */}
           <OperationalSummary periodo={periodo} />
+          <ExceptionsAlertsPanel periodo={periodo} />
         </div>
       </div>
     </div>

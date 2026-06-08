@@ -14,7 +14,7 @@ import { api } from '@/lib/api'
 import { useTripTimeline } from '@/hooks/useTripTimeline'
 import { useTripRisk } from '@/hooks/useTripRisk'
 import { useDriverDossie, useDriverDossieByName } from '@/hooks/useDrivers'
-import { formatTime, formatKm, formatDate } from '@/lib/formatters'
+import { formatKm, formatDate } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 import type { Trip } from '@/data/types'
 
@@ -113,9 +113,9 @@ export function TripDetailPanel({ trip, onClose }: Props) {
           <Metric label="Motorista" value={trip.driverName} />
           <Metric label="Origem" value={trip.origin} />
           <Metric label="Destino" value={trip.destination} />
-          <Metric label="Partida" value={formatTime(trip.windowStart)} />
-          <Metric label="Prazo Final" value={formatTime(trip.windowEnd)} />
-          <Metric label="Previsão de Chegada" value={formatTime(trip.eta)} />
+          <Metric label="Partida" value={trip.windowStart ? formatDate(trip.windowStart, 'dd/MM/yyyy HH:mm:ss') : '—'} />
+          <Metric label="Prazo Final" value={trip.windowEnd ? formatDate(trip.windowEnd, 'dd/MM/yyyy HH:mm:ss') : '—'} />
+          <Metric label="Previsão de Chegada" value={trip.eta ? formatDate(trip.eta, 'dd/MM/yyyy HH:mm:ss') : '—'} />
           <Metric
             label="Atraso"
             value={trip.atrasoLabel || '—'}

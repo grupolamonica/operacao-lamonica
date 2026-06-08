@@ -13,7 +13,9 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useTrips, useTrip } from '@/hooks/useTrips'
 import { useUIStore } from '@/stores/useUIStore'
-import { formatTime } from '@/lib/formatters'
+import { formatDate } from '@/lib/formatters'
+
+const fmtDT = (d?: Date | string | null) => (d ? formatDate(d, 'dd/MM/yyyy HH:mm:ss') : '—')
 import { TripDetailPanel } from './TripDetailPanel'
 import type { Trip, TripFilters, TripStatus, Priority, SlaStatus } from '@/data/types'
 
@@ -51,8 +53,8 @@ const columns: ColumnDef<Trip>[] = [
       </div>
     ),
   },
-  { id: 'prazo', header: 'Prazo Final', size: 110, cell: ({ row }) => <span className="text-xs tabular-nums text-foreground">{formatTime(row.original.windowEnd)}</span> },
-  { id: 'previsao', header: 'Previsão', size: 110, cell: ({ row }) => <span className="text-xs tabular-nums text-foreground">{formatTime(row.original.eta)}</span> },
+  { id: 'prazo', header: 'Prazo Final', size: 145, cell: ({ row }) => <span className="text-xs tabular-nums text-foreground">{fmtDT(row.original.windowEnd)}</span> },
+  { id: 'previsao', header: 'Previsão de Chegada', size: 145, cell: ({ row }) => <span className="text-xs tabular-nums text-foreground">{fmtDT(row.original.eta)}</span> },
   { id: 'status', header: 'Status', size: 100, cell: ({ row }) => <StatusBadge status={row.original.slaStatus} /> },
   { id: 'atraso', header: 'Atraso', size: 80, cell: ({ row }) => <span className={`text-xs tabular-nums font-medium ${atrasoClass(row.original.adiantamentoHoras)}`}>{row.original.atrasoLabel || '—'}</span> },
   {

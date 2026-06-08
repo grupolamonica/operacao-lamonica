@@ -1,5 +1,8 @@
 import { useNavigate } from 'react-router-dom'
+import { ArrowRight } from 'lucide-react'
 import { AlertItem } from '@/components/domain/AlertItem'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { useAlerts } from '@/hooks/useAlerts'
 import { useDashboardKPIs } from '@/hooks/useDashboardKPIs'
 import type { PeriodoSla } from '@/data/types'
@@ -20,14 +23,15 @@ export function ExceptionsAlertsPanel({ periodo = '30d' }: { periodo?: PeriodoSl
 
   return (
     <div className="bg-card border border-border rounded-lg p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-foreground">Exceções e alertas</h3>
-        <button
-          className="text-xs text-primary hover:underline"
-          onClick={() => navigate('/alertas')}
-        >
-          {k.alertas} abertos →
-        </button>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-foreground">Exceções e alertas</h3>
+          <Badge variant="secondary" className="text-[10px] font-semibold">{k.alertas} abertos</Badge>
+        </div>
+        <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={() => navigate('/alertas')}>
+          Ver ocorrências
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Button>
       </div>
       <div className="space-y-2">
         {top.map(a => (

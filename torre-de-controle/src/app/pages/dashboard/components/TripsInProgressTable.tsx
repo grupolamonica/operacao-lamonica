@@ -8,8 +8,10 @@ import { ProgressBar } from '@/components/domain/ProgressBar'
 import { useTrips } from '@/hooks/useTrips'
 import { useNow } from '@/hooks/useNow'
 import { recomputeSla, formatarAtraso } from '@/lib/regulamentacao'
-import { formatTime } from '@/lib/formatters'
+import { formatDate } from '@/lib/formatters'
 import type { Trip } from '@/data/types'
+
+const fmtDT = (d?: Date | string | null) => (d ? formatDate(d, 'dd/MM/yyyy HH:mm:ss') : '—')
 
 const columns: ColumnDef<Trip>[] = [
   {
@@ -25,8 +27,8 @@ const columns: ColumnDef<Trip>[] = [
     },
   },
   { id: 'kmFalta', header: 'Km Falta', size: 80, cell: ({ row }) => <span className="text-xs tabular-nums text-foreground">{Math.round(row.original.kmFalta ?? Math.max(0, row.original.distanceTotal - row.original.distanceDone))} km</span> },
-  { id: 'prazo', header: 'Prazo Final', size: 100, cell: ({ row }) => <span className="text-xs tabular-nums text-foreground">{formatTime(row.original.windowEnd)}</span> },
-  { id: 'previsao', header: 'Previsão', size: 100, cell: ({ row }) => <span className="text-xs tabular-nums text-foreground">{formatTime(row.original.eta)}</span> },
+  { id: 'prazo', header: 'Prazo Final', size: 140, cell: ({ row }) => <span className="text-xs tabular-nums text-foreground">{fmtDT(row.original.windowEnd)}</span> },
+  { id: 'previsao', header: 'Previsão de Chegada', size: 140, cell: ({ row }) => <span className="text-xs tabular-nums text-foreground">{fmtDT(row.original.eta)}</span> },
   { id: 'status', header: 'Status', size: 100, cell: ({ row }) => <StatusBadge status={row.original.slaStatus} /> },
   {
     id: 'atraso', header: 'Atraso', size: 80,

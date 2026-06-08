@@ -10,6 +10,7 @@ import { Queue, Worker, type Job } from 'bullmq'
 import { logger } from '../lib/logger'
 import { syncPositions } from '../adapters/angellira/positions.adapter'
 import { syncMonitoring } from '../adapters/angellira/monitoring.adapter'
+import { syncPainel } from '../adapters/painel-sheet/painel-sync'
 import { runDetectors } from '../modules/alerts/detectors.service'
 
 const QUEUE_NAME = 'angellira-cron'
@@ -40,6 +41,7 @@ export function startAngelliraJobs(): void {
   const worker = new Worker(QUEUE_NAME, async (job: Job) => {
     if (job.name === 'positions') return syncPositions()
     if (job.name === 'monitoring') return syncMonitoring()
+    if (job.name === 'painel') return syncPainel()
     if (job.name === 'detectors') return runDetectors()
   }, { connection })
 
@@ -49,9 +51,9 @@ export function startAngelliraJobs(): void {
   // Agenda repeatables (idempotente — mesmo padrão não duplica)
   void queue.add('positions', {}, { repeat: { pattern: '*/3 * * * *' }, jobId: 'angellira-positions' })
   void queue.add('monitoring', {}, { repeat: { pattern: '*/5 * * * *' }, jobId: 'angellira-monitoring' })
+  // Painel-sheet: reconciliação INCREMENTAL a cada 10min (upsert só do que falta/mudou; tickets pesados gated 30min).
+  void queue.add('painel', {}, { repeat: { pattern: '*/10 * * * *' }, jobId: 'painel-sheet-sync' })
   void queue.add('detectors', {}, { repeat: { pattern: '0 * * * *' },   jobId: 'angellira-detectors' })
-  // Painel-sheet sync DESLIGADO (não usamos mais a planilha). Remove o repeatable antigo do Redis.
-  void queue.removeRepeatable('painel', { pattern: '*/10 * * * *' }, 'painel-sheet-sync').catch(() => {})
 
-  logger.info('[angellira] jobs agendados — positions */3min, monitoring */5min, detectors hora cheia (painel-sheet OFF)')
+  logger.info('[angellira] jobs agendados — positions */3min, monitoring */5min, painel */10min (incremental), detectors hora cheia')
 }

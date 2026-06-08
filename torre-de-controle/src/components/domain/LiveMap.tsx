@@ -180,7 +180,7 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
   const modeInitRef          = useRef(true)   // pula o setStyle inicial (estilo já correto) — não derruba a camada de frota
   const [mode, setMode]      = useState<'mapa' | 'satelite'>('mapa')
   const [mapReady, setMapReady] = useState(false)
-  const [showFleet, setShowFleet] = useState(false)  // default OFF (D-11-06)
+  const [showFleet, setShowFleet] = useState(true)  // default ON (pedido do usuário)
 
   // Read from global positions store (WS managed in AppLayout)
   const positions = usePositionsStore(s => s.positions)
@@ -465,24 +465,38 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
     const nomeMotorista = pos.motorista || trip?.driverName || null
     const destinoViagem = pos.destino || trip?.destination || null
     const color = SLA_COLORS[pos.slaStatus] ?? SLA_COLORS.sem_sinal
-    const c = document.createElement('div')
-    c.style.cssText = "background:var(--card);color:var(--card-foreground);border-radius:.75rem;box-shadow:0 0 1.5rem 0 rgba(136,152,170,.3);border:1px solid var(--border);padding:.75rem .875rem;font-family:'Open Sans',system-ui,sans-serif;font-size:12px;line-height:1.55;min-width:210px"
-    const head = document.createElement('div')
-    head.style.cssText = 'display:flex;align-items:center;gap:.4rem;font-weight:700;margin-bottom:.35rem'
-    const dot = document.createElement('span'); dot.style.cssText = `width:10px;height:10px;border-radius:50%;background:${color};display:inline-block`
-    const ht = document.createElement('span'); ht.textContent = nomeMotorista || `Veículo ${id.slice(0, 8)}`
-    head.appendChild(dot); head.appendChild(ht); c.appendChild(head)
-    const row = (k: string, v: string, col?: string) => {
-      const r = document.createElement('div'); const s = document.createElement('strong'); s.textContent = k + ': '
-      const sp = document.createElement('span'); sp.textContent = v; if (col) sp.style.color = col
-      r.appendChild(s); r.appendChild(sp); c.appendChild(r)
+    const el = (tag: string, css = '', text?: string) => { const e = document.createElement(tag); if (css) e.style.cssText = css; if (text != null) e.textContent = text; return e }
+
+    const c = el('div', "overflow:hidden;border-radius:.85rem;background:var(--card);color:var(--card-foreground);box-shadow:0 8px 28px -6px rgba(20,20,40,.45);border:1px solid var(--border);font-family:'Open Sans',system-ui,sans-serif;width:248px")
+    // faixa de status no topo
+    c.appendChild(el('div', `height:4px;background:${color}`))
+
+    const body = el('div', 'padding:.8rem .9rem')
+    // header: motorista + pill de status
+    const head = el('div', 'display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem;margin-bottom:.6rem')
+    const left = el('div')
+    left.appendChild(el('div', 'font-size:13.5px;font-weight:700;line-height:1.2', nomeMotorista || `Veículo ${id.slice(0, 8)}`))
+    if (destinoViagem) left.appendChild(el('div', 'font-size:11px;color:var(--muted-foreground);margin-top:1px', `→ ${String(destinoViagem)}`))
+    head.appendChild(left)
+    const pill = el('span', `flex:none;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;color:#fff;background:${color}`, (SLA_LABEL[pos.slaStatus] ?? pos.slaStatus).toUpperCase())
+    head.appendChild(pill)
+    body.appendChild(head)
+
+    // grid de métricas
+    const grid = el('div', 'display:grid;grid-template-columns:1fr 1fr;gap:.45rem .6rem')
+    const cell = (k: string, v: string) => {
+      const w = el('div')
+      w.appendChild(el('div', 'font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted-foreground)', k))
+      w.appendChild(el('div', 'font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums', v))
+      grid.appendChild(w)
     }
-    row('Status', SLA_LABEL[pos.slaStatus] ?? pos.slaStatus, color)
-    row('Velocidade', `${Math.round(Number(pos.speed ?? 0))} km/h`)
-    if (destinoViagem) row('Destino', String(destinoViagem))
-    row('Última posição', pos.capturedAt ? formatDate(pos.capturedAt, 'dd/MM/yyyy HH:mm') : '—')
-    row('Coordenadas', `${Number(pos.lat).toFixed(4)}, ${Number(pos.lng).toFixed(4)}`)
-    new maplibregl.Popup({ closeButton: true, offset: 14 }).setLngLat([Number(pos.lng), Number(pos.lat)]).setDOMContent(c).addTo(map)
+    cell('Velocidade', `${Math.round(Number(pos.speed ?? 0))} km/h`)
+    cell('Última posição', pos.capturedAt ? formatDate(pos.capturedAt, 'dd/MM/yyyy HH:mm') : '—')
+    body.appendChild(grid)
+
+    body.appendChild(el('div', 'margin-top:.55rem;padding-top:.45rem;border-top:1px solid var(--border);font-size:10.5px;color:var(--muted-foreground);font-variant-numeric:tabular-nums', `📍 ${Number(pos.lat).toFixed(5)}, ${Number(pos.lng).toFixed(5)}`))
+    c.appendChild(body)
+    new maplibregl.Popup({ closeButton: true, offset: 16, maxWidth: '280px' }).setLngLat([Number(pos.lng), Number(pos.lat)]).setDOMContent(c).addTo(map)
   }
 
   return (

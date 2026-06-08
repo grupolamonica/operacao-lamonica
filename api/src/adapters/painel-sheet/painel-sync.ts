@@ -147,16 +147,69 @@ export async function syncPainel(): Promise<PainelSyncResult> {
     const tickets = await fetchSheet('HistoricoTickets')
     const h = tickets[0] ?? []; const c = colFinder(h)
     const iCod = c('Cód. Viagem'), iTipo = c('Tipo'), iStatus = c('Status'), iAbert = c('Timestamp Abertura')
+    const iOp = c('Operador'), iObs = c('Observação'), iTrat = c('Timestamp Tratamento')
+    const iEmb = c('Procedimento Embarque', 'Procedimento de Embarque'), iMot = c('Motorista'), iDst = c('Destino')
     const limiteParada = agora.getTime() - 2 * 3600000
     let tp = 0; const alertaCods = new Set<string>()
+    // Dedup por episódio (cod|tipo) — mantém a ocorrência mais recente (igual ao "último ticket" do painel).
+    const epis = new Map<string, { cod: string; tipo: string; stt: string; ab: string | null; op: string; obs: string; trat: string | null; emb: string; mot: string; dst: string }>()
     for (const r of tickets.slice(1)) {
-      const cod = String(r[iCod] ?? '').trim(); if (!cod || !activeCods.has(cod)) continue
-      const stt = String(r[iStatus] ?? '').trim(); const tipo = String(r[iTipo] ?? '').trim()
-      if ((stt !== 'ABERTO' && stt !== 'EM_TRATAMENTO') || tipo === '1H_INTERVALO') continue
-      tp++
-      if (tipo === 'PARADA') { const ab = dateBR(r[iAbert]); if (!ab || ab.getTime() >= limiteParada) alertaCods.add(cod) }
+      const cod = String(r[iCod] ?? '').trim(); const tipo = String(r[iTipo] ?? '').trim()
+      if (!cod || tipo === '1H_INTERVALO') continue
+      const stt = String(r[iStatus] ?? '').trim()
+      // contagem de pendentes/alertas (só viagens ativas), como antes
+      if ((stt === 'ABERTO' || stt === 'EM_TRATAMENTO') && activeCods.has(cod)) {
+        tp++
+        if (tipo === 'PARADA') { const a = dateBR(r[iAbert]); if (!a || a.getTime() >= limiteParada) alertaCods.add(cod) }
+      }
+      const ab = isoDt(r[iAbert]); const key = cod + '|' + tipo
+      const prev = epis.get(key)
+      if (!prev || (ab && prev.ab && ab > prev.ab) || (ab && !prev.ab)) {
+        epis.set(key, { cod, tipo, stt, ab, op: String(r[iOp] ?? '').trim(), obs: String(r[iObs] ?? '').trim(),
+          trat: isoDt(r[iTrat]), emb: String(r[iEmb] ?? '').trim(), mot: String(r[iMot] ?? '').trim(), dst: String(r[iDst] ?? '').trim() })
+      }
     }
     ticketsPendentes = tp; alertas = alertaCods.size; ticketsFresco = true
+
+    // --- Importa os episódios como ALERTS (Ocorrências): abertos + tratados (histórico) ---
+    // tripId casa com a viagem Angellira numérica (uuid5('carrega|'+cod)) quando existe; senão null.
+    const tripIds = new Set<string>(((await db.execute(sql`SELECT id FROM trips`)) as unknown as Array<{ id: string }>).map((r) => r.id))
+    const SEV: Record<string, string> = { PARADA: 'medio', SEM_GPS: 'critico', ATRASO: 'medio', PRAZO_PROXIMO: 'baixo', PROXIMO_ENTREGA: 'baixo', OK: 'baixo' }
+    const STATUS: Record<string, string> = { ABERTO: 'aberto', EM_TRATAMENTO: 'em_tratativa', FECHADO: 'resolvido' }
+    const arows = [...epis.values()].map((e) => {
+      const tid = uuid5('carrega|' + e.cod)
+      const obs = e.obs ? e.obs.slice(0, 400) : ''
+      const desc = [`Cliente: ${e.emb || '—'}`, `Viagem ${e.cod}`, obs, e.op ? `Operador: ${e.op}` : '']
+        .filter(Boolean).join(' · ')
+      return {
+        id: uuid5('ticket|' + e.cod + '|' + e.tipo),
+        type: e.tipo.toLowerCase().slice(0, 50),
+        severity: SEV[e.tipo] ?? 'baixo',
+        status: STATUS[e.stt] ?? 'aberto',
+        tripId: tripIds.has(tid) ? tid : null,
+        title: `${e.tipo} · ${e.mot || 'motorista'}`.slice(0, 150),
+        description: desc.slice(0, 1000),
+        source: 'Painel',
+        occurredAt: e.ab ?? agora.toISOString(),
+        resolvedAt: e.stt === 'FECHADO' ? (e.trat ?? e.ab) : null,
+      }
+    })
+    await db.transaction(async (tx) => {
+      const B = 500
+      for (let i = 0; i < arows.length; i += B) {
+        const batch = arows.slice(i, i + B)
+        const vals = batch.map((a) => sql`(${a.id}, ${a.type}, ${a.severity}, ${a.status}, 'media', ${a.tripId},
+          ${a.title}, ${a.description}, ${a.source}, ${a.occurredAt}, ${a.resolvedAt}, now())`)
+        await tx.execute(sql`
+          INSERT INTO alerts (id, type, severity, status, priority, trip_id, title, description, source, occurred_at, resolved_at, created_at)
+          VALUES ${sql.join(vals, sql`, `)}
+          ON CONFLICT (id) DO UPDATE SET
+            status=EXCLUDED.status, description=EXCLUDED.description, resolved_at=EXCLUDED.resolved_at,
+            trip_id=COALESCE(EXCLUDED.trip_id, alerts.trip_id)
+        `)
+      }
+    })
+    logger.info({ episodios: arows.length, ticketsPendentes, alertas }, '[painel-sync] tickets->alerts importados')
   }
 
   // dedup só por id (PNLA-/PNLC- são distintos → double-count mantido; remove cods repetidos na mesma aba)
