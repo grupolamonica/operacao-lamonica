@@ -135,6 +135,7 @@ export interface Alert {
   priority?: Priority
   tripId: string
   tripCode: string
+  lh: string          // identificador da viagem (sheet_lh do Cargas) — Phase 14
   driverId: string
   driverName: string
   driverPhoto?: string
@@ -185,12 +186,13 @@ export interface KPIDashboard {
   meta:               number
 }
 
+// Phase 14 — cards no padrão dos tipos de ticket do painel
 export interface KPITorre {
-  viagensAtivas:    { count: number; total: number }
-  emRisco:          { count: number; total: number }
-  atrasosCriticos:  { count: number; total: number }
-  semSinal:         { count: number; total: number }
-  ocorrencias:      { criticas: number; medias: number }
+  viagemAtrasada:     { count: number }              // tickets ATRASO abertos
+  veiculoParado:      { count: number }              // tickets PARADA abertos
+  viagemNoPrazo:      { count: number }              // viagens in_progress no prazo (OK)
+  viagensAtivas:      { count: number; total: number } // em andamento / total
+  ocorrenciasAbertas: { count: number }              // ocorrências não-terminais
 }
 
 export interface KPIViagens {

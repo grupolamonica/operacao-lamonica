@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { AlertItem } from '@/components/domain/AlertItem'
 import { LogCallDialog } from '@/components/domain/LogCallDialog'
@@ -9,6 +10,7 @@ import { cn } from '@/lib/utils'
 export function OperationalQueue({ className }: { className?: string }) {
   const { data: openAlerts } = useAlerts({ status: 'aberto' })
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const [callAlertId, setCallAlertId] = useState<string | null>(null)
 
   const queue = [...openAlerts].sort((a, b) => {
@@ -23,9 +25,11 @@ export function OperationalQueue({ className }: { className?: string }) {
       const { error } = await (api.api.alerts as any)[id].assign.patch()
       if (error) throw new Error('Falha ao assumir ocorrência')
     },
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: ['alerts'] })
       qc.invalidateQueries({ queryKey: ['alert-stats'] })
+      // Phase 14 — joga o operador pra tela de Ocorrências com o ticket aberto e já assumido por ele
+      navigate(`/alertas?alert=${id}`)
     },
   })
 
@@ -49,6 +53,7 @@ export function OperationalQueue({ className }: { className?: string }) {
               id: a.id,
               severity: a.severity,
               title: a.title,
+              lh: a.lh,
               subtitle: a.tripCode,
               driverName: a.driverName,
               driverPhoto: a.driverPhoto,

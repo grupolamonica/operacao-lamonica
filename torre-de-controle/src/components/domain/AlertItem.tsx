@@ -10,6 +10,7 @@ export interface AlertItemData {
   severity: AlertSeverity
   title: string
   subtitle?: string
+  lh?: string          // identificador da viagem (LH) — Phase 14
   driverName: string
   driverPhoto?: string
   plate: string
@@ -42,6 +43,11 @@ export function AlertItem({ alert, onAssume, onCall, onClick, selected, variant 
       <SeverityBadge severity={alert.severity} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+          {alert.lh && (
+            <span className="font-mono font-semibold text-foreground bg-muted px-1.5 py-0.5 rounded">
+              LH {alert.lh}
+            </span>
+          )}
           <span>{formatTime(alert.occurredAt)}</span>
           <span>·</span>
           <span>{formatRelative(alert.occurredAt)}</span>

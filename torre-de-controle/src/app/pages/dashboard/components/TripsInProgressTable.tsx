@@ -9,11 +9,13 @@ import { useTrips } from '@/hooks/useTrips'
 import { useNow } from '@/hooks/useNow'
 import { recomputeSla, formatarAtraso } from '@/lib/regulamentacao'
 import { formatDate } from '@/lib/formatters'
-import type { Trip } from '@/data/types'
+import type { Trip, TripFilters } from '@/data/types'
 
 const fmtDT = (d?: Date | string | null) => (d ? formatDate(d, 'dd/MM/yyyy HH:mm:ss') : '—')
 
-const columns: ColumnDef<Trip>[] = [
+// Colunas compartilhadas: "Viagens em andamento" (Dashboard) e "Viagens em maior risco" (Torre)
+// usam exatamente as mesmas (D-14, Onda B). Motorista · Km Falta · Prazo Final · Previsão · Status · Atraso · Progresso.
+export const tripProgressColumns: ColumnDef<Trip>[] = [
   {
     id: 'driver', header: 'Motorista', size: 200,
     cell: ({ row }) => {
@@ -49,21 +51,32 @@ const columns: ColumnDef<Trip>[] = [
   },
 ]
 
-export function TripsInProgressTable() {
-  const navigate = useNavigate()
-  const now = useNow(5000)  // relógio ao vivo — ETA/atraso "correndo" a cada 5s, como o painel
-  // Todas as viagens em andamento (ativas), atualizadas a cada 5s (operação Angellira ao vivo).
-  const { data: active } = useTrips({ status: 'in_progress' })
-
-  // Recalcula ETA/atraso/status AO VIVO (now) e ordena do MAIS ATRASADO → adiantado.
-  const ordered = useMemo(() => {
+/**
+ * Hook compartilhado: viagens recalculadas AO VIVO (ETA/atraso/status a cada 5s,
+ * lei do motorista) para um filtro. Sem ordenação — quem chama decide. Usado por
+ * "Viagens em andamento" e "Viagens em maior risco".
+ */
+export function useLiveTrips(filter: TripFilters): Trip[] {
+  const now = useNow(5000)
+  const { data: active } = useTrips(filter)
+  return useMemo(() => {
     return active.map((t): Trip => {
       const kmFalta = t.kmFalta ?? Math.max(0, t.distanceTotal - t.distanceDone)
       const live = recomputeSla(t.distanceTotal, kmFalta, t.windowEnd ? new Date(t.windowEnd) : null, t.windowStart ? new Date(t.windowStart) : null, now)
       const atraso = live.atrasoHoras ?? t.adiantamentoHoras ?? null
       return { ...t, eta: (live.eta ?? t.eta) as Trip['eta'], adiantamentoHoras: atraso, atrasoLabel: formatarAtraso(atraso), slaStatus: (live.slaStatus ?? t.slaStatus) as Trip['slaStatus'] }
-    }).sort((a, b) => (b.adiantamentoHoras ?? Number.NEGATIVE_INFINITY) - (a.adiantamentoHoras ?? Number.NEGATIVE_INFINITY))
+    })
   }, [active, now])
+}
+
+export function TripsInProgressTable() {
+  const navigate = useNavigate()
+  // Todas as viagens em andamento (ativas) ao vivo, ordenadas do MAIS ATRASADO → adiantado.
+  const mapped = useLiveTrips({ status: 'in_progress' })
+  const ordered = useMemo(
+    () => [...mapped].sort((a, b) => (b.adiantamentoHoras ?? Number.NEGATIVE_INFINITY) - (a.adiantamentoHoras ?? Number.NEGATIVE_INFINITY)),
+    [mapped],
+  )
 
   return (
     <div className="space-y-3">
@@ -73,7 +86,7 @@ export function TripsInProgressTable() {
       </div>
       <DataTable
         data={ordered}
-        columns={columns}
+        columns={tripProgressColumns}
         pageSize={10}
         onRowClick={(t) => navigate(`/viagens?trip=${t.id}`)}
       />

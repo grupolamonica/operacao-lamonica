@@ -43,6 +43,7 @@ export function ExceptionsAlertsPanel({ periodo = '30d' }: { periodo?: PeriodoSl
               id: a.id,
               severity: a.severity,
               title: a.title,
+              lh: a.lh,
               subtitle: a.tripCode,
               driverName: a.driverName,
               driverPhoto: a.driverPhoto,

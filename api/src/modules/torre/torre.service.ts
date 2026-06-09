@@ -17,33 +17,35 @@ export async function getTorreKpis() {
     try { return JSON.parse(cached) } catch { /* fall through */ }
   }
 
+  // Tipos de ticket abertos no padrão do painel (D-14, 14-CONTEXT):
+  //  Viagem Atrasada = ATRASO · Veículo Parado = PARADA · Viagem no Prazo = OK (in_progress no_prazo)
+  //  Viagens ativas = em andamento / total · Ocorrências abertas = alerts não-terminais.
   const [tripRow] = await db.execute(sql`
     SELECT
       count(*) FILTER (WHERE status = 'in_progress')                                      AS ativas,
       count(*)                                                                            AS total,
-      count(*) FILTER (WHERE status = 'in_progress' AND sla_status = 'em_risco')          AS em_risco,
-      count(*) FILTER (WHERE status = 'in_progress' AND sla_status = 'atrasado')          AS atrasados,
-      count(*) FILTER (WHERE status = 'in_progress' AND sla_status = 'sem_sinal')         AS sem_sinal
+      count(*) FILTER (WHERE status = 'in_progress' AND sla_status = 'no_prazo')          AS no_prazo
     FROM trips
-  `) as unknown as Array<{ ativas: number; total: number; em_risco: number; atrasados: number; sem_sinal: number }>
+  `) as unknown as Array<{ ativas: number; total: number; no_prazo: number }>
 
   const [alertRow] = await db.execute(sql`
     SELECT
-      count(*) FILTER (WHERE severity = 'critico' AND status NOT IN ('resolvido','encerrado')) AS criticas,
-      count(*) FILTER (WHERE severity = 'medio'   AND status NOT IN ('resolvido','encerrado')) AS medias
+      count(*) FILTER (WHERE lower(type) = 'atraso' AND status NOT IN ('resolvido','encerrado')) AS atrasadas,
+      count(*) FILTER (WHERE lower(type) = 'parada' AND status NOT IN ('resolvido','encerrado')) AS paradas,
+      count(*) FILTER (WHERE status NOT IN ('resolvido','encerrado'))                            AS abertas
     FROM alerts
-  `) as unknown as Array<{ criticas: number; medias: number }>
+  `) as unknown as Array<{ atrasadas: number; paradas: number; abertas: number }>
 
   const n = (v: unknown) => Number(v ?? 0)
-  const t = tripRow ?? { ativas: 0, total: 0, em_risco: 0, atrasados: 0, sem_sinal: 0 }
-  const a = alertRow ?? { criticas: 0, medias: 0 }
+  const t = tripRow ?? { ativas: 0, total: 0, no_prazo: 0 }
+  const a = alertRow ?? { atrasadas: 0, paradas: 0, abertas: 0 }
 
   const kpis = {
-    viagensAtivas:   { count: n(t.ativas),    total: n(t.total) },
-    emRisco:         { count: n(t.em_risco),  total: n(t.ativas) },
-    atrasosCriticos: { count: n(t.atrasados), total: n(t.ativas) },
-    semSinal:        { count: n(t.sem_sinal), total: n(t.ativas) },
-    ocorrencias:     { criticas: n(a.criticas), medias: n(a.medias) },
+    viagemAtrasada:     { count: n(a.atrasadas) },
+    veiculoParado:      { count: n(a.paradas) },
+    viagemNoPrazo:      { count: n(t.no_prazo) },
+    viagensAtivas:      { count: n(t.ativas), total: n(t.total) },
+    ocorrenciasAbertas: { count: n(a.abertas) },
   }
 
   await redis.set(KPI_CACHE_KEY, JSON.stringify(kpis), 'EX', KPI_CACHE_TTL)

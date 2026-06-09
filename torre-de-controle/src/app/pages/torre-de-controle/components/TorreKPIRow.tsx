@@ -6,33 +6,29 @@ export function TorreKPIRow() {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
       <KPICard
+        title="Viagem Atrasada"
+        value={k.viagemAtrasada.count}
+        color="red"
+      />
+      <KPICard
+        title="Veículo Parado"
+        value={k.veiculoParado.count}
+        color="orange"
+      />
+      <KPICard
+        title="Viagem no Prazo"
+        value={k.viagemNoPrazo.count}
+        color="green"
+      />
+      <KPICard
         title="Viagens ativas"
         value={k.viagensAtivas.count}
         total={k.viagensAtivas.total}
         color="blue"
       />
       <KPICard
-        title="Em risco"
-        value={k.emRisco.count}
-        total={k.emRisco.total}
-        color="orange"
-      />
-      <KPICard
-        title="Atrasos críticos"
-        value={k.atrasosCriticos.count}
-        total={k.atrasosCriticos.total}
-        color="red"
-      />
-      <KPICard
-        title="Sem sinal"
-        value={k.semSinal.count}
-        total={k.semSinal.total}
-        color="gray"
-      />
-      <KPICard
         title="Ocorrências abertas"
-        value={k.ocorrencias.criticas + k.ocorrencias.medias}
-        subtitle={`${k.ocorrencias.criticas} críticas · ${k.ocorrencias.medias} médias`}
+        value={k.ocorrenciasAbertas.count}
         color="purple"
       />
     </div>

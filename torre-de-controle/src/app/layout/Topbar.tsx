@@ -1,8 +1,8 @@
-import { Bell, Sun, Moon } from 'lucide-react'
+import { Bell, Sun, Moon, LogOut } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { useThemeStore } from '@/stores/useThemeStore'
 import { useAuthStore } from '@/stores/useAuthStore'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 
 const roleLabels: Record<string, string> = {
   admin: 'Administrador',
@@ -28,7 +28,14 @@ const routeNames: Record<string, string> = {
 export function Topbar() {
   const { isDark, toggleTheme } = useThemeStore()
   const { pathname } = useLocation()
+  const navigate = useNavigate()
   const user = useAuthStore(s => s.user)
+  const logout = useAuthStore(s => s.logout)
+
+  async function handleLogout() {
+    await logout()
+    navigate('/login')
+  }
   const currentPage = routeNames[pathname] ?? 'Dashboard'
   const nome = user?.name ?? user?.email ?? 'Operador'
   const papel = user?.role ? (roleLabels[user.role] ?? user.role) : 'Torre de Controle'
@@ -83,6 +90,19 @@ export function Topbar() {
             <span className="text-[10px] text-white/60">{papel}</span>
           </div>
         </div>
+
+        {/* Logout */}
+        <button
+          onClick={handleLogout}
+          className="p-2 rounded-lg transition-colors"
+          style={{ color: 'white' }}
+          aria-label="Sair"
+          title="Sair"
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+        >
+          <LogOut className="h-4 w-4" />
+        </button>
       </div>
     </nav>
   )

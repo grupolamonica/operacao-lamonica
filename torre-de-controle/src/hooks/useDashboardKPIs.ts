@@ -8,11 +8,11 @@ const EMPTY_DASHBOARD: KPIDashboard = {
   pctNoPrazo: 100, alertas: 0, ticketsPendentes: 0, motoristasEmRisco: 0, meta: 95,
 }
 const EMPTY_TORRE: KPITorre = {
-  viagensAtivas:   { count: 0, total: 0 },
-  emRisco:         { count: 0, total: 0 },
-  atrasosCriticos: { count: 0, total: 0 },
-  semSinal:        { count: 0, total: 0 },
-  ocorrencias:     { criticas: 0, medias: 0 },
+  viagemAtrasada:     { count: 0 },
+  veiculoParado:      { count: 0 },
+  viagemNoPrazo:      { count: 0 },
+  viagensAtivas:      { count: 0, total: 0 },
+  ocorrenciasAbertas: { count: 0 },
 }
 const EMPTY_VIAGENS: KPIViagens = {
   total: { count: 0 }, noPrazo: { count: 0, pct: 0 }, emRisco: { count: 0, pct: 0 },

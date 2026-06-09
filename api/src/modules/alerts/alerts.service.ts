@@ -67,7 +67,7 @@ export async function listAlerts(f: AlertFilters) {
   const rows = await db.query.alerts.findMany({
     where,
     with: {
-      trip:    { columns: { code: true } },
+      trip:    { columns: { code: true, sheetLh: true } },
       driver:  { columns: { id: true, name: true, photoUrl: true } },
       vehicle: { columns: { plate: true } },
     },
@@ -94,6 +94,7 @@ export async function listAlerts(f: AlertFilters) {
       priority:     r.priority ?? 'media',
       tripId:       r.tripId ?? '',
       tripCode:     r.trip?.code ?? '',
+      lh:           r.trip?.sheetLh ?? '',
       driverId:     r.driverId ?? '',
       driverName:   r.driver?.name ?? '',
       driverPhoto:  r.driver?.photoUrl ?? undefined,
