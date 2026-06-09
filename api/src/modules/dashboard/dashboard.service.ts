@@ -40,11 +40,13 @@ export async function getDashboardKpis(periodo: PeriodoSla = 'tudo'): Promise<Da
     const t = await redis.get('painel:tickets')
     if (t) { const o = JSON.parse(t); ticketsPendentes = n(o.ticketsPendentes); alertas = n(o.alertas) }
   } catch { /* noop */ }
-  if (!ticketsPendentes) {
+  if (!ticketsPendentes || !alertas) {
     const [a] = (await db.execute(sql`
       SELECT count(*) FILTER (WHERE status IN ('aberto','em_analise','em_tratativa'))::int AS tp FROM alerts
     `)) as unknown as Array<{ tp: number }>
-    ticketsPendentes = n(a?.tp)
+    if (!ticketsPendentes) ticketsPendentes = n(a?.tp)
+    // Onda E / D-14: ocorrências abertas = não-terminais (igual ao card da Torre).
+    if (!alertas) alertas = n(a?.tp)
   }
 
   const [d] = (await db.execute(sql`

@@ -37,8 +37,12 @@ export async function getExecutiveKpis(period: BiPeriod, clientId?: string): Pro
 
   const deliveriesTotal = tripsRows.length
   const completed = tripsRows.filter((t) => t.status === 'completed')
-  const onTime    = completed.filter((t) => t.arrivedAt && t.arrivedAt <= t.windowEnd)
-  const onTimePct = completed.length > 0 ? Math.round((onTime.length / completed.length) * 100) : 100
+  // SLA de ENTREGA canônico (sla_status, igual Dashboard/Insights) — Onda E / D-14.
+  // Antes usava arrivedAt<=windowEnd (divergia: 9% vs 68%). Agora no_prazo/(no_prazo+atrasadas).
+  const noPrazoCount   = tripsRows.filter((t) => t.slaStatus === 'no_prazo').length
+  const atrasadasCount = tripsRows.filter((t) => t.slaStatus === 'atrasado').length
+  const aferidas       = noPrazoCount + atrasadasCount
+  const onTimePct      = aferidas > 0 ? Math.round((noPrazoCount / aferidas) * 100) : 100
 
   // Risk distribution (active trips with snapshot)
   const risk = { critico: 0, alto: 0, medio: 0, baixo: 0 }
@@ -46,14 +50,21 @@ export async function getExecutiveKpis(period: BiPeriod, clientId?: string): Pro
     if (t.riskLevel && t.riskLevel in risk) (risk as any)[t.riskLevel]++
   }
 
+  const tripIds = tripsRows.map((t) => t.id)
   const alertConditions = [gte(alerts.occurredAt, cutoff)]
   if (clientId) {
-    const tripIds = tripsRows.map((t) => t.id)
     if (tripIds.length > 0) alertConditions.push(inArray(alerts.tripId, tripIds))
     else alertConditions.push(sql`false`)
   }
-  const alertRows = await db.select().from(alerts).where(and(...alertConditions))
-  const openAlerts = alertRows.filter((a) => !['resolvido', 'encerrado'].includes(a.status))
+  const alertRows = await db.select().from(alerts).where(and(...alertConditions)) // createdInWindow (período)
+
+  // Ocorrências ABERTAS = não-terminais, igual Torre (SEM corte de período) — Onda E / D-14.
+  const openConds = [sql`${alerts.status} NOT IN ('resolvido','encerrado')`]
+  if (clientId) {
+    if (tripIds.length > 0) openConds.push(inArray(alerts.tripId, tripIds))
+    else openConds.push(sql`false`)
+  }
+  const openAlerts = await db.select().from(alerts).where(and(...openConds))
   const criticalAlerts = openAlerts.filter((a) => a.severity === 'critico')
 
   // Delay average — only completed trips with arrival data
@@ -67,7 +78,7 @@ export async function getExecutiveKpis(period: BiPeriod, clientId?: string): Pro
   return {
     period,
     deliveries: { total: deliveriesTotal, completed: completed.length, onTimePct },
-    sla:        { pct: onTimePct, onTime: onTime.length, closed: completed.length },
+    sla:        { pct: onTimePct, onTime: noPrazoCount, closed: aferidas },
     alerts:     { open: openAlerts.length, critical: criticalAlerts.length, createdInWindow: alertRows.length },
     delayAvg:   { minutes: delayAvgMin },
     risk,
@@ -144,8 +155,11 @@ export async function getBreakdown(dimension: BiDimension, period: BiPeriod, cli
   const rows: BiBreakdownRow[] = []
   for (const [key, g] of groups) {
     const completed   = g.trips.filter((t) => t.status === 'completed')
-    const onTime      = completed.filter((t) => t.arrivedAt && t.arrivedAt <= t.windowEnd)
-    const slaPct      = completed.length > 0 ? Math.round((onTime.length / completed.length) * 100) : 100
+    // SLA de entrega canônico (sla_status) — Onda E / D-14
+    const noPrazo     = g.trips.filter((t) => t.slaStatus === 'no_prazo').length
+    const atrasadas   = g.trips.filter((t) => t.slaStatus === 'atrasado').length
+    const aferidas    = noPrazo + atrasadas
+    const slaPct      = aferidas > 0 ? Math.round((noPrazo / aferidas) * 100) : 100
     const alertsCount = g.trips.reduce((acc, t) => acc + (alertCountByTrip.get(t.id) ?? 0), 0)
     const delays      = completed
       .filter((t) => t.arrivedAt && t.windowEnd)
@@ -156,7 +170,7 @@ export async function getBreakdown(dimension: BiDimension, period: BiPeriod, cli
       label:       g.label,
       deliveries:  g.trips.length,
       completed:   completed.length,
-      onTime:      onTime.length,
+      onTime:      noPrazo,
       slaPct,
       alertsCount,
       delayAvgMin,
@@ -188,11 +202,14 @@ export async function getTrendSeries(metric: BiMetric, period: BiPeriod, clientI
   const tripsRows = await db.select().from(trips).where(and(...conditions))
 
   // group by date(windowEnd)
-  const buckets = new Map<string, { total: number; completed: number; onTime: number; delaySum: number; delayCount: number }>()
+  const buckets = new Map<string, { total: number; completed: number; onTime: number; noPrazo: number; atrasadas: number; delaySum: number; delayCount: number }>()
   for (const t of tripsRows) {
     const d = t.windowEnd.toISOString().substring(0, 10)
-    const b = buckets.get(d) ?? { total: 0, completed: 0, onTime: 0, delaySum: 0, delayCount: 0 }
+    const b = buckets.get(d) ?? { total: 0, completed: 0, onTime: 0, noPrazo: 0, atrasadas: 0, delaySum: 0, delayCount: 0 }
     b.total++
+    // SLA de entrega canônico por bucket (sla_status) — Onda E / D-14
+    if (t.slaStatus === 'no_prazo') b.noPrazo++
+    else if (t.slaStatus === 'atrasado') b.atrasadas++
     if (t.status === 'completed') {
       b.completed++
       if (t.arrivedAt && t.arrivedAt <= t.windowEnd) b.onTime++
@@ -207,7 +224,7 @@ export async function getTrendSeries(metric: BiMetric, period: BiPeriod, clientI
   return entries.map(([date, b]) => {
     let value = 0
     if (metric === 'deliveries')  value = b.total
-    else if (metric === 'sla_pct') value = b.completed > 0 ? Math.round((b.onTime / b.completed) * 100) : 100
+    else if (metric === 'sla_pct') value = (b.noPrazo + b.atrasadas) > 0 ? Math.round((b.noPrazo / (b.noPrazo + b.atrasadas)) * 100) : 100
     else if (metric === 'delay_avg') value = b.delayCount > 0 ? Math.round(b.delaySum / b.delayCount) : 0
     return { date, value }
   })
