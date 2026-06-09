@@ -50,6 +50,8 @@ import { torrePlugin } from './modules/torre/torre.plugin'
 import { operatorsPlugin } from './modules/operators/operators.plugin'
 // Phase 12 — sync do monitoramento Angellira ao vivo (gatilho manual)
 import { syncPlugin } from './modules/sync/sync.plugin'
+// Phase 14 — integração Cargas (open-loads + candidatos + alocação gated)
+import { cargasPlugin } from './modules/cargas/cargas.plugin'
 // Phase 12 — jobs Angellira (posições ao vivo + detectores de ocorrência)
 import { startAngelliraJobs } from './jobs/angellira-cron'
 import { processAlertDetection } from './jobs/alert-inline'
@@ -209,6 +211,8 @@ export const app = new Elysia()
   .use(torrePlugin)
   .use(operatorsPlugin)
   .use(syncPlugin)
+  // Phase 14 — Cargas (BEFORE wsPlugin: Elysia 1.4 plugin-last rule)
+  .use(cargasPlugin)
   .use(wsPlugin)
   // Telemetry inlined to avoid Elysia 1.4.28 plugin-composition issue with body schema
   .post('/api/telemetry/ingest', async ({ body, headers, set }) => {
