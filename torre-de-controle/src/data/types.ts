@@ -129,6 +129,8 @@ export interface Trip {
   // Phase 12 — financeiro (preço-padrão da rota, sistema Cargas)
   valor?: number | null
   bonus?: number | null
+  // Phase 14 — status operacional do Cargas (sheet_status) cruzado por LH
+  cargasStatus?: string | null
 }
 
 // ===== Alert =====

@@ -187,6 +187,8 @@ function toTripDto(row: any) {
     metaKmDia:         calcMetaKmDia(kmFalta, eta ? new Date(eta) : null, slaStatus, row.conducaoRegime),
     valor:         row.valor != null ? Number(row.valor) : null,
     bonus:         row.bonus != null ? Number(row.bonus) : null,
+    // Phase 14 — status operacional do Cargas (sheet_status) cruzado por LH
+    cargasStatus:  (row as { cargasStatus?: string | null }).cargasStatus ?? null,
     // Sprint 3 — risk snapshot (nullable until first recalc)
     riskScore:     row.riskScore ?? null,
     riskLevel:     row.riskLevel ?? null,
