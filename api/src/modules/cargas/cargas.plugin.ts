@@ -14,6 +14,7 @@ import { Elysia, t } from 'elysia'
 import { authGuard } from '../../lib/rbac'
 import { getOpenLoads, getLoadCandidates } from './cargas.service'
 import { allocateLoad, isCargasWriteEnabled } from './cargas.write'
+import { syncCargas } from './cargas.sync'
 
 const allocateSchema = t.Object({
   leadId: t.Optional(t.String()),
@@ -55,6 +56,22 @@ export const cargasPlugin = new Elysia({ name: 'cargas' })
           detail: {
             tags: ['cargas'],
             summary: 'Aloca motorista na carga (approve lead OU direct-allocation). GATED por CARGAS_WRITE_ENABLED.',
+          },
+        },
+      )
+      .post(
+        '/sync',
+        async ({ user, set }) => {
+          if (user.role !== 'admin' && user.role !== 'supervisor') {
+            set.status = 403
+            return { error: 'Forbidden: requires admin|supervisor' }
+          }
+          return syncCargas()
+        },
+        {
+          detail: {
+            tags: ['cargas'],
+            summary: 'Sync manual: materializa cargas abertas + candidatos e enriquece trips.cargas_status por LH',
           },
         },
       ),

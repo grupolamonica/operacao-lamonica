@@ -37,6 +37,10 @@ export const drivers = pgTable('drivers', {
   angelliraValidUntil: date('angellira_valid_until'),
   shopeeDriverId:      text('shopee_driver_id'),
   rawJson:             jsonb('raw_json'),
+  // Phase 14 — enrich do ranking (vínculo = driver_kind acima) + candidaturas abertas no Cargas
+  rankingPontuacao:        decimal('ranking_pontuacao'),
+  rankingPosicao:          integer('ranking_posicao'),
+  cargasCandidaturasAbertas: integer('cargas_candidaturas_abertas').default(0),
   createdAt:        timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt:        timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })

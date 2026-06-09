@@ -56,6 +56,9 @@ export const trips = pgTable('trips', {
   statusCpt:       varchar('status_cpt', { length: 20 }),
   usedVehicleType: varchar('used_vehicle_type', { length: 30 }),
   rankingScore:    jsonb('ranking_score'),
+  // Phase 14 — status operacional do Cargas (sheet_status) + id da carga de origem
+  cargasStatus:    varchar('cargas_status', { length: 40 }),   // DESCARREGADO|AGUARDANDO ...|CTE ENVIADO ... (10 valores)
+  cargasLoadId:    uuid('cargas_load_id'),
   createdAt:      timestamp('created_at',  { withTimezone: true }).defaultNow().notNull(),
   updatedAt:      timestamp('updated_at',  { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({

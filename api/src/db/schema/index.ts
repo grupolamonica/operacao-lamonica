@@ -19,4 +19,6 @@ export * from './gps-providers'
 // Phase 10 — Importação Viagens.xlsx / Ingestão posições motoristas
 export * from './driver-positions'
 export * from './geocode-cache'
+// Phase 14 — cache de cargas em aberto + candidatos (sync do Cargas)
+export * from './cargas'
 export * from './relations'

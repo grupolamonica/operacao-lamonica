@@ -51,6 +51,31 @@ export async function fetchClientes(): Promise<ClienteRow[]> {
   return (data ?? []) as unknown as ClienteRow[]
 }
 
+/**
+ * Todas as cargas com `sheet_lh` (id, lh, sheet_status) — para enriquecer
+ * trips.cargas_status na Torre via join por LH. Paginado.
+ */
+export async function fetchCargasLhStatus(): Promise<
+  { id: string; lh: string; status: string | null }[]
+> {
+  const out: { id: string; lh: string; status: string | null }[] = []
+  let from = 0
+  while (true) {
+    const { data, error } = await cargasSupabase
+      .from('cargas')
+      .select('id, sheet_lh, sheet_status')
+      .not('sheet_lh', 'is', null)
+      .range(from, from + PAGE - 1)
+    if (error) throw error
+    const rows = (data ?? []) as unknown as { id: string; sheet_lh: string | null; sheet_status: string | null }[]
+    if (rows.length === 0) break
+    for (const r of rows) if (r.sheet_lh) out.push({ id: r.id, lh: r.sheet_lh, status: r.sheet_status ?? null })
+    if (rows.length < PAGE) break
+    from += PAGE
+  }
+  return out
+}
+
 /** Motoristas (motoristas_historico) por lista de CPF — para cruzar nome/vínculo. */
 export async function fetchMotoristasByCpf(cpfs: string[]): Promise<MotoristaHistoricoRow[]> {
   const unique = [...new Set(cpfs.filter(Boolean))]
