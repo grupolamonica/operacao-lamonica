@@ -12,6 +12,7 @@ import { syncPositions } from '../adapters/angellira/positions.adapter'
 import { syncMonitoring } from '../adapters/angellira/monitoring.adapter'
 import { syncPainel } from '../adapters/painel-sheet/painel-sync'
 import { runDetectors } from '../modules/alerts/detectors.service'
+import { syncCargas } from '../modules/cargas/cargas.sync'
 
 const QUEUE_NAME = 'angellira-cron'
 
@@ -43,6 +44,7 @@ export function startAngelliraJobs(): void {
     if (job.name === 'monitoring') return syncMonitoring()
     if (job.name === 'painel') return syncPainel()
     if (job.name === 'detectors') return runDetectors()
+    if (job.name === 'cargas') return syncCargas()
   }, { connection })
 
   worker.on('completed', (job, result) => logger.info({ job: job.name, result }, '[angellira] job ok'))
@@ -54,6 +56,8 @@ export function startAngelliraJobs(): void {
   // Painel-sheet: reconciliação INCREMENTAL a cada 10min (upsert só do que falta/mudou; tickets pesados gated 30min).
   void queue.add('painel', {}, { repeat: { pattern: '*/10 * * * *' }, jobId: 'painel-sheet-sync' })
   void queue.add('detectors', {}, { repeat: { pattern: '0 * * * *' },   jobId: 'angellira-detectors' })
+  // Phase 14 — sync do Cargas a cada 15min: open-loads + candidatos + cargas→trips + enrich por LH.
+  void queue.add('cargas', {}, { repeat: { pattern: '*/15 * * * *' }, jobId: 'cargas-sync' })
 
-  logger.info('[angellira] jobs agendados — positions */3min, monitoring */5min, painel */10min (incremental), detectors hora cheia')
+  logger.info('[angellira] jobs agendados — positions */3min, monitoring */5min, painel */10min, cargas */15min, detectors hora cheia')
 }
