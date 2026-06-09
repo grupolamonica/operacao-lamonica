@@ -14,6 +14,7 @@ import { api } from '@/lib/api'
 import { useTripTimeline } from '@/hooks/useTripTimeline'
 import { useTripRisk } from '@/hooks/useTripRisk'
 import { useDriverDossie, useDriverDossieByName } from '@/hooks/useDrivers'
+import { useDriverTrack } from '@/hooks/useDriverTrack'
 import { formatKm, formatDate } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 import type { Trip } from '@/data/types'
@@ -26,6 +27,8 @@ interface Props {
 export function TripDetailPanel({ trip, onClose }: Props) {
   const { data: events } = useTripTimeline(trip.id)
   const { data: risk }   = useTripRisk(trip.id)
+  // Phase 14 — trajeto do motorista p/ traçar a rota no mapa (só este motorista).
+  const { data: track }  = useDriverTrack(trip.driverName || null)
   // Cruzamento: por driverId quando existe; senão pelo nome do motorista (viagens do painel).
   const dossieById = useDriverDossie(trip.driverId ?? null)
   const dossieByName = useDriverDossieByName(trip.driverId ? null : (trip.driverName || null))
@@ -107,7 +110,7 @@ export function TripDetailPanel({ trip, onClose }: Props) {
           </div>
         )}
 
-        <LiveMap height={160} showLegend={false} />
+        <LiveMap height={220} showLegend={false} track={track} driverOnly />
 
         <div className="grid grid-cols-2 gap-3 text-xs">
           <Metric label="Motorista" value={trip.driverName} />

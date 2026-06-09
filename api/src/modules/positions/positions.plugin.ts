@@ -12,17 +12,26 @@
  * para o onError global em index.ts — nunca vaza credencial (T-11-02).
  */
 
-import { Elysia } from 'elysia'
+import { Elysia, t } from 'elysia'
 import { authGuard } from '../../lib/rbac'
-import { getFleetPositions } from './positions.service'
+import { getFleetPositions, getDriverTrack } from './positions.service'
 
 export const positionsReadPlugin = new Elysia({ name: 'positions-read' })
   .use(authGuard)
   .group('/api/positions', (app) =>
-    app.get('/', () => getFleetPositions(), {
-      detail: {
-        tags: ['positions'],
-        summary: 'Última posição geocodada por motorista (frota importada) enriquecida com ranking',
-      },
-    })
+    app
+      .get('/', () => getFleetPositions(), {
+        detail: {
+          tags: ['positions'],
+          summary: 'Última posição geocodada por motorista (frota importada) enriquecida com ranking',
+        },
+      })
+      // Phase 14 — trajeto histórico de um motorista (rota no mapa da tela de Viagens)
+      .get('/track', ({ query }) => getDriverTrack(query.motorista), {
+        query: t.Object({ motorista: t.String() }),
+        detail: {
+          tags: ['positions'],
+          summary: 'Trajeto histórico (lat/lng ordenado) de um motorista para traçar a rota',
+        },
+      })
   )

@@ -19,6 +19,13 @@ import { normalizeMotorista } from './viagens.parser'
 // Public contract
 // ---------------------------------------------------------------------------
 
+/** Ponto do trajeto histórico (Phase 14 — rota do motorista no mapa). */
+export interface TrackPoint {
+  lat: number
+  lng: number
+  ts:  string
+}
+
 export interface FleetPosition {
   motorista:   string
   cidade:      string | null
@@ -63,6 +70,24 @@ interface PositionRow {
  * lat/lng numéricos coagidos de string (postgres.js/numeric).
  * getRankingDrivers chamado UMA vez e indexado em Map antes do loop.
  */
+/**
+ * Trajeto histórico de UM motorista (Phase 14, D-14-08) — todos os pontos
+ * geocodados ordenados por data_posicao ASC, para traçar a rota no mapa.
+ * `motorista` pode vir com sufixo " (id)" do ranking — strip antes de normalizar.
+ */
+export async function getDriverTrack(motorista: string): Promise<TrackPoint[]> {
+  const norm = normalizeMotorista((motorista ?? '').replace(/\s*\(\d+\)\s*$/, ''))
+  if (!norm) return []
+  const rows = await db.execute(sql`
+    SELECT lat, lng, data_posicao
+    FROM driver_positions
+    WHERE motorista_norm = ${norm} AND geom IS NOT NULL
+    ORDER BY data_posicao ASC
+    LIMIT 1000
+  `) as unknown as Array<{ lat: string; lng: string; data_posicao: Date | string }>
+  return rows.map((r) => ({ lat: Number(r.lat), lng: Number(r.lng), ts: new Date(r.data_posicao).toISOString() }))
+}
+
 export async function getFleetPositions(): Promise<FleetPosition[]> {
   // 1. Query — última posição geocodada por motorista
   const rows = await db.execute(sql`

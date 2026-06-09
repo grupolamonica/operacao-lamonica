@@ -42,6 +42,48 @@ interface Props {
   showLegend?: boolean
   selectedVehicleId?: string | null
   onVehicleClick?: (vehicleId: string) => void
+  /** Phase 14 — trajeto do motorista (polyline) na tela de Viagens. */
+  track?: Array<{ lat: number; lng: number; ts?: string }>
+  /** Phase 14 — modo "só o motorista": esconde a frota, mostra só a rota + ponto atual. */
+  driverOnly?: boolean
+}
+
+/** Add/update a polyline (trajeto) + ponto atual para UM motorista (Phase 14). */
+function renderTrack(map: maplibregl.Map, track: Array<{ lat: number; lng: number }>) {
+  const coords = track
+    .filter((p) => Number.isFinite(p.lng) && Number.isFinite(p.lat))
+    .map((p) => [p.lng, p.lat] as [number, number])
+  const lineGeo: GeoJSON.FeatureCollection = {
+    type: 'FeatureCollection',
+    features: coords.length >= 2 ? [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } }] : [],
+  }
+  const ptGeo: GeoJSON.FeatureCollection = {
+    type: 'FeatureCollection',
+    features: coords.length ? [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: coords[coords.length - 1]! } }] : [],
+  }
+  if (map.getSource('track')) {
+    ;(map.getSource('track') as maplibregl.GeoJSONSource).setData(lineGeo)
+    ;(map.getSource('track-current') as maplibregl.GeoJSONSource).setData(ptGeo)
+    return
+  }
+  map.addSource('track', { type: 'geojson', data: lineGeo })
+  map.addLayer({
+    id: 'track-line', type: 'line', source: 'track',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#5e72e4', 'line-width': 4, 'line-opacity': 0.85 },
+  })
+  map.addSource('track-current', { type: 'geojson', data: ptGeo })
+  map.addLayer({
+    id: 'track-current-pt', type: 'circle', source: 'track-current',
+    paint: { 'circle-radius': 7, 'circle-color': '#5e72e4', 'circle-stroke-width': 3, 'circle-stroke-color': '#ffffff' },
+  })
+}
+
+function removeTrack(map: maplibregl.Map) {
+  if (map.getLayer('track-line')) map.removeLayer('track-line')
+  if (map.getLayer('track-current-pt')) map.removeLayer('track-current-pt')
+  if (map.getSource('track')) map.removeSource('track')
+  if (map.getSource('track-current')) map.removeSource('track-current')
 }
 
 function fleetColor(status: FleetPosition['status']): string {
@@ -170,17 +212,19 @@ function removeFleet(map: maplibregl.Map) {
   if (map.getSource('fleet'))              map.removeSource('fleet')
 }
 
-export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, onVehicleClick }: Props) {
+export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, onVehicleClick, track, driverOnly }: Props) {
   const containerRef         = useRef<HTMLDivElement>(null)
   const mapRef               = useRef<maplibregl.Map | null>(null)
   const markersRef           = useRef<Map<string, maplibregl.Marker>>(new Map())
   const initRef              = useRef(false)  // React StrictMode guard
   const fleetHandlersRef     = useRef(false)  // fleet click/cursor handlers registered once
   const fleetFittedRef       = useRef(false)  // fitBounds aplicado uma vez por ativação da camada
+  const trackFittedRef       = useRef(false)  // fitBounds do trajeto aplicado uma vez (Phase 14)
   const modeInitRef          = useRef(true)   // pula o setStyle inicial (estilo já correto) — não derruba a camada de frota
   const [mode, setMode]      = useState<'mapa' | 'satelite'>('mapa')
   const [mapReady, setMapReady] = useState(false)
-  const [showFleet, setShowFleet] = useState(true)  // default ON (pedido do usuário)
+  // Modo "só o motorista" (Phase 14): frota OFF por padrão. Senão default ON (pedido do usuário).
+  const [showFleet, setShowFleet] = useState(!driverOnly)
 
   // Read from global positions store (WS managed in AppLayout)
   const positions = usePositionsStore(s => s.positions)
@@ -412,6 +456,31 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
     doRender()
   }, [geofences, mapReady])
 
+  // Trajeto do motorista (Phase 14, D-14-08) — polyline + ponto atual quando `track` é passado.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+    const doRender = () => {
+      if (!map.isStyleLoaded()) { map.once('idle', doRender); return }
+      if (track && track.length > 0) {
+        renderTrack(map, track)
+        if (!trackFittedRef.current) {
+          const pts = track.filter((p) => Number.isFinite(p.lng) && Number.isFinite(p.lat))
+          if (pts.length > 0) {
+            const lngs = pts.map((p) => p.lng)
+            const lats = pts.map((p) => p.lat)
+            map.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]], { padding: 50, maxZoom: 13, duration: 600 })
+            trackFittedRef.current = true
+          }
+        }
+      } else {
+        removeTrack(map)
+        trackFittedRef.current = false
+      }
+    }
+    doRender()
+  }, [track, mapReady])
+
   // Update vehicle markers (live layer — DO NOT TOUCH markersRef/usePositionsStore)
   useEffect(() => {
     const map = mapRef.current
@@ -520,14 +589,18 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
         >
           <Satellite className="h-3 w-3" /> Satélite
         </button>
-        <div className="w-px bg-border self-stretch" />
-        <button
-          onClick={() => setShowFleet(v => !v)}
-          className={cn('px-3 py-1.5 flex items-center gap-1.5 transition-colors',
-            showFleet ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-accent')}
-        >
-          <Truck className="h-3 w-3" /> Frota importada
-        </button>
+        {!driverOnly && (
+          <>
+            <div className="w-px bg-border self-stretch" />
+            <button
+              onClick={() => setShowFleet(v => !v)}
+              className={cn('px-3 py-1.5 flex items-center gap-1.5 transition-colors',
+                showFleet ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-accent')}
+            >
+              <Truck className="h-3 w-3" /> Frota importada
+            </button>
+          </>
+        )}
       </div>
 
       {/* WS status badge */}
