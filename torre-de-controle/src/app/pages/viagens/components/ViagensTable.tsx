@@ -56,6 +56,12 @@ const columns: ColumnDef<Trip>[] = [
   { id: 'prazo', header: 'Prazo Final', size: 145, cell: ({ row }) => <span className="text-xs tabular-nums text-foreground">{fmtDT(row.original.windowEnd)}</span> },
   { id: 'previsao', header: 'Previsão de Chegada', size: 145, cell: ({ row }) => <span className="text-xs tabular-nums text-foreground">{fmtDT(row.original.eta)}</span> },
   { id: 'status', header: 'Status', size: 100, cell: ({ row }) => <StatusBadge status={row.original.slaStatus} /> },
+  {
+    id: 'cargasStatus', header: 'Status operacional', size: 150,
+    cell: ({ row }) => row.original.cargasStatus
+      ? <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-500/15 text-sky-700 dark:text-sky-200">{row.original.cargasStatus}</span>
+      : <span className="text-xs text-muted-foreground">—</span>,
+  },
   { id: 'atraso', header: 'Atraso', size: 80, cell: ({ row }) => <span className={`text-xs tabular-nums font-medium ${atrasoClass(row.original.adiantamentoHoras)}`}>{row.original.atrasoLabel || '—'}</span> },
   {
     id: 'conducao', header: 'Condução', size: 90,
@@ -103,6 +109,8 @@ export function ViagensTable() {
 
   const clients = Array.from(new Set(all.map(t => t.clientName).filter(Boolean))).sort()
   const routes  = Array.from(new Set(all.map(t => t.routeCode).filter(Boolean))).sort()
+  // Phase 14 — status operacional (cargas_status, vindo do Cargas)
+  const cargasStatuses = Array.from(new Set(all.map(t => t.cargasStatus).filter((s): s is string => !!s))).sort()
 
   const merged: TripFilters = { ...filters, status: tabToStatus[activeTripsTab] }
   const trips = useMemo(() => {
@@ -113,10 +121,11 @@ export function ViagensTable() {
       if (filters.routeCode && t.routeCode !== filters.routeCode) return false
       if (filters.priority && t.priority !== filters.priority) return false
       if (filters.slaStatus && t.slaStatus !== filters.slaStatus) return false
+      if (filters.cargasStatus && t.cargasStatus !== filters.cargasStatus) return false
       if (q && !`${t.driverName} ${t.code} ${t.clientName}`.toLowerCase().includes(q)) return false
       return true
     })
-  }, [all, merged.status, filters.clientName, filters.routeCode, filters.priority, filters.slaStatus, filters.driverName])
+  }, [all, merged.status, filters.clientName, filters.routeCode, filters.priority, filters.slaStatus, filters.cargasStatus, filters.driverName])
   const { data: selected } = useTrip(selectedTripId)
 
   const set = <K extends keyof TripFilters>(key: K, value: TripFilters[K] | undefined) =>
@@ -181,6 +190,17 @@ export function ViagensTable() {
           <SelectItem value="sem_sinal">Sem sinal</SelectItem>
         </SelectContent>
       </Select>
+
+      {/* Phase 14 — status operacional do Cargas (sheet_status) */}
+      {cargasStatuses.length > 0 && (
+        <Select value={filters.cargasStatus ?? '__all'} onValueChange={(v) => set('cargasStatus', v === '__all' ? undefined : v)}>
+          <SelectTrigger className="h-9 w-[180px] text-xs"><SelectValue placeholder="Status operacional" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all">Status operacional: todos</SelectItem>
+            {cargasStatuses.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      )}
 
       <Button variant="outline" size="sm" className="h-9 gap-2 text-xs"><ArrowUpDown className="h-3.5 w-3.5" /> Ordenar</Button>
       <Button variant="outline" size="sm" className="h-9 gap-2 text-xs"><Filter className="h-3.5 w-3.5" /> Filtros</Button>

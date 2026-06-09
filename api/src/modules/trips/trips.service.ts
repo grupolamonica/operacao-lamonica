@@ -39,8 +39,9 @@ export type TripFilters = {
 
 export async function listTrips(filters: TripFilters, page = 0, limit = 100) {
   const conditions = []
-  // Universo operacional = snapshot do painel (planilha de produção, sync incremental 10min).
-  conditions.push(eq(trips.source, 'painel'))
+  // Universo operacional = painel (ao vivo, sync 10min) + cargas (fonte de viagens, Onda A/D-14).
+  // Exclui o histórico (source nulo = import ranking/DBLH) — não é viagem operacional.
+  conditions.push(sql`${trips.source} IN ('painel', 'cargas')`)
   if (filters.status)    conditions.push(eq(trips.status, filters.status))
   if (filters.slaStatus) conditions.push(eq(trips.slaStatus, filters.slaStatus))
   if (filters.priority)  conditions.push(eq(trips.priority, filters.priority))

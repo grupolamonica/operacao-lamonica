@@ -237,6 +237,7 @@ export interface TripFilters {
   priority?: Priority
   routeCode?: string
   search?: string
+  cargasStatus?: string   // Phase 14 — status operacional do Cargas (sheet_status)
 }
 
 export interface DriverFilters {
