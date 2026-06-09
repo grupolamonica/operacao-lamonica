@@ -186,8 +186,8 @@ export function TripDetailPanel({ trip, onClose }: Props) {
         )}
 
         <div>
-          <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Linha do tempo</h4>
-          {events.length > 0 ? <TripTimeline events={events} /> : <p className="text-xs text-muted-foreground">Sem eventos registrados.</p>}
+          <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Linha do tempo — paradas</h4>
+          <TripTimeline events={events} onlyStops />
         </div>
 
         <div>

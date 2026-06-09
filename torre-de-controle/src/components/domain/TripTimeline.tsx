@@ -34,15 +34,21 @@ const colorMap = {
 
 interface Props {
   events: TimelineEvent[]
+  /** Phase 14 — só as paradas, indicando a região onde parou. */
+  onlyStops?: boolean
 }
 
-export function TripTimeline({ events }: Props) {
+export function TripTimeline({ events, onlyStops }: Props) {
+  const shown = onlyStops ? events.filter((e) => e.kind === 'stop') : events
+  if (onlyStops && shown.length === 0) {
+    return <p className="text-xs text-muted-foreground">Sem paradas registradas.</p>
+  }
   return (
     <ol className="relative">
-      {events.map((event, idx) => {
+      {shown.map((event, idx) => {
         const Icon = iconMap[event.kind]
         const colors = colorMap[event.kind]
-        const isLast = idx === events.length - 1
+        const isLast = idx === shown.length - 1
         return (
           <li key={event.id} className="flex gap-3 pb-4 last:pb-0">
             <div className="flex flex-col items-center shrink-0">
