@@ -1,6 +1,7 @@
 import { ExportButton } from '@/components/common/ExportButton'
 import { ViagensKPIRow } from './components/ViagensKPIRow'
 import { ViagensTable } from './components/ViagensTable'
+import { CargasAbertasPanel } from './components/CargasAbertasPanel'
 
 export function ViagensPage() {
   return (
@@ -16,6 +17,11 @@ export function ViagensPage() {
       <ViagensKPIRow />
 
       <ViagensTable />
+
+      {/* Phase 14 — cargas em aberto (sem motorista) + alocação no Cargas */}
+      <div className="bg-card border border-border rounded-lg p-4">
+        <CargasAbertasPanel />
+      </div>
     </div>
   )
 }
