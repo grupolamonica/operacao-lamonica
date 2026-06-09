@@ -15,6 +15,7 @@ import { AlertCommentThread } from './AlertCommentThread'
 import {
   useAlertHistory, useTransitionAlert, useAddAlertComment, useSetAlertPriority,
 } from '@/hooks/useAlertWorkflow'
+import { useDriverDossie, useDriverDossieByName } from '@/hooks/useDrivers'
 
 interface Props {
   alert:   Alert
@@ -34,6 +35,12 @@ export function AlertDetailPanel({ alert, onClose }: Props) {
   const setPrio    = useSetAlertPriority(alert.id)
   const [confirmTo,      setConfirmTo]      = useState<AlertStatus | null>(null)
   const [callDialogOpen, setCallDialogOpen] = useState(false)
+  // Phase 14 — dossiê cruzado do motorista (vínculo, vigência, frota). Por id; senão por nome.
+  const dossieById   = useDriverDossie(alert.driverId || null)
+  const dossieByName = useDriverDossieByName(alert.driverId ? null : (alert.driverName || null))
+  const dossie: any  = dossieById.data ?? dossieByName.data
+  const cavalo  = dossie?.veiculos?.find((v: any) => v.plateRole === 'HORSE')
+  const carreta = dossie?.veiculos?.find((v: any) => v.plateRole === 'TRAILER_1' || v.plateRole === 'TRAILER')
 
   const isPending = transition.isPending || comment.isPending || setPrio.isPending
   const priority  = alert.priority ?? 'media'
@@ -139,6 +146,7 @@ export function AlertDetailPanel({ alert, onClose }: Props) {
         <div>
           <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Detalhes</h4>
           <div className="space-y-2 text-xs text-muted-foreground">
+            {alert.lh && <Row label="LH" value={alert.lh} mono />}
             <Row label="Entrega/Rota" value={`${alert.tripCode} · ${alert.routeCode}`} />
             <Row label="Cliente"       value={alert.clientName} />
             {alert.delayMinutes !== undefined && <Row label="Desvio ETA" value={`+${alert.delayMinutes} min`} highlight="text-danger" />}
@@ -159,6 +167,18 @@ export function AlertDetailPanel({ alert, onClose }: Props) {
               <p className="text-xs text-muted-foreground font-mono">{alert.plate}</p>
             </div>
           </div>
+          {/* Phase 14 — dossiê cruzado: vínculo, vigência, frota (cavalo/carreta) */}
+          {dossie && (
+            <div className="mt-2 space-y-2 text-xs text-muted-foreground">
+              {dossie.identidade?.driverKind && <Row label="Vínculo" value={dossie.identidade.driverKind} />}
+              {dossie.identidade?.cpf && <Row label="CPF" value={dossie.identidade.cpf} mono />}
+              {dossie.identidade?.cnhValidade && <Row label="CNH validade" value={formatDate(dossie.identidade.cnhValidade, 'dd/MM/yyyy')} />}
+              {dossie.conformidade?.angelliraValidUntil && <Row label="Vigência Angellira" value={formatDate(dossie.conformidade.angelliraValidUntil, 'dd/MM/yyyy')} />}
+              {cavalo && <Row label="Cavalo" value={`${cavalo.plate}${cavalo.model ? ' · ' + cavalo.model : ''}`} mono />}
+              {carreta && <Row label="Carreta" value={`${carreta.plate}${carreta.model ? ' · ' + carreta.model : ''}`} mono />}
+              {dossie.viagens?.total != null && <Row label="Viagens" value={`${dossie.viagens.total} (no prazo ${dossie.viagens.pctNoPrazo ?? '—'}%)`} />}
+            </div>
+          )}
         </div>
 
         {alert.slaDeadline && (
