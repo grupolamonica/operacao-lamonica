@@ -80,6 +80,11 @@ export interface Driver {
   anttValid?: boolean
   trackingEnabled?: boolean
   operationalBlocked?: boolean
+  // Phase 14 — tabela Motoristas (cruzado com ranking)
+  vinculo?: string                // FUN | AGR
+  viagens?: number                // total de viagens do motorista
+  rank?: number | null            // posição no ranking
+  pontuacao?: number | null
 }
 
 // ===== Trip =====

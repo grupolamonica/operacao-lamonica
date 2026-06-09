@@ -1,6 +1,6 @@
 import { type ColumnDef } from '@tanstack/react-table'
 import { useState } from 'react'
-import { Search, Filter, ArrowUpDown, MoreVertical, FileCheck2, FileX2, FileWarning } from 'lucide-react'
+import { Search, Filter, ArrowUpDown, MoreVertical } from 'lucide-react'
 import { TableWithSidePanel } from '@/components/domain/TableWithSidePanel'
 import { DriverAvatar } from '@/components/domain/DriverAvatar'
 import { ExportButton } from '@/components/common/ExportButton'
@@ -9,9 +9,8 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useDrivers, useDriver } from '@/hooks/useDrivers'
 import { useUIStore } from '@/stores/useUIStore'
-import { formatDuration } from '@/lib/formatters'
 import { DriverDetailPanel } from './DriverDetailPanel'
-import type { Driver, DriverFilters, DriverStatus, DocStatus } from '@/data/types'
+import type { Driver, DriverFilters, DriverStatus } from '@/data/types'
 
 const statusLabel: Record<DriverStatus, { label: string; style: React.CSSProperties }> = {
   available:    { label: 'Disponível',    style: { backgroundColor: 'var(--status-no-prazo-bg)',  color: 'var(--status-no-prazo-fg)' } },
@@ -19,27 +18,10 @@ const statusLabel: Record<DriverStatus, { label: string; style: React.CSSPropert
   unavailable:  { label: 'Indisponível',  style: { backgroundColor: 'var(--status-sem-sinal-bg)', color: 'var(--status-sem-sinal-fg)' } },
 }
 
-function delayColor(min: number) {
-  if (min <= 0) return 'text-success'
-  if (min < 10) return 'text-warning'
-  return 'text-danger'
-}
-
-function scoreStyle(score: number): React.CSSProperties {
-  if (score >= 90) return { backgroundColor: 'var(--status-no-prazo-bg)', color: 'var(--status-no-prazo-fg)' }
-  if (score >= 80) return { backgroundColor: 'var(--status-em-risco-bg)', color: 'var(--status-em-risco-fg)' }
-  return { backgroundColor: 'var(--status-atrasado-bg)', color: 'var(--status-atrasado-fg)' }
-}
-
-const docIconByStatus: Record<DocStatus, { Icon: typeof FileCheck2; color: string }> = {
-  valido:         { Icon: FileCheck2,  color: 'text-success' },
-  vence_em_breve: { Icon: FileWarning, color: 'text-warning' },
-  vencido:        { Icon: FileX2,      color: 'text-danger' },
-}
-
+// Phase 14 — colunas pedidas: Motorista · Vínculo · Disponibilidade · Viagens · Rank
 const columns: ColumnDef<Driver>[] = [
   {
-    id: 'driver', header: 'Motorista', size: 240,
+    id: 'driver', header: 'Motorista', size: 260,
     cell: ({ row }) => (
       <div className="flex items-center gap-3">
         <DriverAvatar name={row.original.name} status={row.original.status} size="md" />
@@ -51,33 +33,26 @@ const columns: ColumnDef<Driver>[] = [
     ),
   },
   {
+    id: 'vinculo', header: 'Vínculo',
+    cell: ({ row }) => <span className="text-xs font-medium text-foreground">{row.original.vinculo ?? row.original.driverKind ?? '—'}</span>,
+  },
+  {
     id: 'status', header: 'Disponibilidade',
     cell: ({ row }) => {
       const c = statusLabel[row.original.status]
       return <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium" style={c.style}>{c.label}</span>
     },
   },
-  { accessorKey: 'deliveriesToday', header: 'Entregas hoje', cell: (i) => <span className="text-sm tabular-nums text-foreground">{i.getValue<number>()}</span> },
   {
-    id: 'delay', header: 'Atraso médio',
-    cell: ({ row }) => <span className={`text-sm font-medium tabular-nums ${delayColor(row.original.avgDelayMinutes)}`}>{row.original.avgDelayMinutes >= 0 ? '+' : ''}{formatDuration(Math.abs(row.original.avgDelayMinutes))}</span>,
+    id: 'viagens', header: 'Viagens',
+    cell: ({ row }) => <span className="text-sm tabular-nums text-foreground">{row.original.viagens ?? 0}</span>,
   },
   {
-    id: 'score', header: 'Score',
-    cell: ({ row }) => <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium tabular-nums" style={scoreStyle(row.original.operationalScore)}>{row.original.operationalScore}</span>,
+    id: 'rank', header: 'Rank',
+    cell: ({ row }) => row.original.rank != null
+      ? <span className="text-sm tabular-nums font-semibold text-foreground">#{row.original.rank}{row.original.pontuacao != null && <span className="text-xs text-muted-foreground font-normal"> · {row.original.pontuacao} pts</span>}</span>
+      : <span className="text-xs text-muted-foreground">—</span>,
   },
-  {
-    id: 'docs', header: 'Documentos',
-    cell: ({ row }) => (
-      <div className="flex gap-1.5">
-        {row.original.documents.map(d => {
-          const { Icon, color } = docIconByStatus[d.status] ?? { Icon: FileWarning, color: 'text-muted-foreground' }
-          return <Icon key={d.type} className={`h-4 w-4 ${color}`} aria-label={`${d.type}: ${d.status}`} />
-        })}
-      </div>
-    ),
-  },
-  { accessorKey: 'address', header: 'Localização', cell: (i) => <span className="text-xs text-muted-foreground truncate">{i.getValue<string>()}</span> },
   {
     id: 'actions', header: '', size: 40,
     cell: () => (
