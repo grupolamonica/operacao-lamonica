@@ -76,6 +76,45 @@ export async function fetchCargasLhStatus(): Promise<
   return out
 }
 
+/** Carga completa (com sheet_lh) para virar trip na Torre (Onda A — cargas como fonte de viagens). */
+export interface CargaTripRow {
+  id: string
+  sheet_lh: string | null
+  sheet_status: string | null
+  cliente_id: string | null
+  origem: string | null
+  destino: string | null
+  perfil: string | null
+  valor: number | string | null
+  bonus: number | string | null
+  sheet_motorista: string | null
+  sheet_cavalo: string | null
+  sheet_carreta: string | null
+  status: string
+  data: string | null
+  duracao_horas: number | string | null
+  booked_driver_id: string | null
+}
+
+export async function fetchAllCargasForTrips(): Promise<CargaTripRow[]> {
+  const out: CargaTripRow[] = []
+  let from = 0
+  while (true) {
+    const { data, error } = await cargasSupabase
+      .from('cargas')
+      .select('id, sheet_lh, sheet_status, cliente_id, origem, destino, perfil, valor, bonus, sheet_motorista, sheet_cavalo, sheet_carreta, status, data, duracao_horas, booked_driver_id')
+      .not('sheet_lh', 'is', null)
+      .range(from, from + PAGE - 1)
+    if (error) throw error
+    const rows = (data ?? []) as unknown as CargaTripRow[]
+    if (rows.length === 0) break
+    out.push(...rows.filter((r) => r.sheet_lh))
+    if (rows.length < PAGE) break
+    from += PAGE
+  }
+  return out
+}
+
 /** Motoristas (motoristas_historico) por lista de CPF — para cruzar nome/vínculo. */
 export async function fetchMotoristasByCpf(cpfs: string[]): Promise<MotoristaHistoricoRow[]> {
   const unique = [...new Set(cpfs.filter(Boolean))]

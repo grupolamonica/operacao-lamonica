@@ -75,13 +75,34 @@ interface TripRow {
   id: string; code: string; status: string; sla: string | null; progress: number
   distTotal: number | null; distDone: number | null; ws: string; we: string; eta: string | null
   adiant: number | null; origem: string | null; destino: string | null; motorista: string | null
+  lh: string | null  // Phase 14 — LH (numViagem) p/ cruzar com Cargas
 }
 export interface PainelSyncResult { ativas: number; concluidas: number; total: number; noPrazo: number; atrasadas: number; ticketsPendentes: number; alertas: number }
 
 export async function syncPainel(): Promise<PainelSyncResult> {
   const agora = new Date()
-  // Abas LEVES (Carrega ~600 + HistoricoConcluidas ~5k) toda execução.
-  const [carrega, concl] = await Promise.all([fetchSheet('Carrega'), fetchSheet('HistoricoConcluidas')])
+  // Abas LEVES (Carrega ~600 + HistoricoConcluidas ~5k + LogObservacoes) toda execução.
+  const [carrega, concl, logObs] = await Promise.all([
+    fetchSheet('Carrega'), fetchSheet('HistoricoConcluidas'), fetchSheet('LogObservacoes').catch(() => [] as string[][]),
+  ])
+
+  // Phase 14 (D-14) — cod (Cód. Viagem) → LH (numViagem) do LogObservacoes, p/ cruzar com o Cargas.
+  // Mesmo código Shopee (LT + 11). col A=Cód.Viagem, B=Observação, C=numViagem (DOC ScriptControleViagens).
+  const LH_RE = /(LT[A-Z0-9]{11})/i
+  const codToLh = new Map<string, string>()
+  {
+    const h = logObs[0] ?? []; const cf = colFinder(h)
+    let iCod = cf('Cód. Viagem', 'Cod. Viagem', 'Codigo Viagem'); if (iCod < 0) iCod = 0
+    let iLh  = cf('numViagem', 'num Viagem', 'LH', 'Numero Viagem'); if (iLh < 0) iLh = 2
+    const headerLooksData = LH_RE.test(String(h[iLh] ?? '')) || LH_RE.test(String(h[1] ?? ''))
+    for (const r of (headerLooksData ? logObs : logObs.slice(1))) {
+      const cod = String(r[iCod] ?? '').trim(); if (!cod) continue
+      let lh = String(r[iLh] ?? '').trim()
+      if (!LH_RE.test(lh)) { const m = String(r[1] ?? '').match(LH_RE); lh = m ? m[1] : '' }
+      const m2 = lh.match(LH_RE); if (m2) codToLh.set(cod, m2[1].toUpperCase())
+    }
+  }
+
   const recs: TripRow[] = []
   let noPrazo = 0, atrasadas = 0
   const activeCods = new Set<string>()
@@ -113,7 +134,7 @@ export async function syncPainel(): Promise<PainelSyncResult> {
       recs.push({ id: uuid5('painel|a|' + cod), code: ('PNLA-' + cod).slice(0, 20), status, sla, progress,
         distTotal: kmT, distDone: (kmT != null) ? Math.max(0, kmT - kmFalta) : null, ws, we, eta, adiant,
         origem: String(r[iOri] ?? '').slice(0, 200) || null, destino: String(r[iDest] ?? '').slice(0, 200) || null,
-        motorista: String(r[iMot] ?? '').trim() || null })
+        motorista: String(r[iMot] ?? '').trim() || null, lh: codToLh.get(cod) ?? null })
     }
   }
 
@@ -129,7 +150,7 @@ export async function syncPainel(): Promise<PainelSyncResult> {
       recs.push({ id: uuid5('painel|c|' + cod), code: ('PNLC-' + cod).slice(0, 20), status: 'completed', sla: null, progress: 100,
         distTotal: kmT, distDone: (kmT != null && kmF != null) ? Math.max(0, kmT - kmF) : kmT, ws: we, we, eta: concIso, adiant: null,
         origem: String(r[iOri] ?? '').slice(0, 200) || null, destino: String(r[iDest] ?? '').slice(0, 200) || null,
-        motorista: String(r[iMot] ?? '').trim() || null })
+        motorista: String(r[iMot] ?? '').trim() || null, lh: codToLh.get(cod) ?? null })
     }
   }
 
@@ -215,26 +236,50 @@ export async function syncPainel(): Promise<PainelSyncResult> {
   // dedup só por id (PNLA-/PNLC- são distintos → double-count mantido; remove cods repetidos na mesma aba)
   const byId = new Map<string, TripRow>(); for (const t of recs) byId.set(t.id, t)
   const all = [...byId.values()]
+  // Phase 14 — sheet_lh é ÚNICO (uq_trips_sheet_lh). O painel duplica (PNLA ativo + PNLC concluído
+  // do mesmo cód → mesmo LH): mantém o LH só no 1º registro por LH (ativo vem antes → ganha), zera o resto.
+  const seenLh = new Set<string>()
+  for (const t of all) { if (t.lh) { if (seenLh.has(t.lh)) t.lh = null; else seenLh.add(t.lh) } }
+  const lhList = [...seenLh]
   const syncStart = agora.toISOString()
   await db.transaction(async (tx) => {
+    // Reivindica do Cargas os LHs que agora estão ao vivo no painel (painel = fonte ao vivo).
+    if (lhList.length > 0) {
+      for (let i = 0; i < lhList.length; i += 1000) {
+        const chunk = lhList.slice(i, i + 1000)
+        await tx.execute(sql`DELETE FROM trips WHERE source='cargas' AND sheet_lh IN (${sql.join(chunk.map((l) => sql`${l}`), sql`, `)})`)
+      }
+      // uq_trips_sheet_lh é global: NÃO reivindica um LH que já pertence a OUTRO trip (ex. histórico
+      // source=null). Mantém o LH só se ninguém mais tem, ou se o dono já é o próprio trip do painel.
+      const ownerByLh = new Map<string, string>()
+      for (let i = 0; i < lhList.length; i += 1000) {
+        const chunk = lhList.slice(i, i + 1000)
+        const rows = (await tx.execute(sql`SELECT sheet_lh, id FROM trips WHERE sheet_lh IN (${sql.join(chunk.map((l) => sql`${l}`), sql`, `)})`)) as unknown as Array<{ sheet_lh: string; id: string }>
+        for (const r of rows) ownerByLh.set(String(r.sheet_lh).toUpperCase(), r.id)
+      }
+      for (const t of all) {
+        if (t.lh) { const o = ownerByLh.get(t.lh.toUpperCase()); if (o && o !== t.id) t.lh = null }
+      }
+    }
     const B = 500
     for (let i = 0; i < all.length; i += B) {
       const batch = all.slice(i, i + B)
       const values = batch.map((t) => sql`(${t.id}, ${t.code}, 'painel', 'media', ${t.origem}, ${t.destino},
         ${t.ws}, ${t.we}, ${t.eta}, ${t.status}, ${t.sla}, ${t.progress},
         ${t.distTotal != null ? String(t.distTotal) : null}, ${t.distDone != null ? String(t.distDone) : null},
-        ${t.adiant != null ? String(t.adiant) : null}, ${t.motorista}, 'intensivo', now(), now())`)
+        ${t.adiant != null ? String(t.adiant) : null}, ${t.motorista}, ${t.lh}, 'intensivo', now(), now())`)
       await tx.execute(sql`
         INSERT INTO trips (id, code, source, priority, origin, destination, window_start, window_end, eta,
           status, sla_status, progress_pct, distance_total, distance_done, adiantamento_horas,
-          sheet_motorista, conducao_regime, created_at, updated_at)
+          sheet_motorista, sheet_lh, conducao_regime, created_at, updated_at)
         VALUES ${sql.join(values, sql`, `)}
         ON CONFLICT (id) DO UPDATE SET
           code=EXCLUDED.code, origin=EXCLUDED.origin, destination=EXCLUDED.destination,
           window_start=EXCLUDED.window_start, window_end=EXCLUDED.window_end, eta=EXCLUDED.eta,
           status=EXCLUDED.status, sla_status=EXCLUDED.sla_status, progress_pct=EXCLUDED.progress_pct,
           distance_total=EXCLUDED.distance_total, distance_done=EXCLUDED.distance_done,
-          adiantamento_horas=EXCLUDED.adiantamento_horas, sheet_motorista=EXCLUDED.sheet_motorista, updated_at=now()
+          adiantamento_horas=EXCLUDED.adiantamento_horas, sheet_motorista=EXCLUDED.sheet_motorista,
+          sheet_lh=COALESCE(EXCLUDED.sheet_lh, trips.sheet_lh), updated_at=now()
       `)
     }
     await tx.execute(sql`

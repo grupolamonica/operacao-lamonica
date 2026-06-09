@@ -11,19 +11,98 @@
  */
 
 import { sql } from 'drizzle-orm'
+import { createHash } from 'node:crypto'
 import { db } from '../../db/client'
 import { cargasOpenLoads, cargasLoadCandidates } from '../../db/schema/cargas'
 import { getOpenLoads } from './cargas.service'
-import { fetchQueuedLeads, fetchMotoristasByCpf, fetchCargasLhStatus } from './cargas.reads'
+import { fetchQueuedLeads, fetchMotoristasByCpf, fetchCargasLhStatus, fetchAllCargasForTrips, type CargaTripRow } from './cargas.reads'
 
 export interface SyncResult {
   openLoads: number
   candidates: number
+  cargasTrips: number
   tripsEnriched: number
   ts: string
 }
 
 const numOrNull = (n: number | null): string | null => (n === null ? null : String(n))
+
+/** UUID v5 determinístico (mesmo NS do painel-sync) — id estável por chave. */
+function uuid5(name: string): string {
+  const NS = '6ba7b8109dad11d180b400c04fd430c8'
+  const h = createHash('sha1').update(Buffer.from(NS, 'hex')).update(name).digest()
+  h[6] = (h[6] & 0x0f) | 0x50
+  h[8] = (h[8] & 0x3f) | 0x80
+  const x = h.subarray(0, 16).toString('hex')
+  return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20, 32)}`
+}
+
+const numStr = (v: number | string | null): string | null => (v == null || v === '' ? null : String(v))
+
+/** Mapeia status do Cargas → status de trip da Torre. */
+function tripStatusFromCarga(c: CargaTripRow): string {
+  const ss = (c.sheet_status ?? '').toUpperCase()
+  if (ss.includes('DESCARREGAD') || c.status === 'COMPLETED') return 'completed'
+  if (ss.includes('CANCEL') || c.status === 'CANCELLED' || c.status === 'FAILED') return 'cancelled'
+  if (['OPEN', 'RESERVED', 'DRAFT', 'EXPIRED'].includes(c.status)) return 'planned'
+  return 'in_progress'
+}
+
+/**
+ * Onda A (D-14) — Cargas como FONTE de viagens: upsert cargas → trips por LH.
+ * Não duplica os trips que já estão AO VIVO no painel (mesmo LH); o painel é a
+ * verdade ao vivo (posição/ETA), o Cargas preenche o resto (booked/histórico/abertas).
+ * Dedup por LH (evita colisão no code único). FK client_id só quando existe na Torre.
+ */
+export async function upsertCargasAsTrips(): Promise<number> {
+  const cargas = await fetchAllCargasForTrips()
+
+  const painelLh = new Set<string>(
+    ((await db.execute(sql`SELECT DISTINCT sheet_lh FROM trips WHERE source='painel' AND sheet_lh IS NOT NULL`)) as unknown as Array<{ sheet_lh: string }>)
+      .map((r) => r.sheet_lh.toUpperCase()),
+  )
+  const torreClients = new Set<string>(
+    ((await db.execute(sql`SELECT id FROM clients`)) as unknown as Array<{ id: string }>).map((r) => r.id),
+  )
+
+  // dedup por LH (code é único) + pula LH já vivo no painel
+  const byLh = new Map<string, CargaTripRow>()
+  for (const c of cargas) {
+    const lh = (c.sheet_lh ?? '').toUpperCase()
+    if (!lh || painelLh.has(lh) || byLh.has(lh)) continue
+    byLh.set(lh, c)
+  }
+  const list = [...byLh.entries()]
+  if (list.length === 0) return 0
+
+  let upserted = 0
+  const B = 500
+  for (let i = 0; i < list.length; i += B) {
+    const batch = list.slice(i, i + B)
+    const cut = (s: string | null, n: number): string | null => { const v = (s ?? '').trim(); return v ? v.slice(0, n) : null }
+    const vals = batch.map(([lh, c]) => {
+      const id = uuid5('cargas|' + c.id)
+      const ws = c.data ? new Date(c.data).toISOString() : new Date().toISOString()
+      const clientId = c.cliente_id && torreClients.has(c.cliente_id) ? c.cliente_id : null
+      return sql`(${id}, ${('CRG-' + lh).slice(0, 20)}, 'cargas', 'media', ${clientId}, ${cut(c.origem, 200)}, ${cut(c.destino, 200)},
+        ${ws}, ${ws}, ${tripStatusFromCarga(c)}, ${cut(lh, 50)}, ${cut(c.sheet_status, 40)}, ${c.id},
+        ${numStr(c.valor)}, ${numStr(c.bonus)}, ${c.sheet_motorista}, ${cut(c.sheet_cavalo, 12)}, ${cut(c.sheet_carreta, 12)}, now(), now())`
+    })
+    await db.execute(sql`
+      INSERT INTO trips (id, code, source, priority, client_id, origin, destination,
+        window_start, window_end, status, sheet_lh, cargas_status, cargas_load_id,
+        valor, bonus, sheet_motorista, sheet_cavalo, sheet_carreta, created_at, updated_at)
+      VALUES ${sql.join(vals, sql`, `)}
+      ON CONFLICT (id) DO UPDATE SET
+        status=EXCLUDED.status, client_id=EXCLUDED.client_id, origin=EXCLUDED.origin, destination=EXCLUDED.destination,
+        cargas_status=EXCLUDED.cargas_status, cargas_load_id=EXCLUDED.cargas_load_id,
+        valor=EXCLUDED.valor, bonus=EXCLUDED.bonus, sheet_motorista=EXCLUDED.sheet_motorista,
+        sheet_cavalo=EXCLUDED.sheet_cavalo, sheet_carreta=EXCLUDED.sheet_carreta, updated_at=now()
+    `)
+    upserted += batch.length
+  }
+  return upserted
+}
 
 export async function syncCargas(): Promise<SyncResult> {
   // 1. Cargas em aberto → cache (replace)
@@ -70,7 +149,10 @@ export async function syncCargas(): Promise<SyncResult> {
     )
   }
 
-  // 3. Enrich trips.cargas_status / cargas_load_id por LH (bulk UPDATE FROM VALUES)
+  // 3. Cargas como FONTE de viagens (Onda A) — upsert cargas → trips por LH (não duplica painel).
+  const cargasTrips = await upsertCargasAsTrips()
+
+  // 4. Enrich trips.cargas_status / cargas_load_id por LH (bulk UPDATE FROM VALUES) — pega os trips do painel.
   const lhRows = await fetchCargasLhStatus()
   let tripsEnriched = 0
   const CHUNK = 500
@@ -92,6 +174,7 @@ export async function syncCargas(): Promise<SyncResult> {
   return {
     openLoads: openLoads.length,
     candidates: leads.length,
+    cargasTrips,
     tripsEnriched,
     ts: new Date().toISOString(),
   }
