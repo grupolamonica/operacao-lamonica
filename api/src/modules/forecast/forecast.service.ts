@@ -1,7 +1,6 @@
-import { and, gte, isNotNull } from 'drizzle-orm'
+import { sql, and, gte, inArray } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { trips } from '../../db/schema/trips'
-import { drivers } from '../../db/schema/drivers'
 import { clients } from '../../db/schema/clients'
 import { projectSeries, type SeriesPoint, type ForecastPoint } from './forecast.engine'
 
@@ -14,11 +13,11 @@ export interface DemandForecast {
 }
 
 export interface RegionRisk {
-  key:          string   // driver.base
+  key:          string   // trips.origin (região)
   label:        string
   trips7d:      number   // projected
   riskScore:    number   // 0-100 derived
-  currentRiskShare: number // pct of current trips that are alto/critico in this base
+  currentRiskShare: number // pct of current trips at risk (riskLevel alto/critico ou slaStatus em_risco/atrasado) nesta região
 }
 
 export interface DelayRiskForecast {
@@ -41,6 +40,10 @@ function addDaysIso(iso: string, days: number): string {
 function toDay(d: Date): string {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().substring(0, 10)
 }
+
+// Chave de região normalizada (origin é texto livre: acento/caixa/espaços variam entre fontes).
+const normRegion = (s: string) =>
+  s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toUpperCase()
 
 /**
  * Fill missing days in a date-bucketed series with zeros so the engine sees
@@ -74,13 +77,17 @@ export async function forecastDemand(opts: {
   const todayIso  = toDay(new Date())
 
   // Use departedAt when available (real demand); fall back to windowStart for plan-only trips.
+  // Universo operacional = painel + cargas (igual Viagens/Dashboard) — exclui seed/histórico (source nulo).
   const rows = await db.select({
     id:           trips.id,
     windowStart:  trips.windowStart,
     departedAt:   trips.departedAt,
     clientId:     trips.clientId,
-    driverId:     trips.driverId,
-  }).from(trips).where(gte(trips.windowStart, cutoff))
+    origin:       trips.origin,
+  }).from(trips).where(and(
+    gte(trips.windowStart, cutoff),
+    sql`${trips.source} IN ('painel', 'cargas')`,
+  ))
 
   // Helper to get the day key for a row
   const dayOf = (r: typeof rows[number]): string => toDay(r.departedAt ?? r.windowStart)
@@ -114,14 +121,12 @@ export async function forecastDemand(opts: {
           cur.rows.push(r); groups.set(r.clientId, cur)
         }
       } else {
-        const driverList = await db.select({ id: drivers.id, base: drivers.base }).from(drivers)
-        const baseById = new Map(driverList.map((d) => [d.id, d.base]))
+        // Região = origin da trip — driver.base via driverId é NULL nas fontes vivas.
         for (const r of rows) {
-          if (!r.driverId) continue
-          const base = baseById.get(r.driverId)
-          if (!base) continue
-          const cur = groups.get(base) ?? { label: base, rows: [] }
-          cur.rows.push(r); groups.set(base, cur)
+          const key = normRegion(r.origin ?? '')
+          if (!key) continue
+          const cur = groups.get(key) ?? { label: r.origin!.trim(), rows: [] }
+          cur.rows.push(r); groups.set(key, cur)
         }
       }
       return groups
@@ -148,8 +153,9 @@ export async function forecastDemand(opts: {
 
 /**
  * Project regions most at risk in the next 7 days. Combines projected
- * demand with current at-risk share, so a busy base that's already running
- * hot ranks higher than a quiet base.
+ * demand with current at-risk share, so a busy region that's already running
+ * hot ranks higher than a quiet one. Região = trips.origin (chave presente nas
+ * fontes vivas — driver.base via driverId é NULL nas trips painel/cargas).
  */
 export async function forecastRegions(): Promise<RegionRisk[]> {
   const lookback = 30
@@ -157,29 +163,30 @@ export async function forecastRegions(): Promise<RegionRisk[]> {
   cutoff.setDate(cutoff.getDate() - lookback)
   cutoff.setHours(0, 0, 0, 0)
 
-  const tripRows = await db.select().from(trips).where(gte(trips.windowStart, cutoff))
-  const driverList = await db.select({ id: drivers.id, base: drivers.base }).from(drivers)
-  const baseById = new Map(driverList.map((d) => [d.id, d.base]))
+  const tripRows = await db.select().from(trips).where(and(
+    gte(trips.windowStart, cutoff),
+    sql`${trips.source} IN ('painel', 'cargas')`,
+  ))
 
-  const byBase = new Map<string, { rows: typeof tripRows; atRiskNow: number; total: number }>()
+  const byRegion = new Map<string, { label: string; rows: typeof tripRows; atRiskNow: number; total: number }>()
   for (const t of tripRows) {
-    if (!t.driverId) continue
-    const base = baseById.get(t.driverId)
-    if (!base) continue
-    const cur = byBase.get(base) ?? { rows: [], atRiskNow: 0, total: 0 }
+    const key = normRegion(t.origin ?? '')
+    if (!key) continue
+    const cur = byRegion.get(key) ?? { label: t.origin!.trim(), rows: [], atRiskNow: 0, total: 0 }
     cur.rows.push(t)
     if (t.status === 'in_progress' || t.status === 'planned' || t.status === 'delayed') {
       cur.total++
-      if (t.riskLevel === 'alto' || t.riskLevel === 'critico') cur.atRiskNow++
+      // riskLevel só existe onde o risk engine roda; nas fontes vivas o sinal é o slaStatus.
+      if (t.riskLevel === 'alto' || t.riskLevel === 'critico' || t.slaStatus === 'em_risco' || t.slaStatus === 'atrasado') cur.atRiskNow++
     }
-    byBase.set(base, cur)
+    byRegion.set(key, cur)
   }
 
   const todayIso  = toDay(new Date())
   const cutoffIso = toDay(cutoff)
 
   const out: RegionRisk[] = []
-  for (const [base, g] of byBase) {
+  for (const [key, g] of byRegion) {
     const byDay = new Map<string, number>()
     for (const r of g.rows) {
       const day = toDay(r.departedAt ?? r.windowStart)
@@ -192,8 +199,8 @@ export async function forecastRegions(): Promise<RegionRisk[]> {
     // Composite score: 60% demand intensity (normalized to max-100), 40% current risk pct
     const score = Math.min(100, Math.round(0.6 * Math.min(100, projected * 10) + 0.4 * currentRiskShare))
     out.push({
-      key:               base,
-      label:             base,
+      key,
+      label:             g.label,
       trips7d:           projected,
       riskScore:         score,
       currentRiskShare,
@@ -209,11 +216,15 @@ export async function forecastRegions(): Promise<RegionRisk[]> {
  */
 export async function forecastDelayRisk(): Promise<DelayRiskForecast> {
   const sevenAgo = new Date(); sevenAgo.setDate(sevenAgo.getDate() - 7); sevenAgo.setHours(0,0,0,0)
-  const completed = await db.query.trips.findMany({
-    where: and(gte(trips.windowEnd, sevenAgo), isNotNull(trips.arrivedAt)),
-  })
-  const total      = completed.length
-  const breaches   = completed.filter((t) => t.arrivedAt && t.windowEnd && t.arrivedAt > t.windowEnd).length
+  // Quebra canônica (sla_status, igual Dashboard/BI — Onda E / D-14): atrasado/(no_prazo+atrasado)
+  // sobre as fontes vivas. Antes usava arrivedAt>windowEnd — divergia (9% vs 68%) e arrivedAt é NULL nas trips reais.
+  const aferidas = await db.select({ slaStatus: trips.slaStatus }).from(trips).where(and(
+    gte(trips.windowEnd, sevenAgo),
+    sql`${trips.source} IN ('painel', 'cargas')`,
+    inArray(trips.slaStatus, ['no_prazo', 'atrasado']),
+  ))
+  const total      = aferidas.length
+  const breaches   = aferidas.filter((t) => t.slaStatus === 'atrasado').length
   const breachPct  = total > 0 ? Math.round((breaches / total) * 100) : 0
 
   // Forecast next-24h demand using demand engine

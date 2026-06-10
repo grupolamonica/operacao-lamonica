@@ -48,7 +48,7 @@ export function PrevisaoPage() {
         <ForecastCard
           title="Regiões críticas — 7d"
           value={regions?.filter(r => r.riskScore >= 60).length ?? 0}
-          subtitle={regions ? `de ${regions.length} bases monitoradas` : '—'}
+          subtitle={regions ? `de ${regions.length} regiões monitoradas` : '—'}
           tone="text-info"
           icon={MapPin}
           loading={regionsLoading}
