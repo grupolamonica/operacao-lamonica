@@ -119,7 +119,51 @@ async function distancias(token: string, vei: number | string, via: number | str
   return out
 }
 
-export interface MonitoringResult { fetched: number; upserted: number; positions: number; semViagem: number }
+// Pares from/to do translate() p/ strip de acentos no Postgres (mesma normalização do normalizeMotorista).
+const ACC = "'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇç','AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCc'"
+
+/**
+ * Reconcilia o RASTREAMENTO ao vivo do Angellira (viagens code-numérico, source
+ * nulo, invisíveis nas telas) com as CARGAS da aba SHOPEE (source='cargas',
+ * keyed por LH, exibidas em Viagens) — o que o usuário chamou de "sincronizar as
+ * cargas rastreadas no Angellira com as cargas da aba SHOPEE".
+ *
+ * O Angellira NÃO expõe o LH; a chave de ligação é o MOTORISTA (um motorista
+ * dirige 1 viagem por vez — validado: 21/26 ativas casam por motorista+cavalo).
+ * Copia progresso/distância/ETA/SLA/atraso ao vivo p/ a carga SHOPEE, que era
+ * estática (0% progresso). UPDATE set-based por nome normalizado (translate/upper).
+ */
+async function reconcileTrackingToCargas(): Promise<number> {
+  const res = await db.execute(sql`
+    UPDATE trips c SET
+      progress_pct       = a.progress_pct,
+      distance_total     = COALESCE(a.distance_total, c.distance_total),
+      distance_done      = COALESCE(a.distance_done, c.distance_done),
+      eta                = COALESCE(a.eta, c.eta),
+      sla_status         = a.sla_status,
+      adiantamento_horas = a.adiantamento_horas,
+      departed_at        = COALESCE(a.departed_at, c.departed_at),
+      updated_at         = now()
+    FROM (
+      SELECT DISTINCT ON (mot) mot, progress_pct, distance_total, distance_done, eta, sla_status, adiantamento_horas, departed_at
+      FROM (
+        SELECT upper(translate(trim(sheet_motorista), ${sql.raw(ACC)})) AS mot,
+               progress_pct, distance_total, distance_done, eta, sla_status, adiantamento_horas, departed_at, updated_at
+        FROM trips
+        WHERE code ~ '^[0-9]+$' AND status = 'in_progress'
+          AND sheet_motorista IS NOT NULL AND trim(sheet_motorista) <> ''
+      ) t
+      ORDER BY mot, updated_at DESC
+    ) a
+    WHERE c.source = 'cargas'
+      AND c.sheet_motorista IS NOT NULL
+      AND upper(translate(trim(c.sheet_motorista), ${sql.raw(ACC)})) = a.mot
+      AND (c.cargas_status IS NULL OR c.cargas_status NOT IN ('DESCARREGADO', 'CANCELADO', 'NO SHOW'))
+  `)
+  return (res as any)?.rowCount ?? (res as any)?.count ?? 0
+}
+
+export interface MonitoringResult { fetched: number; upserted: number; positions: number; semViagem: number; cargasReconciled?: number }
 
 export async function syncMonitoring(): Promise<MonitoringResult> {
   const syncStart = new Date()
@@ -260,6 +304,9 @@ export async function syncMonitoring(): Promise<MonitoringResult> {
   `)
   const closedCount = (closed as any)?.rowCount ?? (closed as any)?.count ?? 0
 
-  logger.info({ fetched: lista.length, upserted, positions, semViagem, closedStale: closedCount }, '[angellira-monitoring] sync ok')
-  return { fetched: lista.length, upserted, positions, semViagem }
+  // Sincroniza o rastreamento ao vivo → cargas da aba SHOPEE (por motorista).
+  const cargasReconciled = await reconcileTrackingToCargas()
+
+  logger.info({ fetched: lista.length, upserted, positions, semViagem, closedStale: closedCount, cargasReconciled }, '[angellira-monitoring] sync ok')
+  return { fetched: lista.length, upserted, positions, semViagem, cargasReconciled }
 }
