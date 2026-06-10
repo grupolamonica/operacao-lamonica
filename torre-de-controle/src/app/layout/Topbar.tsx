@@ -1,7 +1,9 @@
-import { Bell, Sun, Moon, LogOut } from 'lucide-react'
+import { Bell, Sun, Moon, LogOut, RefreshCw } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { useThemeStore } from '@/stores/useThemeStore'
 import { useAuthStore } from '@/stores/useAuthStore'
+import { useSyncAll, useSyncStatus } from '@/hooks/useSync'
+import { formatRelative } from '@/lib/formatters'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 const roleLabels: Record<string, string> = {
@@ -31,11 +33,18 @@ export function Topbar() {
   const navigate = useNavigate()
   const user = useAuthStore(s => s.user)
   const logout = useAuthStore(s => s.logout)
+  const syncAll = useSyncAll()
+  const { data: syncStatus } = useSyncStatus()
 
   async function handleLogout() {
     await logout()
     navigate('/login')
   }
+  const sincronizando = syncAll.isPending || syncStatus.running
+  const ultimaSync = syncStatus.last?.finishedAt ? formatRelative(syncStatus.last.finishedAt) : null
+  const syncTitle = sincronizando
+    ? 'Sincronizando planilha + Cargas + Angellira… (~2 min)'
+    : ultimaSync ? `Sincronizar agora · última: ${ultimaSync}` : 'Sincronizar agora (planilha + Cargas + Angellira)'
   const currentPage = routeNames[pathname] ?? 'Dashboard'
   const nome = user?.name ?? user?.email ?? 'Operador'
   const papel = user?.role ? (roleLabels[user.role] ?? user.role) : 'Torre de Controle'
@@ -52,6 +61,23 @@ export function Topbar() {
 
       {/* Right: actions */}
       <div className="flex items-center gap-3">
+        {/* Sincronizar agora — planilha do painel + Cargas + Angellira → Torre */}
+        <button
+          onClick={() => { if (!sincronizando) syncAll.mutate() }}
+          disabled={sincronizando}
+          className="flex items-center gap-1.5 p-2 rounded-lg transition-colors disabled:opacity-70"
+          style={{ color: 'white' }}
+          aria-label="Sincronizar agora"
+          title={syncTitle}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+        >
+          <RefreshCw className={`h-4 w-4 ${sincronizando ? 'animate-spin' : ''}`} />
+          {ultimaSync && !sincronizando && (
+            <span className="text-[10px] text-white/60 hidden lg:inline">{ultimaSync}</span>
+          )}
+        </button>
+
         {/* Notification bell */}
         <button
           className="relative p-2 rounded-lg transition-colors"
