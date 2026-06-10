@@ -56,9 +56,13 @@ export function AlertItem({ alert, onAssume, onCall, onClick, selected, variant 
         {alert.subtitle && <p className="text-xs text-muted-foreground truncate">{alert.subtitle}</p>}
         <div className="flex items-center gap-2 mt-2">
           <DriverAvatar name={alert.driverName} photoUrl={alert.driverPhoto} size="sm" />
-          <span className="text-xs text-foreground truncate">{alert.driverName}</span>
-          <span className="text-xs text-muted-foreground">·</span>
-          <span className="text-xs font-mono text-muted-foreground">{alert.plate}</span>
+          <span className="text-xs text-foreground truncate">{alert.driverName || '—'}</span>
+          {alert.plate && (
+            <>
+              <span className="text-xs text-muted-foreground">·</span>
+              <span className="text-xs font-mono text-muted-foreground">{alert.plate}</span>
+            </>
+          )}
           {alert.clientName && (
             <>
               <span className="text-xs text-muted-foreground">·</span>

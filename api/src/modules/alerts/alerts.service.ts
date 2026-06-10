@@ -6,6 +6,9 @@ import { trips } from '../../db/schema/trips'
 import { clients } from '../../db/schema/clients'
 import { routes } from '../../db/schema/routes'
 
+// Pares from/to do translate() p/ strip de acentos no Postgres (mesma normalização do normalizeMotorista).
+const ACC = "'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇç','AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCc'"
+
 export type AlertFilters = {
   severity?:   'critico'|'medio'|'baixo'
   status?:     'aberto'|'em_analise'|'em_tratativa'|'resolvido'|'encerrado'
@@ -84,6 +87,35 @@ export async function listAlerts(f: AlertFilters) {
     : []
   const tripMap = new Map(tripRows.map(t => [t.id, t]))
 
+  // Phase 14 — LH p/ trips das fontes vivas sem sheet_lh: (a) gêmeo do painel (PNLA/PNLC-<cod>),
+  // (b) carga ativa do mesmo motorista (trips source='cargas' por nome normalizado; motorista dirige
+  // 1 viagem por vez). Read-time porque uq_trips_sheet_lh impede persistir o mesmo LH em 2 trips.
+  const lhByTripId = new Map<string, string>()
+  const missingLh = tripRows.filter(t => !t.sheetLh).map(t => t.id)
+  if (missingLh.length) {
+    const found = (await db.execute(sql`
+      SELECT t.id, COALESCE(p.sheet_lh, cg.sheet_lh) AS lh
+      FROM trips t
+      LEFT JOIN LATERAL (
+        SELECT sheet_lh FROM trips
+        WHERE source = 'painel' AND sheet_lh IS NOT NULL
+          AND (code = 'PNLA-' || t.code OR code = 'PNLC-' || t.code)
+        LIMIT 1
+      ) p ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT c.sheet_lh FROM trips c
+        WHERE c.source = 'cargas' AND c.sheet_lh IS NOT NULL
+          AND t.status = 'in_progress' AND t.sheet_motorista IS NOT NULL
+          AND upper(translate(trim(c.sheet_motorista), ${sql.raw(ACC)})) = upper(translate(trim(t.sheet_motorista), ${sql.raw(ACC)}))
+          AND (c.cargas_status IS NULL OR c.cargas_status NOT IN ('DESCARREGADO', 'CANCELADO', 'NO SHOW'))
+        ORDER BY c.updated_at DESC
+        LIMIT 1
+      ) cg ON TRUE
+      WHERE t.id IN (${sql.join(missingLh.map(id => sql`${id}`), sql`, `)})
+    `)) as unknown as Array<{ id: string; lh: string | null }>
+    for (const r of found) if (r.lh) lhByTripId.set(r.id, r.lh)
+  }
+
   return rows.map(r => {
     const trip = r.tripId ? tripMap.get(r.tripId) : undefined
     return {
@@ -94,11 +126,12 @@ export async function listAlerts(f: AlertFilters) {
       priority:     r.priority ?? 'media',
       tripId:       r.tripId ?? '',
       tripCode:     r.trip?.code ?? '',
-      lh:           r.trip?.sheetLh ?? '',
+      lh:           r.trip?.sheetLh ?? (r.tripId ? lhByTripId.get(r.tripId) : undefined) ?? '',
       driverId:     r.driverId ?? '',
-      driverName:   r.driver?.name ?? '',
+      // Fontes vivas não populam alert.driver_id — cai p/ o nome da planilha (sheet_motorista).
+      driverName:   r.driver?.name ?? trip?.sheetMotorista ?? '',
       driverPhoto:  r.driver?.photoUrl ?? undefined,
-      plate:        r.vehicle?.plate ?? '',
+      plate:        r.vehicle?.plate ?? (r.painelMeta as { placa?: string } | null)?.placa ?? '',
       clientName:   trip?.client?.name ?? '',
       routeCode:    trip?.route?.code ?? '',
       title:        r.title,

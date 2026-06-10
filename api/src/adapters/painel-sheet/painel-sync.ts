@@ -102,6 +102,18 @@ export async function syncPainel(): Promise<PainelSyncResult> {
       const m2 = lh.match(LH_RE); if (m2) codToLh.set(cod, m2[1].toUpperCase())
     }
   }
+  // HistoricoConcluidas também traz o LH direto (col "numViagem (Log)") — cobre onde o
+  // LogObservacoes não tem linha (entradas recentes vêm sem LH lá).
+  {
+    const h = concl[0] ?? []; const cf = colFinder(h)
+    const iCod = cf('Cód. Viagem'); const iLh = cf('numViagem (Log)', 'numViagem', 'num Viagem')
+    if (iCod >= 0 && iLh >= 0) {
+      for (const r of concl.slice(1)) {
+        const cod = String(r[iCod] ?? '').trim(); if (!cod || codToLh.has(cod)) continue
+        const m = String(r[iLh] ?? '').match(LH_RE); if (m) codToLh.set(cod, m[1].toUpperCase())
+      }
+    }
+  }
 
   const recs: TripRow[] = []
   let noPrazo = 0, atrasadas = 0
