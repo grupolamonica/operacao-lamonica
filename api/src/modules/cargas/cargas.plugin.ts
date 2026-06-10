@@ -12,7 +12,7 @@
 
 import { Elysia, t } from 'elysia'
 import { authGuard } from '../../lib/rbac'
-import { getOpenLoads, getLoadCandidates } from './cargas.service'
+import { getOpenLoads, getLoadCandidates, getAvailableDrivers } from './cargas.service'
 import { allocateLoad, isCargasWriteEnabled } from './cargas.write'
 import { syncCargas } from './cargas.sync'
 
@@ -40,6 +40,12 @@ export const cargasPlugin = new Elysia({ name: 'cargas' })
         detail: {
           tags: ['cargas'],
           summary: 'Candidatos (leads QUEUED) de uma carga, com nome cruzado por CPF',
+        },
+      })
+      .get('/available-drivers', () => getAvailableDrivers(), {
+        detail: {
+          tags: ['cargas'],
+          summary: 'Motoristas disponíveis (sem trip in_progress, fora da aba Bloqueados) + último cavalo/carreta',
         },
       })
       .post(

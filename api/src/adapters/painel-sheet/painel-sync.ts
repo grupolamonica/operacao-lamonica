@@ -31,7 +31,7 @@ function uuid5(name: string): string {
   return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20, 32)}`
 }
 
-function parseCsv(text: string): string[][] {
+export function parseCsv(text: string): string[][] {
   const rows: string[][] = []
   let row: string[] = [], field = '', q = false
   for (let i = 0; i < text.length; i++) {
@@ -60,13 +60,13 @@ function isoDt(v: unknown): string | null {
 }
 function dateBR(v: unknown): Date | null { const i = isoDt(v); return i ? new Date(i) : null }
 
-async function fetchSheet(name: string): Promise<string[][]> {
+export async function fetchSheet(name: string): Promise<string[][]> {
   const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(name)}`
   const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
   if (!res.ok) throw new Error(`painel sheet ${name}: ${res.status}`)
   return parseCsv(await res.text())
 }
-function colFinder(headers: string[]) {
+export function colFinder(headers: string[]) {
   const H = headers.map(norm)
   return (...names: string[]) => { for (const nm of names) { const i = H.indexOf(norm(nm)); if (i >= 0) return i } return -1 }
 }

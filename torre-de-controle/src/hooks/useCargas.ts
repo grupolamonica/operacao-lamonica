@@ -65,6 +65,33 @@ export function useLoadCandidates(loadId: string | null) {
   return { data: q.data ?? [], isLoading: q.isLoading }
 }
 
+export interface AvailableDriver {
+  name: string
+  cpf: string
+  phone: string | null
+  vinculo: string | null
+  horsePlate: string | null
+  trailerPlate: string | null
+  vehicleType: string | null
+  disponivel: true
+  fonte: 'torre' | 'planilha'
+}
+
+/** Motoristas disponíveis p/ alocação avulsa (sem trip in_progress, fora dos Bloqueados). */
+export function useAvailableDrivers(enabled = true) {
+  const q = useQuery({
+    queryKey: ['cargas', 'available-drivers'],
+    enabled,
+    staleTime: 60_000,
+    queryFn: async (): Promise<AvailableDriver[]> => {
+      const { data, error } = await (api.api as any).cargas['available-drivers'].get()
+      if (error) throw new Error('Falha ao carregar motoristas disponíveis')
+      return (data ?? []) as AvailableDriver[]
+    },
+  })
+  return { data: q.data ?? [], isLoading: q.isLoading }
+}
+
 export function useAllocateLoad() {
   const qc = useQueryClient()
   return useMutation({

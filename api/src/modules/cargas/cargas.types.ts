@@ -82,6 +82,26 @@ export interface LoadCandidate {
   status: string
 }
 
+/**
+ * Motorista disponível para alocação avulsa (BUILD C). Disponível = sem trip
+ * in_progress na Torre E fora da aba Bloqueados da planilha do painel. Sempre
+ * com CPF (sem CPF o direct-allocation do Cargas rejeita).
+ */
+export interface AvailableDriver {
+  name: string
+  cpf: string
+  phone: string | null
+  /** FUN | AGR (driver_kind da Torre) ou Vinculo da aba DISPONIBILIDADE. */
+  vinculo: string | null
+  horsePlate: string | null
+  trailerPlate: string | null
+  /** Perfil canônico do Cargas (TRUCK|CARRETA|CARRETA_EXPRESSA|BITREM) inferido do VEICULO da planilha. */
+  vehicleType: string | null
+  disponivel: true
+  /** 'planilha' quando o cavalo/carreta veio da aba DISPONIBILIDADE (curada à mão); senão 'torre'. */
+  fonte: 'torre' | 'planilha'
+}
+
 /** Payload de alocação (write-back no Cargas). Um dos dois caminhos: */
 export interface AllocateInput {
   /** Caminho (a): aprovar um lead QUEUED existente. */
