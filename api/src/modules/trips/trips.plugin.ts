@@ -2,6 +2,7 @@ import { Elysia, t } from 'elysia'
 import { authGuard } from '../../lib/rbac'
 import { listTrips, getTripById, getTripStats, getTripRouteOptions, addTripNote } from './trips.service'
 import { getTripTimeline } from './timeline.service'
+import { getTripDossie } from './dossie.service'
 import { getTripRisk, recalcTripRisk } from '../risk/risk.service'
 
 const tripStatus = t.Union([t.Literal('planned'), t.Literal('in_progress'), t.Literal('completed'), t.Literal('delayed'), t.Literal('cancelled')])
@@ -56,6 +57,16 @@ export const tripsPlugin = new Elysia({ name: 'trips' })
       }, {
         params: t.Object({ id: t.String({ format: 'uuid' }) }),
         detail: { tags: ['trips'], summary: 'Unified timeline (events + alerts + treatments)' },
+      })
+      // Phase 14 — dossiê COMPLETO cruzado (torre + ranking + cargas): motorista (vigência
+      // Angellira), cavalo e carreta (marca/modelo/chassi/renavam/vigência), por placa atual.
+      .get('/:id/dossie', async ({ params, set }) => {
+        const dossie = await getTripDossie(params.id)
+        if (!dossie) { set.status = 404; return { error: 'Trip not found' } }
+        return dossie
+      }, {
+        params: t.Object({ id: t.String({ format: 'uuid' }) }),
+        detail: { tags: ['trips'], summary: 'Dossiê cruzado da viagem (motorista + cavalo + carreta, vigências Angellira)' },
       })
       .get('/:id/risk', async ({ params, set }) => {
         // Try persisted snapshot first; fall back to live recompute when missing

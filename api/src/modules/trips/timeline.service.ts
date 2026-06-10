@@ -1,4 +1,4 @@
-import { eq, asc } from 'drizzle-orm'
+import { asc, inArray, sql } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { tripEvents } from '../../db/schema/trip-events'
 import { alerts } from '../../db/schema/alerts'
@@ -66,16 +66,34 @@ const TREATMENT_LABELS: Record<string, string> = {
   resolveu:             'Resolvido pelo operador',
 }
 
+/** ids das representações da MESMA viagem (mesmo LH efetivo) — p/ juntar a timeline. */
+async function siblingTripIds(tripId: string): Promise<string[]> {
+  const rows = (await db.execute(sql`
+    SELECT id FROM trips
+    WHERE id = ${tripId}
+       OR (coalesce(upper(sheet_lh), upper(linked_lh)) IS NOT NULL
+           AND coalesce(upper(sheet_lh), upper(linked_lh)) = (
+             SELECT coalesce(upper(sheet_lh), upper(linked_lh)) FROM trips WHERE id = ${tripId}
+           ))
+  `)) as unknown as Array<{ id: string }>
+  const ids = rows.map((r) => r.id)
+  return ids.length ? ids : [tripId]
+}
+
 /**
  * Aggregate trip_events + alerts + treatments into a single ordered timeline.
  * Read-time merge keeps writers simple (one table per concern) while giving the
  * UI a single chronological feed.
  */
 export async function getTripTimeline(tripId: string): Promise<TimelineItem[]> {
+  // A viagem fundida (carga canônica) e suas representações (painel/monitoramento) compartilham
+  // o LH — os eventos (paradas) podem estar em QUALQUER uma. Junta os ids irmãos por LH p/ a
+  // linha do tempo da carga não vir vazia (D-14).
+  const ids = await siblingTripIds(tripId)
   const [events, tripAlerts, tripTreatments] = await Promise.all([
-    db.select().from(tripEvents).where(eq(tripEvents.tripId, tripId)).orderBy(asc(tripEvents.occurredAt)),
-    db.select().from(alerts).where(eq(alerts.tripId, tripId)).orderBy(asc(alerts.occurredAt)),
-    db.select().from(treatments).where(eq(treatments.tripId, tripId)).orderBy(asc(treatments.createdAt)),
+    db.select().from(tripEvents).where(inArray(tripEvents.tripId, ids)).orderBy(asc(tripEvents.occurredAt)),
+    db.select().from(alerts).where(inArray(alerts.tripId, ids)).orderBy(asc(alerts.occurredAt)),
+    db.select().from(treatments).where(inArray(treatments.tripId, ids)).orderBy(asc(treatments.createdAt)),
   ])
 
   const items: TimelineItem[] = []

@@ -15,6 +15,7 @@ import { useTripTimeline } from '@/hooks/useTripTimeline'
 import { useTripRisk } from '@/hooks/useTripRisk'
 import { useDriverDossie, useDriverDossieByName } from '@/hooks/useDrivers'
 import { useDriverTrack } from '@/hooks/useDriverTrack'
+import { useTripDossie, type VeiculoDossie } from '@/hooks/useTripDossie'
 import { formatKm, formatDate } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 import type { Trip } from '@/data/types'
@@ -33,6 +34,17 @@ export function TripDetailPanel({ trip, onClose }: Props) {
   const dossieById = useDriverDossie(trip.driverId ?? null)
   const dossieByName = useDriverDossieByName(trip.driverId ? null : (trip.driverName || null))
   const dossie = dossieById.data ?? dossieByName.data
+  // Phase 14 — dossiê cruzado (torre+ranking+cargas): vigências Angellira + detalhes de cavalo/carreta.
+  const { data: cross } = useTripDossie(trip.id)
+  // Datas de vigência são date-only (chegam como string 'YYYY-MM-DD' ou Date) —
+  // formata em UTC p/ não deslocar -1 dia pelo fuso (-03:00).
+  const fmtDia = (s: string | Date | null | undefined) => {
+    if (!s) return ''
+    const d = new Date(s)
+    if (isNaN(d.getTime())) return String(s)
+    const p = (n: number) => String(n).padStart(2, '0')
+    return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`
+  }
   const qc = useQueryClient()
   const remainingKm = Math.max(0, trip.distanceTotal - trip.distanceDone)
 
@@ -134,6 +146,54 @@ export function TripDetailPanel({ trip, onClose }: Props) {
           <Metric label="Meta KM/Dia" value={trip.metaKmDia ?? '—'} />
           <Metric label="Condução" value={(trip.conducaoRegime ?? 'intensivo') === 'intensivo' ? 'Intensivo' : 'Regular'} />
         </div>
+
+        {/* Phase 14 — Motorista & Veículos cruzados (torre + ranking + cargas): vigências Angellira + detalhes */}
+        {cross && (cross.motorista || cross.cavalo || cross.carreta) && (
+          <div className="rounded-md border border-border bg-card p-2.5 space-y-2.5">
+            {cross.motorista && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Motorista — {cross.motorista.nome}</p>
+                  {cross.motorista.rankPosicao != null && (
+                    <span className="text-[10px] text-muted-foreground">Rank #{cross.motorista.rankPosicao} · {cross.motorista.rankPontuacao ?? 0} pts</span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {cross.motorista.angellira && <DocTag tone={/conforme/i.test(cross.motorista.angellira) ? 'ok' : 'warn'}>Angellira: {cross.motorista.angellira}{cross.motorista.vigenteAte ? ` · vigente até ${fmtDia(cross.motorista.vigenteAte)}` : ''}</DocTag>}
+                  {cross.motorista.vinculo && <DocTag tone="muted">{cross.motorista.vinculo === 'FUN' ? 'Funcionário' : cross.motorista.vinculo === 'AGR' ? 'Agregado' : cross.motorista.vinculo}</DocTag>}
+                </div>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                  {cross.motorista.cpf && <KV k="CPF" v={maskCpf(cross.motorista.cpf)} />}
+                  {cross.motorista.cnh && <KV k="CNH" v={`${cross.motorista.cnhCategoria ?? ''}${cross.motorista.cnhValidade ? ` · val ${fmtDia(cross.motorista.cnhValidade)}` : ''}`} />}
+                  {cross.motorista.telefone && <KV k="Telefone" v={cross.motorista.telefone} />}
+                  {cross.motorista.cidadeUf && <KV k="Cidade/UF" v={cross.motorista.cidadeUf} />}
+                </div>
+              </div>
+            )}
+            {(cross.cavalo || cross.carreta) && (
+              <div className="space-y-1.5 border-t border-border pt-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Veículos</p>
+                {([cross.cavalo, cross.carreta].filter(Boolean) as VeiculoDossie[]).map((v) => (
+                  <div key={v.papel} className="space-y-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[11px] font-medium text-foreground capitalize">{v.papel}: {v.placa ?? '—'}</span>
+                      {v.marcaModelo && <span className="text-[11px] text-muted-foreground">{v.marcaModelo}</span>}
+                      {v.angellira && <DocTag tone={/conforme|found/i.test(v.angellira) ? 'ok' : 'warn'}>Angellira: {v.angellira}{v.vigenteAte ? ` · vigente até ${fmtDia(v.vigenteAte)}` : ''}</DocTag>}
+                    </div>
+                    {(v.chassi || v.renavam || v.anoFab) && (
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground">
+                        {v.chassi && <span>Chassi: <span className="text-foreground font-mono">{v.chassi}</span></span>}
+                        {v.renavam && <span>Renavam: <span className="text-foreground font-mono">{v.renavam}</span></span>}
+                        {v.anoFab && <span>Ano: <span className="text-foreground">{v.anoFab}{v.anoModelo && v.anoModelo !== v.anoFab ? `/${v.anoModelo}` : ''}</span></span>}
+                        {v.antt && <span>ANTT: <span className="text-foreground">{v.antt}</span></span>}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Phase 12 — dossiê do motorista cruzado (identidade, documentos, última localização, frota) */}
         {dossie && (
