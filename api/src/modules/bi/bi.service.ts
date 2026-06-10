@@ -19,6 +19,17 @@ function periodCutoff(p: BiPeriod): Date {
   return d
 }
 
+// Atraso em minutos — adiantamento_horas: + = ATRASADO (adapter grava -calcularAdiantamentoHoras,
+// ver painel-sync.ts:131). Fallback p/ arrivedAt - windowEnd quando NULL (histórico importado).
+function delayMinutes(t: { adiantamentoHoras: string | null; arrivedAt: Date | null; windowEnd: Date }): number | null {
+  if (t.adiantamentoHoras != null) return Math.max(0, Number(t.adiantamentoHoras) * 60)
+  if (t.arrivedAt) return Math.max(0, (t.arrivedAt.getTime() - t.windowEnd.getTime()) / 60_000)
+  return null
+}
+
+// Normaliza nome (acentos/caixa) — espelho JS do upper(translate(...)) de getDriverDossieByName.
+const normName = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase()
+
 export interface BiKpis {
   period: BiPeriod
   deliveries: { total: number; completed: number; onTimePct: number }
@@ -31,7 +42,8 @@ export interface BiKpis {
 export async function getExecutiveKpis(period: BiPeriod, clientId?: string): Promise<BiKpis> {
   const cutoff = periodCutoff(period)
 
-  const tripConditions = [gte(trips.windowStart, cutoff)]
+  // Universo canônico = painel + cargas (igual Viagens, trips.service.ts) — exclui seed/histórico (source nulo).
+  const tripConditions = [gte(trips.windowStart, cutoff), sql`${trips.source} IN ('painel', 'cargas')`]
   if (clientId) tripConditions.push(eq(trips.clientId, clientId))
   const tripsRows = await db.select().from(trips).where(and(...tripConditions))
 
@@ -67,12 +79,10 @@ export async function getExecutiveKpis(period: BiPeriod, clientId?: string): Pro
   const openAlerts = await db.select().from(alerts).where(and(...openConds))
   const criticalAlerts = openAlerts.filter((a) => a.severity === 'critico')
 
-  // Delay average — only completed trips with arrival data
-  const delays = completed
-    .filter((t) => t.arrivedAt && t.windowEnd)
-    .map((t) => (t.arrivedAt!.getTime() - t.windowEnd.getTime()) / 60_000)
+  // Atraso médio — adiantamento_horas (+ = atrasado, convenção do painel); fallback arrivedAt p/ histórico.
+  const delays = tripsRows.map(delayMinutes).filter((m): m is number => m != null)
   const delayAvgMin = delays.length > 0
-    ? Math.round(delays.reduce((s, x) => s + Math.max(0, x), 0) / delays.length)
+    ? Math.round(delays.reduce((s, x) => s + x, 0) / delays.length)
     : 0
 
   return {
@@ -98,7 +108,8 @@ export interface BiBreakdownRow {
 
 export async function getBreakdown(dimension: BiDimension, period: BiPeriod, clientId?: string): Promise<BiBreakdownRow[]> {
   const cutoff = periodCutoff(period)
-  const conditions = [gte(trips.windowStart, cutoff)]
+  // Universo canônico = painel + cargas (igual Viagens, trips.service.ts) — exclui seed/histórico (source nulo).
+  const conditions = [gte(trips.windowStart, cutoff), sql`${trips.source} IN ('painel', 'cargas')`]
   if (clientId) conditions.push(eq(trips.clientId, clientId))
 
   // Pre-fetch entity names for the active dimension
@@ -121,30 +132,43 @@ export async function getBreakdown(dimension: BiDimension, period: BiPeriod, cli
     alertCountByTrip.set(a.tripId, (alertCountByTrip.get(a.tripId) ?? 0) + 1)
   }
 
+  // Trips do painel/cargas não têm clientId/driverId/routeId — fallback p/ colunas sheet_*/origin/destination
+  // e bucket '(sem vínculo)' onde não há chave, p/ a soma FECHAR com os KPIs da mesma tela.
   const groups = new Map<string, { label: string; trips: typeof tripsRows }>()
   for (const t of tripsRows) {
     let key: string | null = null
     let label = '—'
     if (dimension === 'client') {
-      if (!t.clientId) continue
-      key = t.clientId
-      label = clientNameById.get(t.clientId) ?? '—'
+      key = t.clientId ?? '(sem cliente)'
+      label = t.clientId ? (clientNameById.get(t.clientId) ?? '—') : '(sem cliente)'
     } else if (dimension === 'driver') {
-      if (!t.driverId) continue
-      key = t.driverId
-      label = driverInfoById.get(t.driverId)?.name ?? '—'
+      if (t.driverId) {
+        key = t.driverId
+        label = driverInfoById.get(t.driverId)?.name ?? '—'
+      } else if (t.sheetMotorista) {
+        key = 'sheet:' + normName(t.sheetMotorista)
+        label = t.sheetMotorista.trim()
+      } else {
+        key = '(sem vínculo)'
+        label = '(sem vínculo)'
+      }
     } else if (dimension === 'route') {
-      if (!t.routeId) continue
-      key = t.routeId
-      const r = routeInfoById.get(t.routeId)
-      label = r ? `${r.code} · ${r.name ?? ''}`.trim() : '—'
+      if (t.routeId) {
+        key = t.routeId
+        const r = routeInfoById.get(t.routeId)
+        label = r ? `${r.code} · ${r.name ?? ''}`.trim() : '—'
+      } else if (t.origin || t.destination) {
+        key = `${t.origin ?? '—'} → ${t.destination ?? '—'}`
+        label = key
+      } else {
+        key = '(sem vínculo)'
+        label = '(sem vínculo)'
+      }
     } else if (dimension === 'region') {
       // Region inferred from driver.base (CD ...) as a stable proxy
-      if (!t.driverId) continue
-      const d = driverInfoById.get(t.driverId)
-      if (!d?.base) continue
-      key = d.base
-      label = d.base
+      const base = t.driverId ? driverInfoById.get(t.driverId)?.base : null
+      key = base ?? '(sem vínculo)'
+      label = key
     }
     if (!key) continue
     const cur = groups.get(key)
@@ -161,9 +185,8 @@ export async function getBreakdown(dimension: BiDimension, period: BiPeriod, cli
     const aferidas    = noPrazo + atrasadas
     const slaPct      = aferidas > 0 ? Math.round((noPrazo / aferidas) * 100) : 100
     const alertsCount = g.trips.reduce((acc, t) => acc + (alertCountByTrip.get(t.id) ?? 0), 0)
-    const delays      = completed
-      .filter((t) => t.arrivedAt && t.windowEnd)
-      .map((t) => Math.max(0, (t.arrivedAt!.getTime() - t.windowEnd.getTime()) / 60_000))
+    // Atraso médio — adiantamento_horas (+ = atrasado); fallback arrivedAt p/ histórico.
+    const delays      = g.trips.map(delayMinutes).filter((m): m is number => m != null)
     const delayAvgMin = delays.length > 0 ? Math.round(delays.reduce((s, x) => s + x, 0) / delays.length) : 0
     rows.push({
       key,
@@ -197,7 +220,8 @@ export async function getTrendSeries(metric: BiMetric, period: BiPeriod, clientI
   }
 
   // deliveries / sla_pct / delay_avg are derived from trips
-  const conditions = [gte(trips.windowStart, cutoff)]
+  // Universo canônico = painel + cargas (igual Viagens, trips.service.ts) — exclui seed/histórico (source nulo).
+  const conditions = [gte(trips.windowStart, cutoff), sql`${trips.source} IN ('painel', 'cargas')`]
   if (clientId) conditions.push(eq(trips.clientId, clientId))
   const tripsRows = await db.select().from(trips).where(and(...conditions))
 
@@ -213,11 +237,10 @@ export async function getTrendSeries(metric: BiMetric, period: BiPeriod, clientI
     if (t.status === 'completed') {
       b.completed++
       if (t.arrivedAt && t.arrivedAt <= t.windowEnd) b.onTime++
-      if (t.arrivedAt) {
-        b.delaySum += Math.max(0, (t.arrivedAt.getTime() - t.windowEnd.getTime()) / 60_000)
-        b.delayCount++
-      }
     }
+    // Atraso — adiantamento_horas (+ = atrasado); fallback arrivedAt p/ histórico.
+    const dm = delayMinutes(t)
+    if (dm != null) { b.delaySum += dm; b.delayCount++ }
     buckets.set(d, b)
   }
   const entries = [...buckets.entries()].sort(([a], [b]) => a.localeCompare(b))
