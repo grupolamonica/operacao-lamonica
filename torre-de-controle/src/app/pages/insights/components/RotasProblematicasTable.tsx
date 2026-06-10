@@ -15,8 +15,9 @@ interface Props {
 type RouteRow = ProblematicRoute & { id: string }
 
 /**
- * Top routes ordered by alert count. Click em linha navega para
- * /viagens?route=CODE (CONTEXT D-05 drill-down).
+ * Top routes ordered by atrasos/alertas. Click em linha navega para
+ * /viagens?route=ORIGEM → DESTINO (CONTEXT D-05 drill-down — casa com o
+ * filtro de rota da ViagensTable, que aceita par origem→destino).
  * dateFilter prop: aceito mas backend não filtra por dia (banner visual no
  * parent indica filtro ativo).
  */
@@ -63,7 +64,7 @@ export function RotasProblematicasTable({ data, isLoading }: Props) {
 
   if (isLoading) {
     return (
-      <PanelCard title="Rotas Problemáticas" subtitle="Top 20 por alertas" noPadding>
+      <PanelCard title="Rotas Problemáticas" subtitle="Top 20 por atrasos e alertas" noPadding>
         <p className="text-sm text-muted-foreground py-8 text-center">Carregando...</p>
       </PanelCard>
     )
@@ -75,9 +76,9 @@ export function RotasProblematicasTable({ data, isLoading }: Props) {
       columns={columns}
       pageSize={10}
       title="Rotas Problemáticas"
-      subtitle="Top 20 por alertas"
+      subtitle="Top 20 por atrasos e alertas"
       emptyMessage="Sem dados no período."
-      onRowClick={(r) => navigate(`/viagens?route=${encodeURIComponent(r.code)}`)}
+      onRowClick={(r) => navigate(`/viagens?route=${encodeURIComponent(`${r.code} → ${r.name}`)}`)}
     />
   )
 }
