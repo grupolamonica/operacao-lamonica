@@ -59,6 +59,8 @@ export const trips = pgTable('trips', {
   // Phase 14 — status operacional do Cargas (sheet_status) + id da carga de origem
   cargasStatus:    varchar('cargas_status', { length: 40 }),   // DESCARREGADO|AGUARDANDO ...|CTE ENVIADO ... (10 valores)
   cargasLoadId:    uuid('cargas_load_id'),
+  // Phase 14 — elo NÃO-único p/ fundir viagem-painel (PNLA, dona do code) + carga (CRG, dona do sheet_lh único)
+  linkedLh:        varchar('linked_lh', { length: 50 }),
   createdAt:      timestamp('created_at',  { withTimezone: true }).defaultNow().notNull(),
   updatedAt:      timestamp('updated_at',  { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({

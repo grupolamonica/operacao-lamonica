@@ -86,7 +86,56 @@ export async function listTrips(filters: TripFilters, page = 0, limit = 100) {
     offset: page * limit,
   })
 
-  return rows.map(toTripDto)
+  return mergeTripsByLh(rows).map(toTripDto)
+}
+
+/**
+ * Funde as DUAS representações da MESMA viagem numa linha só (D-14): a "viagem"
+ * do painel/torre (PNLA/PNLC, dona do code numérico) e a "carga" do Cargas (CRG,
+ * dona do sheet_lh) — ligadas por COALESCE(sheet_lh, linked_lh). Sem LH passa
+ * direto. Canônica = a carga (LH + cliente + cavalo/carreta + status operacional +
+ * frete); campos nulos preenchidos pela viagem; rastreamento (progresso/eta/SLA)
+ * vem da que estiver ativa. Mantém ordenação por windowStart desc.
+ */
+function mergeTripsByLh<T extends Record<string, any>>(rows: T[]): T[] {
+  const byLh = new Map<string, T[]>()
+  const out: T[] = []
+  for (const r of rows) {
+    const lh = String(r.sheetLh ?? r.linkedLh ?? '').toUpperCase().trim()
+    if (!lh) { out.push(r); continue }
+    const g = byLh.get(lh); if (g) g.push(r); else byLh.set(lh, [r])
+  }
+  for (const group of byLh.values()) {
+    out.push(group.length === 1 ? group[0] : mergeGroup(group))
+  }
+  return out.sort((a, b) => new Date(b.windowStart).getTime() - new Date(a.windowStart).getTime())
+}
+
+function mergeGroup<T extends Record<string, any>>(group: T[]): T {
+  // Canônica: a carga (Cargas) → senão a ativa → senão a 1ª.
+  const base =
+    group.find((r) => r.source === 'cargas') ??
+    group.find((r) => r.status === 'in_progress') ??
+    group[0]
+  const others = group.filter((r) => r !== base)
+  const merged: T = { ...base }
+  const empty = (v: any) => v == null || v === '' || v === 0
+  // Preenche identidade/relacionamento ausente na canônica a partir das outras.
+  for (const k of ['driver', 'vehicle', 'client', 'route', 'sheetCavalo', 'sheetCarreta', 'sheetLh',
+    'linkedLh', 'cargasStatus', 'valor', 'bonus', 'clientId', 'routeId', 'driverId', 'vehicleId',
+    'originLat', 'originLng', 'destLat', 'destLng', 'riskLevel', 'riskScore', 'riskFactors'] as const) {
+    if (empty((merged as any)[k])) { for (const o of others) if (!empty((o as any)[k])) { (merged as any)[k] = (o as any)[k]; break } }
+  }
+  // Rastreamento ao vivo: se a canônica não tem progresso, herda da representação ATIVA.
+  if (((merged as any).progressPct ?? 0) === 0) {
+    const act = others.find((o) => ((o as any).progressPct ?? 0) > 0 && o.status === 'in_progress')
+    if (act) {
+      for (const k of ['progressPct', 'distanceTotal', 'distanceDone', 'eta', 'slaStatus', 'adiantamentoHoras', 'departedAt', 'windowEnd', 'status', 'conducaoRegime'] as const) {
+        (merged as any)[k] = (act as any)[k]
+      }
+    }
+  }
+  return merged
 }
 
 export async function getTripById(id: string) {
@@ -238,6 +287,10 @@ function toTripDto(row: any) {
     bonus:         row.bonus != null ? Number(row.bonus) : null,
     // Phase 14 — status operacional do Cargas (sheet_status) cruzado por LH
     cargasStatus:  (row as { cargasStatus?: string | null }).cargasStatus ?? null,
+    // Phase 14 — viagem+carga fundidas: LH + veículos (cavalo/carreta) da aba SHOPEE
+    lh:            row.sheetLh ?? row.linkedLh ?? null,
+    cavalo:        row.sheetCavalo ?? null,
+    carreta:       row.sheetCarreta ?? null,
     // Sprint 3 — risk snapshot (nullable until first recalc)
     riskScore:     row.riskScore ?? null,
     riskLevel:     row.riskLevel ?? null,

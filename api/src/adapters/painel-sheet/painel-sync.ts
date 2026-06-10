@@ -75,7 +75,8 @@ interface TripRow {
   id: string; code: string; status: string; sla: string | null; progress: number
   distTotal: number | null; distDone: number | null; ws: string; we: string; eta: string | null
   adiant: number | null; origem: string | null; destino: string | null; motorista: string | null
-  lh: string | null  // Phase 14 — LH (numViagem) p/ cruzar com Cargas
+  lh: string | null  // Phase 14 — LH (numViagem) p/ cruzar com Cargas (pode ser zerado pela dedup do sheet_lh único)
+  linkedLh: string | null  // Phase 14 — elo p/ fundir c/ a carga (NÃO zerado pela dedup)
 }
 export interface PainelSyncResult { ativas: number; concluidas: number; total: number; noPrazo: number; atrasadas: number; ticketsPendentes: number; alertas: number }
 
@@ -146,7 +147,7 @@ export async function syncPainel(): Promise<PainelSyncResult> {
       recs.push({ id: uuid5('painel|a|' + cod), code: ('PNLA-' + cod).slice(0, 20), status, sla, progress,
         distTotal: kmT, distDone: (kmT != null) ? Math.max(0, kmT - kmFalta) : null, ws, we, eta, adiant,
         origem: String(r[iOri] ?? '').slice(0, 200) || null, destino: String(r[iDest] ?? '').slice(0, 200) || null,
-        motorista: String(r[iMot] ?? '').trim() || null, lh: codToLh.get(cod) ?? null })
+        motorista: String(r[iMot] ?? '').trim() || null, lh: codToLh.get(cod) ?? null, linkedLh: codToLh.get(cod) ?? null })
     }
   }
 
@@ -162,7 +163,7 @@ export async function syncPainel(): Promise<PainelSyncResult> {
       recs.push({ id: uuid5('painel|c|' + cod), code: ('PNLC-' + cod).slice(0, 20), status: 'completed', sla: null, progress: 100,
         distTotal: kmT, distDone: (kmT != null && kmF != null) ? Math.max(0, kmT - kmF) : kmT, ws: we, we, eta: concIso, adiant: null,
         origem: String(r[iOri] ?? '').slice(0, 200) || null, destino: String(r[iDest] ?? '').slice(0, 200) || null,
-        motorista: String(r[iMot] ?? '').trim() || null, lh: codToLh.get(cod) ?? null })
+        motorista: String(r[iMot] ?? '').trim() || null, lh: codToLh.get(cod) ?? null, linkedLh: codToLh.get(cod) ?? null })
     }
   }
 
@@ -303,11 +304,11 @@ export async function syncPainel(): Promise<PainelSyncResult> {
       const values = batch.map((t) => sql`(${t.id}, ${t.code}, 'painel', 'media', ${t.origem}, ${t.destino},
         ${t.ws}, ${t.we}, ${t.eta}, ${t.status}, ${t.sla}, ${t.progress},
         ${t.distTotal != null ? String(t.distTotal) : null}, ${t.distDone != null ? String(t.distDone) : null},
-        ${t.adiant != null ? String(t.adiant) : null}, ${t.motorista}, ${t.lh}, 'intensivo', now(), now())`)
+        ${t.adiant != null ? String(t.adiant) : null}, ${t.motorista}, ${t.lh}, ${t.linkedLh}, 'intensivo', now(), now())`)
       await tx.execute(sql`
         INSERT INTO trips (id, code, source, priority, origin, destination, window_start, window_end, eta,
           status, sla_status, progress_pct, distance_total, distance_done, adiantamento_horas,
-          sheet_motorista, sheet_lh, conducao_regime, created_at, updated_at)
+          sheet_motorista, sheet_lh, linked_lh, conducao_regime, created_at, updated_at)
         VALUES ${sql.join(values, sql`, `)}
         ON CONFLICT (id) DO UPDATE SET
           code=EXCLUDED.code, origin=EXCLUDED.origin, destination=EXCLUDED.destination,
@@ -315,7 +316,8 @@ export async function syncPainel(): Promise<PainelSyncResult> {
           status=EXCLUDED.status, sla_status=EXCLUDED.sla_status, progress_pct=EXCLUDED.progress_pct,
           distance_total=EXCLUDED.distance_total, distance_done=EXCLUDED.distance_done,
           adiantamento_horas=EXCLUDED.adiantamento_horas, sheet_motorista=EXCLUDED.sheet_motorista,
-          sheet_lh=COALESCE(EXCLUDED.sheet_lh, trips.sheet_lh), updated_at=now()
+          sheet_lh=COALESCE(EXCLUDED.sheet_lh, trips.sheet_lh),
+          linked_lh=COALESCE(EXCLUDED.linked_lh, trips.linked_lh), updated_at=now()
       `)
     }
     await tx.execute(sql`

@@ -71,8 +71,8 @@ export function TripDetailPanel({ trip, onClose }: Props) {
 
   return (
     <SidePanelLayout
-      title={trip.code}
-      subtitle={`${trip.clientName} · ${trip.routeCode}`}
+      title={trip.lh || trip.code}
+      subtitle={[trip.clientName, trip.lh ? `LH ${trip.lh}` : trip.code, trip.cargasStatus].filter(Boolean).join(' · ')}
       onClose={onClose}
       footer={
         <div className="flex gap-2">
@@ -114,6 +114,9 @@ export function TripDetailPanel({ trip, onClose }: Props) {
 
         <div className="grid grid-cols-2 gap-3 text-xs">
           <Metric label="Motorista" value={trip.driverName} />
+          {trip.lh && <Metric label="LH" value={trip.lh} />}
+          {(trip.cavalo || trip.carreta) && <Metric label="Cavalo / Carreta" value={[trip.cavalo, trip.carreta].filter(Boolean).join(' / ') || '—'} />}
+          {trip.cargasStatus && <Metric label="Status operacional" value={trip.cargasStatus} />}
           <Metric label="Origem" value={trip.origin} />
           <Metric label="Destino" value={trip.destination} />
           <Metric label="Partida" value={trip.windowStart ? formatDate(trip.windowStart, 'dd/MM/yyyy HH:mm:ss') : '—'} />

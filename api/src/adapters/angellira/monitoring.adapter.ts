@@ -200,6 +200,30 @@ async function reconcileTrackingToCargas(): Promise<number> {
       AND upper(translate(trim(c.sheet_motorista), ${sql.raw(ACC)})) = a.mot
       AND (c.cargas_status IS NULL OR c.cargas_status NOT IN ('DESCARREGADO', 'CANCELADO', 'NO SHOW'))
   `)
+
+  // Elo p/ FUNDIR na lista: a viagem-painel/monitoramento ATIVA (PNLA/numérica, sem LH próprio)
+  // recebe linked_lh = LH da carga ativa do MESMO motorista. listTrips agrupa por
+  // COALESCE(sheet_lh, linked_lh) → a "viagem" e a "carga" viram uma linha só.
+  await db.execute(sql`
+    UPDATE trips p SET linked_lh = a.lh, updated_at = now()
+    FROM (
+      SELECT DISTINCT ON (mot) mot, sheet_lh AS lh
+      FROM (
+        SELECT upper(translate(trim(sheet_motorista), ${sql.raw(ACC)})) AS mot, sheet_lh, updated_at
+        FROM trips
+        WHERE source = 'cargas' AND sheet_lh IS NOT NULL
+          AND sheet_motorista IS NOT NULL AND trim(sheet_motorista) <> ''
+          AND (cargas_status IS NULL OR cargas_status NOT IN ('DESCARREGADO', 'CANCELADO', 'NO SHOW'))
+      ) c
+      ORDER BY mot, updated_at DESC
+    ) a
+    WHERE p.source IS DISTINCT FROM 'cargas'
+      AND p.status = 'in_progress'
+      AND p.sheet_motorista IS NOT NULL
+      AND upper(translate(trim(p.sheet_motorista), ${sql.raw(ACC)})) = a.mot
+      AND (p.linked_lh IS DISTINCT FROM a.lh OR p.linked_lh IS NULL)
+  `)
+
   return (res as any)?.rowCount ?? (res as any)?.count ?? 0
 }
 

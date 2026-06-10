@@ -90,17 +90,17 @@ export async function upsertCargasAsTrips(): Promise<number> {
       const ws = c.data ? new Date(c.data).toISOString() : new Date().toISOString()
       const clientId = c.cliente_id && torreClients.has(c.cliente_id) ? c.cliente_id : null
       return sql`(${id}, ${('CRG-' + lh).slice(0, 20)}, 'cargas', 'media', ${clientId}, ${cut(c.origem, 200)}, ${cut(c.destino, 200)},
-        ${ws}, ${ws}, ${tripStatusFromCarga(c)}, ${cut(lh, 50)}, ${cut(c.sheet_status, 40)}, ${c.id},
+        ${ws}, ${ws}, ${tripStatusFromCarga(c)}, ${cut(lh, 50)}, ${cut(lh, 50)}, ${cut(c.sheet_status, 40)}, ${c.id},
         ${numStr(c.valor)}, ${numStr(c.bonus)}, ${c.sheet_motorista}, ${cut(c.sheet_cavalo, 12)}, ${cut(c.sheet_carreta, 12)}, now(), now())`
     })
     await db.execute(sql`
       INSERT INTO trips (id, code, source, priority, client_id, origin, destination,
-        window_start, window_end, status, sheet_lh, cargas_status, cargas_load_id,
+        window_start, window_end, status, sheet_lh, linked_lh, cargas_status, cargas_load_id,
         valor, bonus, sheet_motorista, sheet_cavalo, sheet_carreta, created_at, updated_at)
       VALUES ${sql.join(vals, sql`, `)}
       ON CONFLICT (id) DO UPDATE SET
         status=EXCLUDED.status, client_id=EXCLUDED.client_id, origin=EXCLUDED.origin, destination=EXCLUDED.destination,
-        cargas_status=EXCLUDED.cargas_status, cargas_load_id=EXCLUDED.cargas_load_id,
+        cargas_status=EXCLUDED.cargas_status, cargas_load_id=EXCLUDED.cargas_load_id, linked_lh=EXCLUDED.linked_lh,
         valor=EXCLUDED.valor, bonus=EXCLUDED.bonus, sheet_motorista=EXCLUDED.sheet_motorista,
         sheet_cavalo=EXCLUDED.sheet_cavalo, sheet_carreta=EXCLUDED.sheet_carreta, updated_at=now()
     `)

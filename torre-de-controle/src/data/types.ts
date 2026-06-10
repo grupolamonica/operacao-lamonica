@@ -131,6 +131,10 @@ export interface Trip {
   bonus?: number | null
   // Phase 14 — status operacional do Cargas (sheet_status) cruzado por LH
   cargasStatus?: string | null
+  // Phase 14 — viagem (painel) + carga (Cargas) fundidas: identificador LH + veículos
+  lh?: string | null
+  cavalo?: string | null   // placa do cavalo (SHOPEE/Cargas)
+  carreta?: string | null  // placa da carreta (SHOPEE/Cargas)
 }
 
 // ===== Alert =====
