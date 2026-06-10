@@ -49,8 +49,13 @@ export async function getDashboardKpis(periodo: PeriodoSla = 'tudo'): Promise<Da
     if (!alertas) alertas = n(a?.tp)
   }
 
+  // Motoristas em risco = distintos com viagem in_progress atrasada. Viagens vivas
+  // (painel/cargas/monitoring) não têm driver_id — chave = COALESCE(driver_id, sheet_motorista normalizado).
+  const ACC = "'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇç','AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCc'"
   const [d] = (await db.execute(sql`
-    SELECT count(*) FILTER (WHERE status='on_route' AND avg_delay_minutes > 10)::int AS em_risco FROM drivers
+    SELECT count(DISTINCT coalesce(driver_id::text, nullif(upper(translate(trim(sheet_motorista), ${sql.raw(ACC)})), '')))::int AS em_risco
+    FROM trips
+    WHERE status='in_progress' AND sla_status='atrasado'
   `)) as unknown as Array<{ em_risco: number }>
 
   const kpis: DashboardKpis = {

@@ -10,6 +10,9 @@ export type DriverFilters = {
   search?: string
 }
 
+// Pares from/to do translate() p/ strip de acentos no Postgres (mesma normalização do normalizeMotorista).
+const ACC = "'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇç','AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCc'"
+
 export async function listDrivers(f: DriverFilters) {
   const conditions = []
   if (f.status) conditions.push(eq(drivers.status, f.status))
@@ -31,9 +34,26 @@ export async function listDrivers(f: DriverFilters) {
   })
 
   // Phase 14 — enriquecimento p/ a tabela: Viagens (count) + Rank (do ranking, por nome).
+  // Cruza pelas 3 chaves (mesma lógica do dossiê): driver_id, shopee_driver_id e
+  // sheet_motorista normalizado (viagens vivas do painel/cargas só têm o nome texto).
+  // UNION de equi-joins (hash join) — OR-join único vira nested loop e estoura statement timeout.
+  // O UNION dedup (trip_id, driver_id): trip que casa por mais de uma chave conta 1x.
   const tripCounts = new Map<string, number>()
   const tc = (await db.execute(sql`
-    SELECT driver_id, count(*)::int AS n FROM trips WHERE driver_id IS NOT NULL GROUP BY driver_id
+    WITH dn AS (
+      SELECT id, shopee_driver_id, upper(translate(trim(name), ${sql.raw(ACC)})) AS nm FROM drivers
+    ), tn AS (
+      SELECT id, driver_id, shopee_driver_id,
+             nullif(upper(translate(trim(sheet_motorista), ${sql.raw(ACC)})), '') AS nm
+      FROM trips
+    ), m AS (
+      SELECT tn.id AS trip_id, dn.id AS driver_id FROM tn JOIN dn ON dn.id = tn.driver_id
+      UNION
+      SELECT tn.id, dn.id FROM tn JOIN dn ON dn.shopee_driver_id IS NOT NULL AND tn.shopee_driver_id = dn.shopee_driver_id
+      UNION
+      SELECT tn.id, dn.id FROM tn JOIN dn ON tn.nm IS NOT NULL AND tn.nm = dn.nm
+    )
+    SELECT driver_id, count(*)::int AS n FROM m GROUP BY driver_id
   `)) as unknown as Array<{ driver_id: string; n: number }>
   for (const r of tc) tripCounts.set(r.driver_id, Number(r.n))
 
@@ -112,7 +132,6 @@ export async function getDriverById(id: string) {
 export async function getDriverDossieByName(name: string) {
   const nm = (name ?? '').trim()
   if (!nm) return null
-  const ACC = "'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇç','AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCc'"
   let [d] = (await db.execute(sql`
     SELECT id FROM drivers
     WHERE upper(translate(trim(name), ${sql.raw(ACC)})) = upper(translate(trim(${nm}), ${sql.raw(ACC)}))
@@ -257,12 +276,13 @@ export async function getDriverDossie(id: string) {
 export async function getDriverStats() {
   // Semântica Phase 14 (D-14):
   //  Disponíveis = candidatos a cargas abertas no Cargas (cross-ref CPF)
-  //  Em rota     = status on_route (com carga + acompanhamento)
+  //  Em rota     = motoristas distintos com viagem in_progress (com carga + acompanhamento)
   //  Com atraso  = motoristas com viagem in_progress atrasada na Torre
   //  Docs vencendo = CNH/Angellira vencendo (≤30d) OU vencida
+  // Viagens vivas (painel/cargas/monitoring) não têm driver_id — só sheet_motorista (texto).
+  // Chave distinta = COALESCE(driver_id, nome normalizado).
   const allDrivers = await db.select().from(drivers)
   const ativos = allDrivers.filter(d => d.status !== 'unavailable').length
-  const emRota = allDrivers.filter(d => d.status === 'on_route').length
   const n = (v: unknown) => Number(v ?? 0)
 
   const [disp] = (await db.execute(sql`
@@ -272,10 +292,16 @@ export async function getDriverStats() {
     WHERE c.status = 'QUEUED'
   `)) as unknown as Array<{ c: number }>
 
-  const [atr] = (await db.execute(sql`
-    SELECT count(DISTINCT driver_id)::int AS c
+  const [rota] = (await db.execute(sql`
+    SELECT count(DISTINCT coalesce(driver_id::text, nullif(upper(translate(trim(sheet_motorista), ${sql.raw(ACC)})), '')))::int AS c
     FROM trips
-    WHERE driver_id IS NOT NULL AND status = 'in_progress' AND sla_status = 'atrasado'
+    WHERE status = 'in_progress'
+  `)) as unknown as Array<{ c: number }>
+
+  const [atr] = (await db.execute(sql`
+    SELECT count(DISTINCT coalesce(driver_id::text, nullif(upper(translate(trim(sheet_motorista), ${sql.raw(ACC)})), '')))::int AS c
+    FROM trips
+    WHERE status = 'in_progress' AND sla_status = 'atrasado'
   `)) as unknown as Array<{ c: number }>
 
   const [docs] = (await db.execute(sql`
@@ -287,7 +313,7 @@ export async function getDriverStats() {
   return {
     ativos:             { count: ativos, total: allDrivers.length },
     disponiveis:        { count: n(disp?.c) },
-    emRota:             { count: emRota },
+    emRota:             { count: n(rota?.c) },
     comAtraso:          { count: n(atr?.c) },
     documentosVencendo: { count: n(docs?.c) },
   }
