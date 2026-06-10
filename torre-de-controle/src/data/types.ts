@@ -160,6 +160,11 @@ export interface Alert {
   slaDeadline?: Date
   assignedTo?: string
   resolvedAt?: Date
+  // Phase 14 — dados do ticket do painel (HistoricoTickets) p/ Ocorrências bater com o painel
+  painelMeta?: {
+    atraso?: string; kmRestante?: string; placa?: string
+    origem?: string; destino?: string; operador?: string; embarque?: string
+  } | null
 }
 
 // ===== Timeline =====

@@ -112,6 +112,8 @@ export async function listAlerts(f: AlertFilters) {
       slaDeadline:  r.slaDeadline ?? undefined,
       assignedTo:   r.assignedTo ?? undefined,
       resolvedAt:   r.resolvedAt ?? undefined,
+      // Phase 14 — dados do ticket do painel (atraso/km/placa/origem/destino/operador)
+      painelMeta:   r.painelMeta ?? undefined,
     }
   })
 }

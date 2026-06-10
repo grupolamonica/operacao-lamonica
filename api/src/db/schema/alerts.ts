@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, integer, text, timestamp, decimal, index } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, varchar, integer, text, timestamp, decimal, jsonb, index } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { trips } from './trips'
 import { drivers } from './drivers'
@@ -30,6 +30,9 @@ export const alerts = pgTable('alerts', {
   occurredAt:   timestamp('occurred_at',  { withTimezone: true }).notNull(),
   resolvedAt:   timestamp('resolved_at',  { withTimezone: true }),
   slaDeadline:  timestamp('sla_deadline', { withTimezone: true }),
+  // Phase 14 — dados do ticket do painel (igual HistoricoTickets): atraso(HH:MM), kmRestante,
+  // placa, origem, destino, operador, embarque/cliente. Pra Ocorrências bater com o painel.
+  painelMeta:   jsonb('painel_meta').$type<{ atraso?: string; kmRestante?: string; placa?: string; origem?: string; destino?: string; operador?: string; embarque?: string }>(),
   createdAt:    timestamp('created_at',   { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
   statusSeverityIdx: index('idx_alerts_status_severity').on(t.status, t.severity),

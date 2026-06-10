@@ -170,10 +170,12 @@ export async function syncPainel(): Promise<PainelSyncResult> {
     const iCod = c('Cód. Viagem'), iTipo = c('Tipo'), iStatus = c('Status'), iAbert = c('Timestamp Abertura')
     const iOp = c('Operador'), iObs = c('Observação'), iTrat = c('Timestamp Tratamento')
     const iEmb = c('Procedimento Embarque', 'Procedimento de Embarque'), iMot = c('Motorista'), iDst = c('Destino')
+    // Phase 14 — campos do ticket do painel (HistoricoTickets) p/ Ocorrências bater com o painel.
+    const iAtraso = c('Atraso (HH:MM)', 'Atraso'), iKm = c('KM Restante', 'Km Restante'), iPlaca = c('Placa'), iOri = c('Origem')
     const limiteParada = agora.getTime() - 2 * 3600000
     let tp = 0; const alertaCods = new Set<string>()
     // Dedup por episódio (cod|tipo) — mantém a ocorrência mais recente (igual ao "último ticket" do painel).
-    const epis = new Map<string, { cod: string; tipo: string; stt: string; ab: string | null; op: string; obs: string; trat: string | null; emb: string; mot: string; dst: string }>()
+    const epis = new Map<string, { cod: string; tipo: string; stt: string; ab: string | null; op: string; obs: string; trat: string | null; emb: string; mot: string; dst: string; atraso: string; km: string; placa: string; ori: string }>()
     for (const r of tickets.slice(1)) {
       const cod = String(r[iCod] ?? '').trim(); const tipo = String(r[iTipo] ?? '').trim()
       if (!cod || tipo === '1H_INTERVALO') continue
@@ -187,7 +189,9 @@ export async function syncPainel(): Promise<PainelSyncResult> {
       const prev = epis.get(key)
       if (!prev || (ab && prev.ab && ab > prev.ab) || (ab && !prev.ab)) {
         epis.set(key, { cod, tipo, stt, ab, op: String(r[iOp] ?? '').trim(), obs: String(r[iObs] ?? '').trim(),
-          trat: isoDt(r[iTrat]), emb: String(r[iEmb] ?? '').trim(), mot: String(r[iMot] ?? '').trim(), dst: String(r[iDst] ?? '').trim() })
+          trat: isoDt(r[iTrat]), emb: String(r[iEmb] ?? '').trim(), mot: String(r[iMot] ?? '').trim(), dst: String(r[iDst] ?? '').trim(),
+          atraso: iAtraso >= 0 ? String(r[iAtraso] ?? '').trim() : '', km: iKm >= 0 ? String(r[iKm] ?? '').trim() : '',
+          placa: iPlaca >= 0 ? String(r[iPlaca] ?? '').trim() : '', ori: iOri >= 0 ? String(r[iOri] ?? '').trim() : '' })
       }
     }
     ticketsPendentes = tp; alertas = alertaCods.size; ticketsFresco = true
@@ -202,6 +206,10 @@ export async function syncPainel(): Promise<PainelSyncResult> {
       const obs = e.obs ? e.obs.slice(0, 400) : ''
       const desc = [`Cliente: ${e.emb || '—'}`, `Viagem ${e.cod}`, obs, e.op ? `Operador: ${e.op}` : '']
         .filter(Boolean).join(' · ')
+      const painelMeta = {
+        atraso: e.atraso || undefined, kmRestante: e.km || undefined, placa: e.placa || undefined,
+        origem: e.ori || undefined, destino: e.dst || undefined, operador: e.op || undefined, embarque: e.emb || undefined,
+      }
       return {
         id: uuid5('ticket|' + e.cod + '|' + e.tipo),
         type: e.tipo.toLowerCase().slice(0, 50),
@@ -213,6 +221,7 @@ export async function syncPainel(): Promise<PainelSyncResult> {
         source: 'Painel',
         occurredAt: e.ab ?? agora.toISOString(),
         resolvedAt: e.stt === 'FECHADO' ? (e.trat ?? e.ab) : null,
+        painelMeta: JSON.stringify(painelMeta),
       }
     })
     await db.transaction(async (tx) => {
@@ -220,13 +229,13 @@ export async function syncPainel(): Promise<PainelSyncResult> {
       for (let i = 0; i < arows.length; i += B) {
         const batch = arows.slice(i, i + B)
         const vals = batch.map((a) => sql`(${a.id}, ${a.type}, ${a.severity}, ${a.status}, 'media', ${a.tripId},
-          ${a.title}, ${a.description}, ${a.source}, ${a.occurredAt}, ${a.resolvedAt}, now())`)
+          ${a.title}, ${a.description}, ${a.source}, ${a.occurredAt}, ${a.resolvedAt}, ${a.painelMeta}::jsonb, now())`)
         await tx.execute(sql`
-          INSERT INTO alerts (id, type, severity, status, priority, trip_id, title, description, source, occurred_at, resolved_at, created_at)
+          INSERT INTO alerts (id, type, severity, status, priority, trip_id, title, description, source, occurred_at, resolved_at, painel_meta, created_at)
           VALUES ${sql.join(vals, sql`, `)}
           ON CONFLICT (id) DO UPDATE SET
             status=EXCLUDED.status, description=EXCLUDED.description, resolved_at=EXCLUDED.resolved_at,
-            trip_id=COALESCE(EXCLUDED.trip_id, alerts.trip_id)
+            trip_id=COALESCE(EXCLUDED.trip_id, alerts.trip_id), painel_meta=EXCLUDED.painel_meta
         `)
       }
     })

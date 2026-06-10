@@ -7,6 +7,9 @@
 ALTER TABLE trips ADD COLUMN IF NOT EXISTS cargas_status varchar(40);
 ALTER TABLE trips ADD COLUMN IF NOT EXISTS cargas_load_id uuid;
 
+-- alerts: dados do ticket do painel (HistoricoTickets) p/ Ocorrências bater com o painel
+ALTER TABLE alerts ADD COLUMN IF NOT EXISTS painel_meta jsonb;
+
 -- drivers: enrich do ranking + candidaturas abertas no Cargas (vínculo = driver_kind já existe)
 ALTER TABLE drivers ADD COLUMN IF NOT EXISTS ranking_pontuacao numeric;
 ALTER TABLE drivers ADD COLUMN IF NOT EXISTS ranking_posicao integer;

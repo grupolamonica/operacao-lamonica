@@ -147,6 +147,13 @@ export function AlertDetailPanel({ alert, onClose }: Props) {
           <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Detalhes</h4>
           <div className="space-y-2 text-xs text-muted-foreground">
             {alert.lh && <Row label="LH" value={alert.lh} mono />}
+            {/* Phase 14 — dados do ticket igual ao painel (HistoricoTickets) */}
+            {alert.painelMeta?.atraso && <Row label="Atraso" value={alert.painelMeta.atraso} highlight="text-danger" mono />}
+            {alert.painelMeta?.kmRestante && <Row label="KM Restante" value={`${alert.painelMeta.kmRestante} km`} mono />}
+            {alert.painelMeta?.placa && <Row label="Placa" value={alert.painelMeta.placa} mono />}
+            {alert.painelMeta?.origem && <Row label="Origem" value={alert.painelMeta.origem} />}
+            {alert.painelMeta?.destino && <Row label="Destino" value={alert.painelMeta.destino} />}
+            {alert.painelMeta?.operador && <Row label="Operador" value={alert.painelMeta.operador} />}
             <Row label="Entrega/Rota" value={`${alert.tripCode} · ${alert.routeCode}`} />
             <Row label="Cliente"       value={alert.clientName} />
             {alert.delayMinutes !== undefined && <Row label="Desvio ETA" value={`+${alert.delayMinutes} min`} highlight="text-danger" />}
