@@ -81,7 +81,7 @@ export async function getDriverTrack(motorista: string): Promise<TrackPoint[]> {
   const rows = await db.execute(sql`
     SELECT lat, lng, data_posicao
     FROM driver_positions
-    WHERE motorista_norm = ${norm} AND geom IS NOT NULL
+    WHERE motorista_norm = ${norm} AND lat IS NOT NULL AND lng IS NOT NULL
     ORDER BY data_posicao ASC
     LIMIT 1000
   `) as unknown as Array<{ lat: string; lng: string; data_posicao: Date | string }>
