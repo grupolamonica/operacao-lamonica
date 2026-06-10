@@ -28,6 +28,9 @@ import { BOM, formatCsvRow } from './exports.csv'
 
 const EXPORT_LIMIT = 50_000
 
+// Pares from/to do translate() p/ strip de acentos no Postgres (mesma normalização de drivers.service.ts).
+const ACC = "'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇç','AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCc'"
+
 // ---------------------------------------------------------------------------
 // Viagens (trips)
 // ---------------------------------------------------------------------------
@@ -81,7 +84,19 @@ export function streamTripsCsv(filters: TripsCsvFilters): ReadableStream<Uint8Ar
         }
         if (filters.routeCode) {
           const [r] = await db.select({ id: routes.id }).from(routes).where(eq(routes.code, filters.routeCode)).limit(1)
-          conditions.push(r ? eq(trips.routeId, r.id) : sql`false`)
+          if (r) {
+            conditions.push(eq(trips.routeId, r.id))
+          } else if (filters.routeCode.includes('→')) {
+            // Fix B2 — opção de rota cruzada (Cargas/Ranking) tem valor "ORIGEM → DESTINO":
+            // casa por origin/destination normalizado, igual ao filtro client-side da ViagensTable.
+            const [orig = '', dest = ''] = filters.routeCode.split('→').map(s => s.trim())
+            conditions.push(sql`
+              upper(translate(trim(${trips.origin}), ${sql.raw(ACC)})) = upper(translate(${orig}, ${sql.raw(ACC)}))
+              AND upper(translate(trim(${trips.destination}), ${sql.raw(ACC)})) = upper(translate(${dest}, ${sql.raw(ACC)}))
+            `)
+          } else {
+            conditions.push(sql`false`)
+          }
         }
         if (filters.driverName) {
           const matchingDrivers = await db.select({ id: drivers.id }).from(drivers).where(ilike(drivers.name, `%${filters.driverName}%`))

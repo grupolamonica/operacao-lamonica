@@ -5,6 +5,7 @@ import { drivers } from '../../db/schema/drivers'
 import { clients } from '../../db/schema/clients'
 import { routes } from '../../db/schema/routes'
 import { tripEvents } from '../../db/schema/trip-events'
+import { fetchRouteScores } from '../ranking/ranking.reads'
 import { formatarAtraso, calcularHorasViagemComRegulamentacao, calcularAdiantamentoHoras, PARAMS_PADRAO, PARAMS_REGULAR } from '../../lib/regulamentacao'
 
 /**
@@ -99,6 +100,53 @@ export async function getTripById(id: string) {
     },
   })
   return trip ? toTripDto(trip) : null
+}
+
+export type RouteOption = { value: string; label: string; source: 'torre' | 'ranking' | 'cargas' }
+
+// Dedupe por label normalizado: sem acento + espaços colapsados + UPPER.
+const normRouteLabel = (s: string) =>
+  s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toUpperCase()
+
+/**
+ * GET /api/trips/route-options (Fix B2) — UNION de rotas distintas das 3 fontes:
+ *   (a) Torre: tabela routes (code/name) — casa com trips.routeId (painel);
+ *   (b) Ranking: pares origin_code→destination_code de route_scores (o ranking
+ *       não tem cadastro de rota próprio — route_scores é o único dado de rota lá);
+ *   (c) Cargas: origem→destino dos open loads persistidos (cargas_open_loads) +
+ *       trips source='cargas' (sem route_id — o front casa por origin/destination).
+ */
+export async function getTripRouteOptions(): Promise<RouteOption[]> {
+  const torre = await db.select({ code: routes.code, name: routes.name }).from(routes).orderBy(routes.code)
+
+  const cargasPairs = (await db.execute(sql`
+    SELECT DISTINCT origem, destino FROM cargas_open_loads
+    WHERE nullif(trim(origem), '') IS NOT NULL AND nullif(trim(destino), '') IS NOT NULL
+    UNION
+    SELECT DISTINCT origin AS origem, destination AS destino FROM trips
+    WHERE source = 'cargas' AND nullif(trim(origin), '') IS NOT NULL AND nullif(trim(destination), '') IS NOT NULL
+    ORDER BY origem, destino
+  `)) as unknown as Array<{ origem: string; destino: string }>
+
+  let rankingScores: Awaited<ReturnType<typeof fetchRouteScores>> = []
+  try {
+    rankingScores = await fetchRouteScores()
+  } catch {
+    // Supabase do Ranking indisponível/sem credencial — segue só com Torre + Cargas
+  }
+
+  const seen = new Set<string>()
+  const out: RouteOption[] = []
+  const push = (value: string, label: string, source: RouteOption['source']) => {
+    const key = normRouteLabel(label)
+    if (!key || seen.has(key)) return
+    seen.add(key)
+    out.push({ value, label, source })
+  }
+  for (const r of torre) push(r.code, r.name?.trim() ? r.name : r.code, 'torre')
+  for (const s of rankingScores) push(`${s.origin_code} → ${s.destination_code}`, `${s.origin_code} → ${s.destination_code}`, 'ranking')
+  for (const p of cargasPairs) push(`${p.origem} → ${p.destino}`, `${p.origem} → ${p.destino}`, 'cargas')
+  return out
 }
 
 export async function getTripStats() {

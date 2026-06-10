@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia'
 import { authGuard } from '../../lib/rbac'
-import { listTrips, getTripById, getTripStats, addTripNote } from './trips.service'
+import { listTrips, getTripById, getTripStats, getTripRouteOptions, addTripNote } from './trips.service'
 import { getTripTimeline } from './timeline.service'
 import { getTripRisk, recalcTripRisk } from '../risk/risk.service'
 
@@ -13,6 +13,8 @@ export const tripsPlugin = new Elysia({ name: 'trips' })
   .group('/api/trips', (app) =>
     app
       .get('/stats', () => getTripStats(), { detail: { tags: ['trips'], summary: 'KPIViagens aggregate' } })
+      // Fix B2 — opções do filtro de rota: UNION Torre (routes) + Ranking (route_scores) + Cargas (origem→destino)
+      .get('/route-options', () => getTripRouteOptions(), { detail: { tags: ['trips'], summary: 'Route filter options (Torre + Ranking + Cargas)' } })
       .get('/', ({ query }) => listTrips(
         {
           status:     query.status,

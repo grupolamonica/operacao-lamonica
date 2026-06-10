@@ -23,6 +23,30 @@ export function useTrips(filters?: TripFilters & { limit?: number }, opts?: { re
   }
 }
 
+// Fix B2 — opções do filtro de rota (UNION Torre + Ranking + Cargas via /api/trips/route-options)
+export interface RouteOption {
+  value: string
+  label: string
+  source: 'torre' | 'ranking' | 'cargas'
+}
+
+export function useRouteOptions() {
+  const q = useQuery({
+    queryKey: ['trips', 'route-options'],
+    queryFn: async (): Promise<RouteOption[]> => {
+      const { data, error } = await (api.api.trips as any)['route-options'].get()
+      if (error) throw new Error((error.value as any)?.error ?? 'Failed to fetch route options')
+      return (data ?? []) as RouteOption[]
+    },
+    staleTime: 5 * 60_000,
+  })
+  return {
+    data:      q.data ?? [],
+    isLoading: q.isLoading,
+    isError:   q.isError,
+  }
+}
+
 export function useTrip(id: string | null) {
   const q = useQuery({
     queryKey: ['trip', id],

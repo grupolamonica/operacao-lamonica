@@ -11,12 +11,13 @@ import { ExportButton } from '@/components/common/ExportButton'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { useTrips, useTrip } from '@/hooks/useTrips'
+import { useTrips, useTrip, useRouteOptions } from '@/hooks/useTrips'
 import { useUIStore } from '@/stores/useUIStore'
 import { formatDate } from '@/lib/formatters'
 
 const fmtDT = (d?: Date | string | null) => (d ? formatDate(d, 'dd/MM/yyyy HH:mm:ss') : '—')
 import { TripDetailPanel } from './TripDetailPanel'
+import { CARGAS_STATUS_OPTIONS, cargasStatusLabel, cargasStatusMatches } from '@/data/cargasStatus'
 import type { Trip, TripFilters, TripStatus, Priority, SlaStatus } from '@/data/types'
 
 const priorityDot = { alta: 'bg-[#f5365c]', media: 'bg-[#fb6340]', baixa: 'bg-[#2dce89]' } as const
@@ -26,6 +27,13 @@ function atrasoClass(h?: number | null) {
   if (h == null) return 'text-muted-foreground'
   return h > 0.0167 ? 'text-[#f5365c]' : h < -0.0167 ? 'text-[#2dce89]' : 'text-muted-foreground'
 }
+
+// Fix B2 — trips do Cargas não têm routeCode; o filtro de rota casa por
+// routeCode (painel) OU por "origem → destino" normalizado (sem acento).
+const normRoute = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toUpperCase()
+const tripMatchesRoute = (t: Trip, value: string) =>
+  t.routeCode === value ||
+  (!!t.origin && !!t.destination && normRoute(`${t.origin} → ${t.destination}`) === normRoute(value))
 
 const columns: ColumnDef<Trip>[] = [
   {
@@ -59,7 +67,7 @@ const columns: ColumnDef<Trip>[] = [
   {
     id: 'cargasStatus', header: 'Status operacional', size: 150,
     cell: ({ row }) => row.original.cargasStatus
-      ? <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-500/15 text-sky-700 dark:text-sky-200">{row.original.cargasStatus}</span>
+      ? <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-500/15 text-sky-700 dark:text-sky-200">{cargasStatusLabel(row.original.cargasStatus)}</span>
       : <span className="text-xs text-muted-foreground">—</span>,
   },
   { id: 'atraso', header: 'Atraso', size: 80, cell: ({ row }) => <span className={`text-xs tabular-nums font-medium ${atrasoClass(row.original.adiantamentoHoras)}`}>{row.original.atrasoLabel || '—'}</span> },
@@ -100,17 +108,27 @@ export function ViagensTable() {
   const { data: all } = useTrips({ limit: 20000 } as TripFilters & { limit: number }, { refetchMs: 30_000 })
 
   // Deep-link do dashboard: /viagens?trip=<id> abre o detalhe da viagem direto.
+  // Deep-link do Insights (D-05): /viagens?route=<valor> pré-seleciona o filtro de rota.
   const [searchParams] = useSearchParams()
   useEffect(() => {
     const t = searchParams.get('trip')
     if (t) setSelectedTripId(t)
+    const r = searchParams.get('route')
+    if (r) setFilters(f => ({ ...f, routeCode: r }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
 
   const clients = Array.from(new Set(all.map(t => t.clientName).filter(Boolean))).sort()
-  const routes  = Array.from(new Set(all.map(t => t.routeCode).filter(Boolean))).sort()
-  // Phase 14 — status operacional (cargas_status, vindo do Cargas)
-  const cargasStatuses = Array.from(new Set(all.map(t => t.cargasStatus).filter((s): s is string => !!s))).sort()
+  // Fix B2 — rotas: UNION Torre + Ranking + Cargas (não só os routeCode dos trips do painel)
+  const { data: routeOptions } = useRouteOptions()
+  // Fix B1 — status operacional: lista canônica fixa + append dos raw fora da canônica (ex.: 'NO SHOW')
+  const cargasStatusOptions = useMemo(() => {
+    const extras = Array.from(new Set(all.map(t => t.cargasStatus).filter((s): s is string => !!s)))
+      .filter(s => !CARGAS_STATUS_OPTIONS.some(o => cargasStatusMatches(s, o.value)))
+      .sort()
+      .map(s => ({ value: s, label: s }))
+    return [...CARGAS_STATUS_OPTIONS, ...extras]
+  }, [all])
 
   const merged: TripFilters = { ...filters, status: tabToStatus[activeTripsTab] }
   const trips = useMemo(() => {
@@ -118,10 +136,11 @@ export function ViagensTable() {
     return all.filter(t => {
       if (merged.status && t.status !== merged.status) return false
       if (filters.clientName && t.clientName !== filters.clientName) return false
-      if (filters.routeCode && t.routeCode !== filters.routeCode) return false
+      if (filters.routeCode && !tripMatchesRoute(t, filters.routeCode)) return false
       if (filters.priority && t.priority !== filters.priority) return false
       if (filters.slaStatus && t.slaStatus !== filters.slaStatus) return false
-      if (filters.cargasStatus && t.cargasStatus !== filters.cargasStatus) return false
+      // Fix B1 — matching tolerante a mojibake ('CTE EM EMISS?O' casa com 'CTE EM EMISSÃO')
+      if (filters.cargasStatus && !(t.cargasStatus && cargasStatusMatches(t.cargasStatus, filters.cargasStatus))) return false
       if (q && !`${t.driverName} ${t.code} ${t.clientName}`.toLowerCase().includes(q)) return false
       return true
     })
@@ -166,7 +185,7 @@ export function ViagensTable() {
         <SelectTrigger className="h-9 w-[140px] text-xs"><SelectValue placeholder="Rota" /></SelectTrigger>
         <SelectContent>
           <SelectItem value="__all">Todas rotas</SelectItem>
-          {routes.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+          {routeOptions.map(o => <SelectItem key={`${o.source}:${o.value}`} value={o.value}>{o.label}</SelectItem>)}
         </SelectContent>
       </Select>
 
@@ -191,16 +210,14 @@ export function ViagensTable() {
         </SelectContent>
       </Select>
 
-      {/* Phase 14 — status operacional do Cargas (sheet_status) */}
-      {cargasStatuses.length > 0 && (
-        <Select value={filters.cargasStatus ?? '__all'} onValueChange={(v) => set('cargasStatus', v === '__all' ? undefined : v)}>
-          <SelectTrigger className="h-9 w-[180px] text-xs"><SelectValue placeholder="Status operacional" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all">Status operacional: todos</SelectItem>
-            {cargasStatuses.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      )}
+      {/* Phase 14 / Fix B1 — status operacional do Cargas (sheet_status): lista canônica fixa, sempre visível */}
+      <Select value={filters.cargasStatus ?? '__all'} onValueChange={(v) => set('cargasStatus', v === '__all' ? undefined : v)}>
+        <SelectTrigger className="h-9 w-[180px] text-xs"><SelectValue placeholder="Status operacional" /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__all">Todas</SelectItem>
+          {cargasStatusOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+        </SelectContent>
+      </Select>
 
       <Button variant="outline" size="sm" className="h-9 gap-2 text-xs"><ArrowUpDown className="h-3.5 w-3.5" /> Ordenar</Button>
       <Button variant="outline" size="sm" className="h-9 gap-2 text-xs"><Filter className="h-3.5 w-3.5" /> Filtros</Button>
