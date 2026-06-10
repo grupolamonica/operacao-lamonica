@@ -48,6 +48,26 @@ interface Props {
   driverOnly?: boolean
 }
 
+// Azul vivo do trajeto (estilo rota Google Maps)
+const TRACK_BLUE = '#2496ED'
+const TRACK_LINE_PAINT = {
+  'line-color':     TRACK_BLUE,
+  'line-width':     3.5,
+  'line-opacity':   0.9,
+  'line-dasharray': [2, 1.5],
+}
+const TRACK_CASING_PAINT = {
+  'line-color':   '#ffffff',
+  'line-width':   6,
+  'line-opacity': 0.6,
+}
+const TRACK_CURRENT_PAINT = {
+  'circle-radius':       7,
+  'circle-color':        TRACK_BLUE,
+  'circle-stroke-width': 2,
+  'circle-stroke-color': '#ffffff',
+}
+
 /** Add/update a polyline (trajeto) + ponto atual para UM motorista (Phase 14). */
 function renderTrack(map: maplibregl.Map, track: Array<{ lat: number; lng: number }>) {
   const coords = track
@@ -64,23 +84,42 @@ function renderTrack(map: maplibregl.Map, track: Array<{ lat: number; lng: numbe
   if (map.getSource('track')) {
     ;(map.getSource('track') as maplibregl.GeoJSONSource).setData(lineGeo)
     ;(map.getSource('track-current') as maplibregl.GeoJSONSource).setData(ptGeo)
+    // Layer pode existir com paint antigo (hot-reload/sessão anterior) — atualiza.
+    if (map.getLayer('track-line')) {
+      for (const [k, v] of Object.entries(TRACK_LINE_PAINT)) map.setPaintProperty('track-line', k, v)
+    }
+    if (map.getLayer('track-casing')) {
+      for (const [k, v] of Object.entries(TRACK_CASING_PAINT)) map.setPaintProperty('track-casing', k, v)
+    }
+    if (map.getLayer('track-current-pt')) {
+      for (const [k, v] of Object.entries(TRACK_CURRENT_PAINT)) map.setPaintProperty('track-current-pt', k, v)
+    }
     return
   }
   map.addSource('track', { type: 'geojson', data: lineGeo })
+  // Casing branco por baixo p/ contraste (visual de rota de mapa)
+  map.addLayer({
+    id: 'track-casing', type: 'line', source: 'track',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: TRACK_CASING_PAINT,
+  })
+  // Linha tracejada azul viva até o ponto atual
   map.addLayer({
     id: 'track-line', type: 'line', source: 'track',
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#5e72e4', 'line-width': 4, 'line-opacity': 0.85 },
+    paint: TRACK_LINE_PAINT,
   })
   map.addSource('track-current', { type: 'geojson', data: ptGeo })
+  // Ponto atual destacado — círculo azul com borda branca (estilo Google Maps)
   map.addLayer({
     id: 'track-current-pt', type: 'circle', source: 'track-current',
-    paint: { 'circle-radius': 7, 'circle-color': '#5e72e4', 'circle-stroke-width': 3, 'circle-stroke-color': '#ffffff' },
+    paint: TRACK_CURRENT_PAINT,
   })
 }
 
 function removeTrack(map: maplibregl.Map) {
   if (map.getLayer('track-line')) map.removeLayer('track-line')
+  if (map.getLayer('track-casing')) map.removeLayer('track-casing')
   if (map.getLayer('track-current-pt')) map.removeLayer('track-current-pt')
   if (map.getSource('track')) map.removeSource('track')
   if (map.getSource('track-current')) map.removeSource('track-current')
@@ -294,18 +333,22 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
 
     map.setStyle(TILE_STYLES[mode])
 
-    // Re-register truck image + fleet layers after style swap
+    // Re-register truck image + fleet layers after style swap.
+    // isStyleLoaded() pode ainda ser false aqui → re-tenta no próximo 'idle'
+    // (mesmo padrão dos efeitos de frota/geofence; antes o gate descartava o render).
     map.once('styledata', () => {
       registerTruckImage(map)
-      setTimeout(() => {
-        if (map.isStyleLoaded()) {
-          if (geofences.length > 0) renderGeofences(map, geofences)
-          if (showFleet && fleet.length > 0) {
-            renderFleet(map, fleet)
-            registerFleetHandlers(map)
-          }
+      const doRender = () => {
+        if (!map.isStyleLoaded()) { map.once('idle', doRender); return }
+        if (!driverOnly && geofences.length > 0) renderGeofences(map, geofences)
+        if (showFleet && fleet.length > 0) {
+          renderFleet(map, fleet)
+          registerFleetHandlers(map)
         }
-      }, 100)
+        // Trajeto (Phase 14) — setStyle derruba sources/layers, re-adiciona
+        if (track && track.length > 0) renderTrack(map, track)
+      }
+      setTimeout(doRender, 100)
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, mapReady])
@@ -444,17 +487,18 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
     })
   }
 
-  // Geofence layer — render active fences when map is ready or data changes
+  // Geofence layer — render active fences when map is ready or data changes.
+  // driverOnly (Phase 14): só o motorista da viagem no mapa → sem geofences.
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapReady) return
     const doRender = () => {
       if (!map.isStyleLoaded()) { map.once('idle', doRender); return }
-      if (geofences.length > 0) renderGeofences(map, geofences)
+      if (!driverOnly && geofences.length > 0) renderGeofences(map, geofences)
       else removeGeofences(map)
     }
     doRender()
-  }, [geofences, mapReady])
+  }, [geofences, mapReady, driverOnly])
 
   // Trajeto do motorista (Phase 14, D-14-08) — polyline + ponto atual quando `track` é passado.
   useEffect(() => {
@@ -485,6 +529,15 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapReady) return
+
+    // driverOnly (Phase 14): nenhum marcador de frota ao vivo — só trajeto + ponto atual.
+    if (driverOnly) {
+      for (const [id, marker] of markersRef.current) {
+        marker.remove()
+        markersRef.current.delete(id)
+      }
+      return
+    }
 
     const currentIds = new Set(positions.keys())
 
@@ -523,7 +576,7 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
         applyStyle(marker.getElement() as HTMLDivElement)
       }
     }
-  }, [positions, selectedVehicleId, onVehicleClick, mapReady, riskByVehicleId])
+  }, [positions, selectedVehicleId, onVehicleClick, mapReady, riskByVehicleId, driverOnly])
 
   /** Popup rico do veículo ao vivo — usa a posição EXTRAÍDA mais recente do store (XSS-safe). */
   function openLivePopup(map: maplibregl.Map, id: string) {
