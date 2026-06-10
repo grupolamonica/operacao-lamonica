@@ -123,6 +123,46 @@ async function distancias(token: string, vei: number | string, via: number | str
 const ACC = "'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇç','AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCc'"
 
 /**
+ * Extrai o LH (LT + 11) da viagem Angellira. Operadores digitam o LH no campo
+ * de OBSERVAÇÃO/alertas no Angellira (vira a coluna "Observação" da aba Carrega
+ * — ScriptControleViagens.extrairNumViagemDaString). Hoje vem vazio (`[]`) nas
+ * ativas; quando preenchido, casa a carga SHOPEE por LH (preciso), sem depender
+ * do nome do motorista. Varre alertas + vínculo externo + etapa + transporte.
+ */
+function extractLhFromObs(t: any): string | null {
+  const campos = [
+    Array.isArray(t?.alertas) ? JSON.stringify(t.alertas) : String(t?.alertas ?? ''),
+    String(t?.observacao ?? t?.obs ?? ''),
+    String(t?.emb_vin_externo ?? ''),
+    String(t?.etapa ?? ''),
+    String(t?.transporte ?? ''),
+  ]
+  for (const c of campos) { const m = c.match(/LT[A-Z0-9]{11}/i); if (m) return m[0].toUpperCase() }
+  return null
+}
+
+interface LhTrack { lh: string; pct: number; distTotal: number; distDone: number; eta: string; sla: string | null; adiant: number | null; departed: string | null }
+
+/** Reconciliação PRECISA por LH (quando a observação do Angellira traz o LH). */
+async function reconcileByLh(matches: LhTrack[]): Promise<number> {
+  if (matches.length === 0) return 0
+  // dedup por LH (última vence)
+  const byLh = new Map<string, LhTrack>()
+  for (const m of matches) byLh.set(m.lh, m)
+  const vals = [...byLh.values()].map((m) =>
+    sql`(${m.lh}, ${m.pct}::int, ${m.distTotal > 0 ? String(m.distTotal) : null}::numeric, ${m.distDone > 0 ? String(m.distDone) : null}::numeric, ${m.eta}::timestamptz, ${m.sla}, ${m.adiant != null ? String(m.adiant) : null}::numeric, ${m.departed}::timestamptz)`)
+  const res = await db.execute(sql`
+    UPDATE trips c SET
+      progress_pct=v.pct, distance_total=COALESCE(v.dt,c.distance_total), distance_done=COALESCE(v.dd,c.distance_done),
+      eta=COALESCE(v.eta,c.eta), sla_status=v.sla, adiantamento_horas=v.adiant,
+      departed_at=COALESCE(v.dep,c.departed_at), updated_at=now()
+    FROM (VALUES ${sql.join(vals, sql`, `)}) AS v(lh, pct, dt, dd, eta, sla, adiant, dep)
+    WHERE c.source='cargas' AND upper(c.sheet_lh) = v.lh
+  `)
+  return (res as any)?.rowCount ?? (res as any)?.count ?? 0
+}
+
+/**
  * Reconcilia o RASTREAMENTO ao vivo do Angellira (viagens code-numérico, source
  * nulo, invisíveis nas telas) com as CARGAS da aba SHOPEE (source='cargas',
  * keyed por LH, exibidas em Viagens) — o que o usuário chamou de "sincronizar as
@@ -163,7 +203,7 @@ async function reconcileTrackingToCargas(): Promise<number> {
   return (res as any)?.rowCount ?? (res as any)?.count ?? 0
 }
 
-export interface MonitoringResult { fetched: number; upserted: number; positions: number; semViagem: number; cargasReconciled?: number }
+export interface MonitoringResult { fetched: number; upserted: number; positions: number; semViagem: number; cargasReconciled?: number; lhFromObs?: number; cargasByLh?: number }
 
 export async function syncMonitoring(): Promise<MonitoringResult> {
   const syncStart = new Date()
@@ -177,6 +217,7 @@ export async function syncMonitoring(): Promise<MonitoringResult> {
   const lista = (((await res.json()) as any)?.values ?? []) as VeiculoLista[]
 
   let upserted = 0, positions = 0, semViagem = 0
+  const lhMatches: LhTrack[] = []  // viagens cujo LH veio da observação do Angellira
   for (let i = 0; i < lista.length; i += CONCURRENCY) {
     const slice = lista.slice(i, i + CONCURRENCY)
     const dets = await Promise.all(slice.map((v) => (v.cod != null ? detalhes(token, v.cod) : Promise.resolve(null))))
@@ -277,6 +318,12 @@ export async function syncMonitoring(): Promise<MonitoringResult> {
       `)
       upserted++
 
+      // LH na observação do Angellira (operador digita o LT...) → casa a carga SHOPEE por LH (preciso)
+      if (mapped === 'in_progress') {
+        const lhObs = extractLhFromObs(t)
+        if (lhObs) lhMatches.push({ lh: lhObs, pct, distTotal, distDone, eta: etaIso, sla: slaStatus, adiant: atrasoHoras, departed: iso(t.dataInicio) })
+      }
+
       const dataPos = iso(t.dataUltimaPosicao) ?? new Date().toISOString()
       if (motorista) {
         await db.execute(sql`
@@ -304,9 +351,11 @@ export async function syncMonitoring(): Promise<MonitoringResult> {
   `)
   const closedCount = (closed as any)?.rowCount ?? (closed as any)?.count ?? 0
 
-  // Sincroniza o rastreamento ao vivo → cargas da aba SHOPEE (por motorista).
+  // Sincroniza o rastreamento ao vivo → cargas da aba SHOPEE.
+  // 1º por LH da observação do Angellira (preciso); 2º por motorista (fallback p/ o resto).
+  const cargasByLh = await reconcileByLh(lhMatches)
   const cargasReconciled = await reconcileTrackingToCargas()
 
-  logger.info({ fetched: lista.length, upserted, positions, semViagem, closedStale: closedCount, cargasReconciled }, '[angellira-monitoring] sync ok')
-  return { fetched: lista.length, upserted, positions, semViagem, cargasReconciled }
+  logger.info({ fetched: lista.length, upserted, positions, semViagem, closedStale: closedCount, lhFromObs: lhMatches.length, cargasByLh, cargasReconciled }, '[angellira-monitoring] sync ok')
+  return { fetched: lista.length, upserted, positions, semViagem, cargasReconciled, lhFromObs: lhMatches.length, cargasByLh }
 }
