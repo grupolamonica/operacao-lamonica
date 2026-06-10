@@ -159,6 +159,8 @@ export async function syncPainel(): Promise<PainelSyncResult> {
   // no máximo a cada ~30min; entre isso reusamos o último valor do Redis. Tickets mudam devagar.
   let ticketsPendentes = 0, alertas = 0, ticketsFresco = false
   let prevTs = 0
+  // Phase 14 — paradas (HistoricodeParadas) p/ a linha do tempo (só paradas + região = Posição).
+  const paradaRows: Array<{ cod: string; posicao: string; inicio: string | null; dur: string }> = []
   try {
     const prev = await redis.get('painel:tickets')
     if (prev) { const o = JSON.parse(prev); ticketsPendentes = Number(o.ticketsPendentes ?? 0); alertas = Number(o.alertas ?? 0); prevTs = Number(o.ts ?? 0) }
@@ -240,6 +242,19 @@ export async function syncPainel(): Promise<PainelSyncResult> {
       }
     })
     logger.info({ episodios: arows.length, ticketsPendentes, alertas }, '[painel-sync] tickets->alerts importados')
+
+    // Phase 14 — paradas → buffer (vira trip_events 'stopped' depois do upsert de trips, p/ FK válido).
+    try {
+      const par = await fetchSheet('HistoricodeParadas')
+      const ph = par[0] ?? []; const pc = colFinder(ph)
+      const pCod = pc('Cód. Viagem'), pPos = pc('Posição'), pIni = pc('Início da Parada', 'Inicio da Parada'), pDur = pc('Duração Total', 'Duracao Total')
+      for (const r of par.slice(1)) {
+        const cod = String(r[pCod] ?? '').trim(); const pos = String(r[pPos] ?? '').trim()
+        if (!cod || !pos) continue
+        paradaRows.push({ cod, posicao: pos.slice(0, 300), inicio: isoDt(r[pIni]), dur: String(r[pDur] ?? '').trim() })
+      }
+      logger.info({ paradas: paradaRows.length }, '[painel-sync] paradas lidas')
+    } catch { /* paradas best-effort */ }
   }
 
   // dedup só por id (PNLA-/PNLC- são distintos → double-count mantido; remove cods repetidos na mesma aba)
@@ -296,6 +311,39 @@ export async function syncPainel(): Promise<PainelSyncResult> {
         AND id NOT IN (SELECT trip_id FROM alerts WHERE trip_id IS NOT NULL)
     `)
   })
+
+  // Phase 14 — paradas → trip_events 'stopped' (linha do tempo só paradas + região=Posição).
+  // Liga ao trip do painel pelo cód (PNLA ativo tem preferência). FK válido pós-upsert de trips.
+  if (paradaRows.length > 0) {
+    const codToTrip = new Map<string, string>()
+    for (const t of all) {
+      const m = t.code.match(/^PNL([AC])-(.+)$/)
+      if (m) { const cod = m[2]; if (m[1] === 'A' || !codToTrip.has(cod)) codToTrip.set(cod, t.id) }
+    }
+    const evsRaw = paradaRows
+      .filter((p) => codToTrip.has(p.cod))
+      .map((p) => ({
+        id: uuid5('parada|' + p.cod + '|' + (p.inicio ?? '')),
+        tripId: codToTrip.get(p.cod)!,
+        notes: (p.dur ? `${p.posicao} · ${p.dur}` : p.posicao).slice(0, 500),
+        occurredAt: p.inicio ?? syncStart,
+      }))
+    // dedup por id (cod+inicio iguais → mesmo uuid5; ON CONFLICT não aceita 2x na mesma INSERT)
+    const evs = [...new Map(evsRaw.map((e) => [e.id, e])).values()]
+    await db.transaction(async (tx) => {
+      const B = 500
+      for (let i = 0; i < evs.length; i += B) {
+        const batch = evs.slice(i, i + B)
+        const vals = batch.map((e) => sql`(${e.id}, ${e.tripId}, 'stopped', ${e.occurredAt}, ${e.notes})`)
+        await tx.execute(sql`
+          INSERT INTO trip_events (id, trip_id, event_type, occurred_at, notes)
+          VALUES ${sql.join(vals, sql`, `)}
+          ON CONFLICT (id) DO UPDATE SET notes=EXCLUDED.notes, occurred_at=EXCLUDED.occurred_at
+        `)
+      }
+    })
+    logger.info({ paradasEventos: evs.length }, '[painel-sync] paradas->trip_events (linha do tempo)')
+  }
 
   // Tickets/Alertas para o dashboard (Redis). ts só avança quando a aba foi REALMENTE relida (gate 30min).
   try { await redis.set('painel:tickets', JSON.stringify({ ticketsPendentes, alertas, ts: ticketsFresco ? agora.getTime() : prevTs }), 'EX', 3600) } catch { /* noop */ }
