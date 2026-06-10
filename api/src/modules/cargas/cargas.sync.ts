@@ -5,15 +5,18 @@
  *  1. cargas_open_loads   — replace com as cargas em aberto (52 no test)
  *  2. cargas_load_candidates — replace com os leads QUEUED dessas cargas
  *  3. trips.cargas_status / cargas_load_id — enriquece por join de LH
+ *  4. drivers.ranking_* / cargas_candidaturas_abertas — enrich por nome
+ *     normalizado (ranking) e CPF (candidatos QUEUED), Onda D (Motoristas)
  *
  * Cache (replace a cada run), não fonte de verdade. Idempotente.
- * Enrich de drivers (ranking_*, candidaturas) fica para a Onda D (Motoristas).
  */
 
 import { sql } from 'drizzle-orm'
 import { createHash } from 'node:crypto'
 import { db } from '../../db/client'
 import { cargasOpenLoads, cargasLoadCandidates } from '../../db/schema/cargas'
+import { getRankingDrivers } from '../ranking/ranking.service'
+import { normalizeMotorista } from '../positions/viagens.parser'
 import { getOpenLoads } from './cargas.service'
 import { fetchQueuedLeads, fetchMotoristasByCpf, fetchCargasLhStatus, fetchAllCargasForTrips, type CargaTripRow } from './cargas.reads'
 
@@ -22,6 +25,8 @@ export interface SyncResult {
   candidates: number
   cargasTrips: number
   tripsEnriched: number
+  driversRanked: number
+  driversCandidaturas: number
   ts: string
 }
 
@@ -104,6 +109,65 @@ export async function upsertCargasAsTrips(): Promise<number> {
   return upserted
 }
 
+/**
+ * Onda D (Motoristas) — persiste o cruzamento no drivers da Torre:
+ *  - ranking_pontuacao / ranking_posicao por nome normalizado (mesmo join
+ *    read-time de drivers.service: strip do sufixo " (id)" + normalizeMotorista)
+ *  - cargas_candidaturas_abertas = count de candidatos QUEUED por CPF (dígitos),
+ *    zerando quem não tem (senão fica stale)
+ */
+export async function enrichDrivers(): Promise<{ driversRanked: number; driversCandidaturas: number }> {
+  // 1. Ranking → drivers por nome normalizado (bulk UPDATE FROM VALUES).
+  let driversRanked = 0
+  try {
+    const ranked = await getRankingDrivers()
+    const rankByName = new Map<string, { pontuacao: number | null; rank: number | null }>()
+    for (const r of ranked) {
+      rankByName.set(normalizeMotorista(r.nome.replace(/\s*\(\d+\)\s*$/, '')), {
+        pontuacao: r.pontuacao ?? null, rank: r.rank ?? null,
+      })
+    }
+    const torreDrivers = (await db.execute(sql`SELECT id, name FROM drivers`)) as unknown as Array<{ id: string; name: string }>
+    const matched = torreDrivers.flatMap((d) => {
+      const rk = rankByName.get(normalizeMotorista(d.name))
+      return rk ? [{ id: d.id, rk }] : []
+    })
+    const B = 500
+    for (let i = 0; i < matched.length; i += B) {
+      const chunk = matched.slice(i, i + B)
+      const values = sql.join(
+        chunk.map((m) => sql`(${m.id}::uuid, ${m.rk.pontuacao == null ? null : String(m.rk.pontuacao)}::numeric, ${m.rk.rank}::int)`),
+        sql`, `,
+      )
+      const res = await db.execute(
+        sql`UPDATE drivers d SET ranking_pontuacao = v.pontuacao, ranking_posicao = v.posicao, updated_at = now()
+            FROM (VALUES ${values}) AS v(id, pontuacao, posicao)
+            WHERE d.id = v.id`,
+      )
+      driversRanked += (res as unknown as { count?: number }).count ?? 0
+    }
+  } catch (err) {
+    // Ranking indisponível ou falha no persist — segue sem persistir rank, mas loga (não mascarar bug de SQL).
+    console.warn('[cargas.sync] enrichDrivers: persist de ranking falhou', err)
+  }
+
+  // 2. Candidaturas QUEUED por CPF (só dígitos) — zera todo mundo e regrava quem tem.
+  await db.execute(sql`UPDATE drivers SET cargas_candidaturas_abertas = 0 WHERE cargas_candidaturas_abertas <> 0`)
+  const res = await db.execute(sql`
+    UPDATE drivers d SET cargas_candidaturas_abertas = c.n, updated_at = now()
+    FROM (
+      SELECT regexp_replace(driver_cpf, '[^0-9]', '', 'g') AS cpf, count(*)::int AS n
+      FROM cargas_load_candidates
+      WHERE status = 'QUEUED' AND driver_cpf IS NOT NULL
+      GROUP BY 1
+    ) c
+    WHERE d.cpf IS NOT NULL AND c.cpf <> '' AND regexp_replace(d.cpf, '[^0-9]', '', 'g') = c.cpf
+  `)
+  const driversCandidaturas = (res as unknown as { count?: number }).count ?? 0
+
+  return { driversRanked, driversCandidaturas }
+}
+
 export async function syncCargas(): Promise<SyncResult> {
   // 1. Cargas em aberto → cache (replace)
   const openLoads = await getOpenLoads()
@@ -171,11 +235,16 @@ export async function syncCargas(): Promise<SyncResult> {
     tripsEnriched += (res as unknown as { count?: number }).count ?? 0
   }
 
+  // 5. Enrich de drivers (Onda D) — persiste ranking_* + candidaturas abertas.
+  const { driversRanked, driversCandidaturas } = await enrichDrivers()
+
   return {
     openLoads: openLoads.length,
     candidates: leads.length,
     cargasTrips,
     tripsEnriched,
+    driversRanked,
+    driversCandidaturas,
     ts: new Date().toISOString(),
   }
 }
