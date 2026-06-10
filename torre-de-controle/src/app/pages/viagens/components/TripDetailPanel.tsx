@@ -164,10 +164,27 @@ export function TripDetailPanel({ trip, onClose }: Props) {
                 </div>
                 <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
                   {cross.motorista.cpf && <KV k="CPF" v={maskCpf(cross.motorista.cpf)} />}
-                  {cross.motorista.cnh && <KV k="CNH" v={`${cross.motorista.cnhCategoria ?? ''}${cross.motorista.cnhValidade ? ` · val ${fmtDia(cross.motorista.cnhValidade)}` : ''}`} />}
+                  {cross.motorista.rg && <KV k="RG" v={cross.motorista.rg} />}
+                  {cross.motorista.cnh && <KV k="CNH" v={`${cross.motorista.cnh}${cross.motorista.cnhCategoria ? ` · ${cross.motorista.cnhCategoria}` : ''}`} />}
+                  {cross.motorista.cnhValidade && <KV k="CNH válida até" v={fmtDia(cross.motorista.cnhValidade)} />}
+                  {cross.motorista.nascimento && <KV k="Nascimento" v={fmtDia(cross.motorista.nascimento)} />}
                   {cross.motorista.telefone && <KV k="Telefone" v={cross.motorista.telefone} />}
                   {cross.motorista.cidadeUf && <KV k="Cidade/UF" v={cross.motorista.cidadeUf} />}
+                  {cross.motorista.email && <KV k="E-mail" v={cross.motorista.email} />}
+                  {cross.motorista.score != null && <KV k="Score operacional" v={String(cross.motorista.score)} />}
+                  {cross.motorista.bloqueado != null && <KV k="Bloqueado" v={cross.motorista.bloqueado ? 'Sim' : 'Não'} />}
                 </div>
+                {/* Cadastro Cargas (motoristas_historico, por nome) — campos extras quando casar */}
+                {cross.motorista.cargas && Object.keys(cross.motorista.cargas).length > 0 && (
+                  <details className="text-[11px]">
+                    <summary className="cursor-pointer text-[10px] uppercase tracking-wide text-muted-foreground">Cadastro Cargas (Angellira)</summary>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-1">
+                      {Object.entries(cross.motorista.cargas).map(([k, v]) => v != null && v !== '' && (
+                        <KV key={k} k={labelCarga(k)} v={fmtVal(k, v)} />
+                      ))}
+                    </div>
+                  </details>
+                )}
               </div>
             )}
             {(cross.cavalo || cross.carreta) && (
@@ -180,17 +197,34 @@ export function TripDetailPanel({ trip, onClose }: Props) {
                       {v.marcaModelo && <span className="text-[11px] text-muted-foreground">{v.marcaModelo}</span>}
                       {v.angellira && <DocTag tone={/conforme|found/i.test(v.angellira) ? 'ok' : 'warn'}>Angellira: {v.angellira}{v.vigenteAte ? ` · vigente até ${fmtDia(v.vigenteAte)}` : ''}</DocTag>}
                     </div>
-                    {(v.chassi || v.renavam || v.anoFab) && (
+                    {(v.chassi || v.renavam || v.anoFab || v.cor || v.tipo) && (
                       <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground">
+                        {v.tipo && <span>Tipo: <span className="text-foreground">{v.tipo}</span></span>}
+                        {v.cor && <span>Cor: <span className="text-foreground">{v.cor}</span></span>}
                         {v.chassi && <span>Chassi: <span className="text-foreground font-mono">{v.chassi}</span></span>}
                         {v.renavam && <span>Renavam: <span className="text-foreground font-mono">{v.renavam}</span></span>}
                         {v.anoFab && <span>Ano: <span className="text-foreground">{v.anoFab}{v.anoModelo && v.anoModelo !== v.anoFab ? `/${v.anoModelo}` : ''}</span></span>}
                         {v.antt && <span>ANTT: <span className="text-foreground">{v.antt}</span></span>}
+                        {v.classificacao && <span>Classificação: <span className="text-foreground">{v.classificacao}</span></span>}
+                        {v.ultimoLicenciamento && <span>Últ. licenciamento: <span className="text-foreground">{fmtDia(v.ultimoLicenciamento)}</span></span>}
                       </div>
                     )}
                   </div>
                 ))}
               </div>
+            )}
+
+            {/* Carga completa (Cargas) — todos os campos relevantes */}
+            {cross.carga && (
+              <details className="border-t border-border pt-2">
+                <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Carga (sistema Cargas) — ver tudo</summary>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] mt-1.5">
+                  {CARGA_FIELDS.map(([k, label]) => {
+                    const v = (cross.carga as Record<string, unknown>)[k]
+                    return v != null && v !== '' ? <KV key={k} k={label} v={fmtVal(k, v)} /> : null
+                  })}
+                </div>
+              </details>
             )}
           </div>
         )}
@@ -338,6 +372,57 @@ function KV({ k, v }: { k: string; v: string }) {
     </div>
   )
 }
+// Campos da carga (Cargas) a exibir, em ordem, com rótulo pt-BR.
+const CARGA_FIELDS: Array<[string, string]> = [
+  ['sheet_lh', 'LH'],
+  ['status', 'Status (ciclo)'],
+  ['sheet_status', 'Status operacional'],
+  ['perfil', 'Perfil veículo'],
+  ['origem', 'Origem'],
+  ['destino', 'Destino'],
+  ['data', 'Data'],
+  ['horario', 'Horário'],
+  ['sheet_data_carregamento', 'Carregamento'],
+  ['sheet_data_descarga', 'Descarga'],
+  ['distancia_km', 'Distância (km)'],
+  ['duracao_horas', 'Duração (h)'],
+  ['valor', 'Frete (R$)'],
+  ['bonus', 'Bônus (R$)'],
+  ['bonus_exigencias', 'Exigências bônus'],
+  ['sheet_motorista', 'Motorista'],
+  ['sheet_cavalo', 'Cavalo'],
+  ['sheet_carreta', 'Carreta'],
+  ['sheet_tipo', 'Tipo planilha'],
+  ['driver_visibility', 'Visibilidade'],
+  ['reserved_at', 'Reservada em'],
+  ['reserved_until', 'Reserva até'],
+  ['booked_at', 'Confirmada em'],
+  ['version', 'Versão'],
+  ['sheet_synced_at', 'Sincronizada em'],
+  ['created_at', 'Criada em'],
+  ['updated_at', 'Atualizada em'],
+]
+
+const CARGA_LABELS: Record<string, string> = {
+  cpf: 'CPF', nome: 'Nome', cnh: 'CNH', cnh_validade: 'CNH validade', cnh_categoria: 'CNH categoria',
+  cnh_security: 'CNH segurança', rg: 'RG', telefone: 'Telefone', nascimento: 'Nascimento',
+  driver_kind: 'Vínculo', cidade: 'Cidade', estado: 'UF', angellira_sent_date: 'Angellira enviado',
+  angellira_limit_date: 'Angellira vigente até', aspx_found: 'ASPX encontrado', aspx_display_name: 'ASPX nome',
+}
+function labelCarga(k: string): string { return CARGA_LABELS[k] ?? k }
+
+// Formata valores: datas (date-only/ISO) em dd/MM/yyyy, dinheiro com milhar, booleano Sim/Não.
+function fmtVal(key: string, v: unknown): string {
+  if (typeof v === 'boolean') return v ? 'Sim' : 'Não'
+  const s = String(v)
+  if (/_at$|date|validade|nascimento|carregamento|descarga|^data$/.test(key) && /\d{4}-\d{2}-\d{2}/.test(s)) {
+    const m = s.match(/(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/)
+    if (m) return m[4] ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}` : `${m[3]}/${m[2]}/${m[1]}`
+  }
+  if ((key === 'valor' || key === 'bonus') && !isNaN(Number(v))) return Number(v).toLocaleString('pt-BR')
+  return s
+}
+
 function maskCpf(cpf: string): string {
   const d = cpf.replace(/\D/g, '')
   if (d.length !== 11) return cpf

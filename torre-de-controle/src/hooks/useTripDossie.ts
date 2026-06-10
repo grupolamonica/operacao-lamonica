@@ -1,13 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 
-// Phase 14 — dossiê cruzado da viagem (GET /api/trips/:id/dossie): motorista +
-// cavalo + carreta com vigências Angellira, cruzando torre + ranking + cargas.
+// Phase 14 — dossiê cruzado da viagem (GET /api/trips/:id/dossie): carga completa +
+// motorista + cavalo + carreta com TUDO das 3 bases (torre + ranking + cargas).
 
 export interface VeiculoDossie {
   placa: string | null
   papel: 'cavalo' | 'carreta'
   tipo: string | null
+  marca: string | null
+  modelo: string | null
   marcaModelo: string | null
   chassi: string | null
   renavam: string | null
@@ -15,27 +17,39 @@ export interface VeiculoDossie {
   anoModelo: number | null
   cor: string | null
   antt: string | null
+  classificacao: string | null
+  ultimoLicenciamento: string | null
   angellira: string | null
   vigenteAte: string | null
 }
 
+export interface MotoristaDossie {
+  nome: string
+  cpf: string | null
+  rg: string | null
+  cnh: string | null
+  cnhCategoria: string | null
+  cnhValidade: string | null
+  nascimento: string | null
+  vinculo: string | null
+  cidade: string | null
+  estado: string | null
+  cidadeUf: string | null
+  telefone: string | null
+  email: string | null
+  score: number | null
+  bloqueado: boolean | null
+  angellira: string | null
+  vigenteAte: string | null
+  rankPosicao: number | null
+  rankPontuacao: number | null
+  cargas: Record<string, unknown> | null
+}
+
 export interface TripDossie {
   lh: string | null
-  motorista: {
-    nome: string
-    cpf: string | null
-    cnh: string | null
-    cnhCategoria: string | null
-    cnhValidade: string | null
-    vinculo: string | null
-    cidadeUf: string | null
-    telefone: string | null
-    score: number | null
-    angellira: string | null
-    vigenteAte: string | null
-    rankPosicao: number | null
-    rankPontuacao: number | null
-  } | null
+  carga: Record<string, unknown> | null
+  motorista: MotoristaDossie | null
   cavalo: VeiculoDossie | null
   carreta: VeiculoDossie | null
 }
