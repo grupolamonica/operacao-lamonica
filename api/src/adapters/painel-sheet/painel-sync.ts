@@ -77,8 +77,31 @@ interface TripRow {
   adiant: number | null; origem: string | null; destino: string | null; motorista: string | null
   lh: string | null  // Phase 14 — LH (numViagem) p/ cruzar com Cargas (pode ser zerado pela dedup do sheet_lh único)
   linkedLh: string | null  // Phase 14 — elo p/ fundir c/ a carga (NÃO zerado pela dedup)
+  clientId: string | null  // Phase 14 — cliente classificado da origem/destino (Casas Bahia/Nestlé/Shopee/B2W)
 }
 export interface PainelSyncResult { ativas: number; concluidas: number; total: number; noPrazo: number; atrasadas: number; ticketsPendentes: number; alertas: number }
+
+// Clientes (mesmos UUIDs da tabela clients da Torre — confirmados no banco).
+const CLIENT_IDS = {
+  shopee: 'c022c1f4-ef0b-4b5b-9044-55ac3f61da1d',
+  casas:  '2f85fe11-46c6-520c-99cd-35a361dad7d2',
+  nestle: 'c09d5929-80e2-5a26-a2d3-ad87d92815d9',
+  b2w:    '88342423-643d-5b61-8531-ec52f9689552',
+  griffi: 'a8c3290b-8ba6-5643-9e38-f2d01b10056a',
+}
+/**
+ * Classifica o cliente da viagem pela origem+destino (o painel não tem coluna de
+ * cliente limpa — o nome vem embutido: "VIA VAREJO (CASAS BAHIA)", "NESTLE BRASIL",
+ * "CD SHOPEE SOC...", "B2W/MAGAZINE"). Sem marcador conhecido → Griffi (genérico).
+ */
+function classifyClient(origem: string | null, destino: string | null): string {
+  const s = `${origem ?? ''} ${destino ?? ''}`.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase()
+  if (/\bSHOPEE\b|\bSOC[ _-]|\bSPX\b/.test(s)) return CLIENT_IDS.shopee
+  if (/VIA VAREJO|CASAS BAHIA|VIAVAREJO/.test(s)) return CLIENT_IDS.casas
+  if (/NESTLE/.test(s)) return CLIENT_IDS.nestle
+  if (/\bB2W\b|M\.?\s?DIAS|MAGAZINE|MAGALU|AMERICANAS|MERCADO LIVRE|\bMELI\b/.test(s)) return CLIENT_IDS.b2w
+  return CLIENT_IDS.griffi
+}
 
 export async function syncPainel(): Promise<PainelSyncResult> {
   const agora = new Date()
@@ -147,7 +170,8 @@ export async function syncPainel(): Promise<PainelSyncResult> {
       recs.push({ id: uuid5('painel|a|' + cod), code: ('PNLA-' + cod).slice(0, 20), status, sla, progress,
         distTotal: kmT, distDone: (kmT != null) ? Math.max(0, kmT - kmFalta) : null, ws, we, eta, adiant,
         origem: String(r[iOri] ?? '').slice(0, 200) || null, destino: String(r[iDest] ?? '').slice(0, 200) || null,
-        motorista: String(r[iMot] ?? '').trim() || null, lh: codToLh.get(cod) ?? null, linkedLh: codToLh.get(cod) ?? null })
+        motorista: String(r[iMot] ?? '').trim() || null, lh: codToLh.get(cod) ?? null, linkedLh: codToLh.get(cod) ?? null,
+        clientId: classifyClient(String(r[iOri] ?? ''), String(r[iDest] ?? '')) })
     }
   }
 
@@ -163,7 +187,8 @@ export async function syncPainel(): Promise<PainelSyncResult> {
       recs.push({ id: uuid5('painel|c|' + cod), code: ('PNLC-' + cod).slice(0, 20), status: 'completed', sla: null, progress: 100,
         distTotal: kmT, distDone: (kmT != null && kmF != null) ? Math.max(0, kmT - kmF) : kmT, ws: we, we, eta: concIso, adiant: null,
         origem: String(r[iOri] ?? '').slice(0, 200) || null, destino: String(r[iDest] ?? '').slice(0, 200) || null,
-        motorista: String(r[iMot] ?? '').trim() || null, lh: codToLh.get(cod) ?? null, linkedLh: codToLh.get(cod) ?? null })
+        motorista: String(r[iMot] ?? '').trim() || null, lh: codToLh.get(cod) ?? null, linkedLh: codToLh.get(cod) ?? null,
+        clientId: classifyClient(String(r[iOri] ?? ''), String(r[iDest] ?? '')) })
     }
   }
 
@@ -304,11 +329,11 @@ export async function syncPainel(): Promise<PainelSyncResult> {
       const values = batch.map((t) => sql`(${t.id}, ${t.code}, 'painel', 'media', ${t.origem}, ${t.destino},
         ${t.ws}, ${t.we}, ${t.eta}, ${t.status}, ${t.sla}, ${t.progress},
         ${t.distTotal != null ? String(t.distTotal) : null}, ${t.distDone != null ? String(t.distDone) : null},
-        ${t.adiant != null ? String(t.adiant) : null}, ${t.motorista}, ${t.lh}, ${t.linkedLh}, 'intensivo', now(), now())`)
+        ${t.adiant != null ? String(t.adiant) : null}, ${t.motorista}, ${t.lh}, ${t.linkedLh}, ${t.clientId}, 'intensivo', now(), now())`)
       await tx.execute(sql`
         INSERT INTO trips (id, code, source, priority, origin, destination, window_start, window_end, eta,
           status, sla_status, progress_pct, distance_total, distance_done, adiantamento_horas,
-          sheet_motorista, sheet_lh, linked_lh, conducao_regime, created_at, updated_at)
+          sheet_motorista, sheet_lh, linked_lh, client_id, conducao_regime, created_at, updated_at)
         VALUES ${sql.join(values, sql`, `)}
         ON CONFLICT (id) DO UPDATE SET
           code=EXCLUDED.code, origin=EXCLUDED.origin, destination=EXCLUDED.destination,
@@ -317,7 +342,8 @@ export async function syncPainel(): Promise<PainelSyncResult> {
           distance_total=EXCLUDED.distance_total, distance_done=EXCLUDED.distance_done,
           adiantamento_horas=EXCLUDED.adiantamento_horas, sheet_motorista=EXCLUDED.sheet_motorista,
           sheet_lh=COALESCE(EXCLUDED.sheet_lh, trips.sheet_lh),
-          linked_lh=COALESCE(EXCLUDED.linked_lh, trips.linked_lh), updated_at=now()
+          linked_lh=COALESCE(EXCLUDED.linked_lh, trips.linked_lh),
+          client_id=EXCLUDED.client_id, updated_at=now()
       `)
     }
     await tx.execute(sql`
