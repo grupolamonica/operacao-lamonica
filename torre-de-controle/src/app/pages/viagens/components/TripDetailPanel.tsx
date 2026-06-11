@@ -169,17 +169,6 @@ export function TripDetailPanel({ trip, onClose }: Props) {
                   {cross.motorista.score != null && <KV k="Score operacional" v={String(cross.motorista.score)} />}
                   {cross.motorista.bloqueado != null && <KV k="Bloqueado" v={cross.motorista.bloqueado ? 'Sim' : 'Não'} />}
                 </div>
-                {/* Cadastro Cargas (motoristas_historico, por nome) — campos extras quando casar */}
-                {cross.motorista.cargas && Object.keys(cross.motorista.cargas).length > 0 && (
-                  <details className="text-[11px]">
-                    <summary className="cursor-pointer text-[10px] uppercase tracking-wide text-muted-foreground">Cadastro Cargas (Angellira)</summary>
-                    <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-1">
-                      {Object.entries(cross.motorista.cargas).map(([k, v]) => v != null && v !== '' && (
-                        <KV key={k} k={labelCarga(k)} v={fmtVal(k, v)} />
-                      ))}
-                    </div>
-                  </details>
-                )}
               </div>
             )}
             {(cross.cavalo || cross.carreta) && (
@@ -190,7 +179,7 @@ export function TripDetailPanel({ trip, onClose }: Props) {
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-[11px] font-medium text-foreground capitalize">{v.papel}: {v.placa ?? '—'}</span>
                       {v.marcaModelo && <span className="text-[11px] text-muted-foreground">{v.marcaModelo}</span>}
-                      {v.angellira && <DocTag tone={/conforme|found/i.test(v.angellira) ? 'ok' : 'warn'}>Angellira: {v.angellira}{v.vigenteAte ? ` · vigente até ${fmtDia(v.vigenteAte)}` : ''}</DocTag>}
+                      {(v.angellira || v.vigenteAte) && <DocTag tone={/conforme|found/i.test(v.angellira ?? '') || v.vigenteAte ? 'ok' : 'warn'}>Angellira: {v.vigenteAte ? `vigente até ${fmtDia(v.vigenteAte)}` : (/found/i.test(v.angellira ?? '') ? 'Conforme' : v.angellira)}</DocTag>}
                     </div>
                     {(v.chassi || v.renavam || v.anoFab || v.cor || v.tipo) && (
                       <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground">
@@ -209,16 +198,31 @@ export function TripDetailPanel({ trip, onClose }: Props) {
               </div>
             )}
 
-            {/* Carga completa (Cargas) — todos os campos relevantes */}
-            {cross.carga && (
+            {/* Sistema Cargas — carga + cadastro do motorista (Angellira) num único bloco */}
+            {(cross.carga || (cross.motorista?.cargas && Object.keys(cross.motorista.cargas).length > 0)) && (
               <details className="border-t border-border pt-2">
-                <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Carga (sistema Cargas) — ver tudo</summary>
-                <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] mt-1.5">
-                  {CARGA_FIELDS.map(([k, label]) => {
-                    const v = (cross.carga as Record<string, unknown>)[k]
-                    return v != null && v !== '' ? <KV key={k} k={label} v={fmtVal(k, v)} /> : null
-                  })}
-                </div>
+                <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Sistema Cargas — ver tudo</summary>
+                {cross.carga && (
+                  <div className="mt-1.5">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Carga</p>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px]">
+                      {CARGA_FIELDS.map(([k, label]) => {
+                        const v = (cross.carga as Record<string, unknown>)[k]
+                        return v != null && v !== '' ? <KV key={k} k={label} v={fmtVal(k, v)} /> : null
+                      })}
+                    </div>
+                  </div>
+                )}
+                {cross.motorista?.cargas && Object.keys(cross.motorista.cargas).length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Cadastro do motorista (Angellira)</p>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px]">
+                      {Object.entries(cross.motorista.cargas).map(([k, v]) => v != null && v !== '' && (
+                        <KV key={k} k={labelCarga(k)} v={fmtVal(k, v)} />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </details>
             )}
           </div>
