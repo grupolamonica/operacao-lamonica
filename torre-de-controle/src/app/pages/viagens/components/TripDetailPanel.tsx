@@ -13,7 +13,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { api } from '@/lib/api'
 import { useTripTimeline } from '@/hooks/useTripTimeline'
 import { useTripRisk } from '@/hooks/useTripRisk'
-import { useDriverDossie, useDriverDossieByName } from '@/hooks/useDrivers'
 import { useDriverTrack } from '@/hooks/useDriverTrack'
 import { useTripDossie, type VeiculoDossie } from '@/hooks/useTripDossie'
 import { formatKm, formatDate } from '@/lib/formatters'
@@ -30,10 +29,6 @@ export function TripDetailPanel({ trip, onClose }: Props) {
   const { data: risk }   = useTripRisk(trip.id)
   // Phase 14 — trajeto do motorista p/ traçar a rota no mapa (só este motorista).
   const { data: track }  = useDriverTrack(trip.driverName || null)
-  // Cruzamento: por driverId quando existe; senão pelo nome do motorista (viagens do painel).
-  const dossieById = useDriverDossie(trip.driverId ?? null)
-  const dossieByName = useDriverDossieByName(trip.driverId ? null : (trip.driverName || null))
-  const dossie = dossieById.data ?? dossieByName.data
   // Phase 14 — dossiê cruzado (torre+ranking+cargas): vigências Angellira + detalhes de cavalo/carreta.
   const { data: cross } = useTripDossie(trip.id)
   // Datas de vigência são date-only (chegam como string 'YYYY-MM-DD' ou Date) —
@@ -229,62 +224,6 @@ export function TripDetailPanel({ trip, onClose }: Props) {
           </div>
         )}
 
-        {/* Phase 12 — dossiê do motorista cruzado (identidade, documentos, última localização, frota) */}
-        {dossie && (
-          <div className="rounded-md border border-border bg-card p-2.5 space-y-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Motorista — {dossie.identidade.name}</p>
-            <div className="flex flex-wrap gap-1">
-              {dossie.conformidade.angelliraStatus && <DocTag tone={dossie.conformidade.angelliraStatus === 'Conforme' ? 'ok' : 'warn'}>Angellira: {dossie.conformidade.angelliraStatus}</DocTag>}
-              {dossie.conformidade.anttValid && <DocTag tone="ok">ANTT ✓</DocTag>}
-              {dossie.conformidade.operationalBlocked && <DocTag tone="bad">Bloqueado</DocTag>}
-              {dossie.identidade.driverKind && <DocTag tone="muted">{dossie.identidade.driverKind === 'FUN' ? 'Funcionário' : dossie.identidade.driverKind === 'AGR' ? 'Agregado' : dossie.identidade.driverKind}</DocTag>}
-            </div>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
-              {dossie.identidade.cpf && <KV k="CPF" v={maskCpf(dossie.identidade.cpf)} />}
-              {dossie.identidade.cnh && <KV k="CNH" v={`${dossie.identidade.cnhCategoria ?? ''}${dossie.identidade.cnhValidade ? ` · val ${formatDate(new Date(dossie.identidade.cnhValidade), 'dd/MM/yyyy')}` : ''}`} />}
-              {dossie.identidade.phone && <KV k="Telefone" v={dossie.identidade.phone} />}
-              {(dossie.identidade.cidade || dossie.identidade.estado) && <KV k="Cidade/UF" v={[dossie.identidade.cidade, dossie.identidade.estado].filter(Boolean).join('/')} />}
-            </div>
-
-            {dossie.documentos.length > 0 && (
-              <div>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Documentos</p>
-                <div className="flex flex-wrap gap-1">
-                  {dossie.documentos.map((doc, i) => (
-                    <DocTag key={i} tone={doc.status === 'valido' ? 'ok' : doc.status === 'vencido' ? 'bad' : 'warn'}>
-                      {doc.type}{doc.expiresAt ? ` · ${formatDate(new Date(doc.expiresAt), 'dd/MM/yy')}` : ''}
-                    </DocTag>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Última localização</p>
-              {dossie.localizacao.ultimaPosicao ? (
-                <p className="text-[11px] text-foreground">
-                  {[dossie.localizacao.ultimaPosicao.cidade, dossie.localizacao.ultimaPosicao.uf].filter(Boolean).join('/') || '—'}
-                  {dossie.localizacao.ultimaPosicao.at ? ` · ${formatDate(new Date(dossie.localizacao.ultimaPosicao.at), 'dd/MM HH:mm')}` : ''}
-                  {dossie.localizacao.ultimaPosicao.veiculo ? ` · ${dossie.localizacao.ultimaPosicao.veiculo}` : ''}
-                </p>
-              ) : (
-                <p className="text-[11px] text-muted-foreground">{dossie.localizacao.address ?? 'Sem posição recente.'}</p>
-              )}
-            </div>
-
-            {dossie.veiculos.length > 0 && (
-              <div>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-1">Frota ({dossie.veiculos.length})</p>
-                <div className="flex flex-wrap gap-1">
-                  {dossie.veiculos.map(v => (
-                    <DocTag key={v.plate} tone="muted">{v.plate} · {v.plateRole === 'HORSE' ? 'cavalo' : 'carreta'}</DocTag>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
         <div>
           <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Linha do tempo — paradas</h4>
           <TripTimeline events={events} onlyStops />
@@ -411,15 +350,26 @@ const CARGA_LABELS: Record<string, string> = {
 }
 function labelCarga(k: string): string { return CARGA_LABELS[k] ?? k }
 
-// Formata valores: datas (date-only/ISO) em dd/MM/yyyy, dinheiro com milhar, booleano Sim/Não.
+// Formata valores p/ a tela: dinheiro com milhar, booleano Sim/Não, e QUALQUER data
+// (Date, ISO 'YYYY-MM-DD...' ou toString 'Thu Jun 11 2026 ...') vira só dd/MM/yyyy.
 function fmtVal(key: string, v: unknown): string {
+  if (v == null) return ''
   if (typeof v === 'boolean') return v ? 'Sim' : 'Não'
-  const s = String(v)
-  if (/_at$|date|validade|nascimento|carregamento|descarga|^data$/.test(key) && /\d{4}-\d{2}-\d{2}/.test(s)) {
-    const m = s.match(/(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/)
-    if (m) return m[4] ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}` : `${m[3]}/${m[2]}/${m[1]}`
-  }
   if ((key === 'valor' || key === 'bonus') && !isNaN(Number(v))) return Number(v).toLocaleString('pt-BR')
+  const s = String(v)
+  // Já em formato BR ('dd/MM/yyyy' com ou sem hora) — mantém como veio (carregamento/descarga têm hora).
+  if (/^\d{2}\/\d{2}\/\d{4}/.test(s)) return s
+  // ISO 'YYYY-MM-DD' — formata direto das partes (sem fuso).
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`
+  // Date object ou toString ('Thu Jun 11 2026 ...') — parseia e formata em UTC (evita -1 dia).
+  if (v instanceof Date || /^[A-Z][a-z]{2}\s/.test(s)) {
+    const d = new Date(v as string | Date)
+    if (!isNaN(d.getTime())) {
+      const p = (n: number) => String(n).padStart(2, '0')
+      return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`
+    }
+  }
   return s
 }
 
