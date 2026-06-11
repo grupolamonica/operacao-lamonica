@@ -145,13 +145,16 @@ function mergeGroup<T extends Record<string, any>>(group: T[]): T {
     'originLat', 'originLng', 'destLat', 'destLng', 'riskLevel', 'riskScore', 'riskFactors'] as const) {
     if (empty((merged as any)[k])) { for (const o of others) if (!empty((o as any)[k])) { (merged as any)[k] = (o as any)[k]; break } }
   }
-  // Rastreamento ao vivo: se a canônica não tem progresso, herda da representação ATIVA.
-  if (((merged as any).progressPct ?? 0) === 0) {
-    const act = others.find((o) => ((o as any).progressPct ?? 0) > 0 && o.status === 'in_progress')
-    if (act) {
-      for (const k of ['progressPct', 'distanceTotal', 'distanceDone', 'eta', 'slaStatus', 'adiantamentoHoras', 'departedAt', 'windowEnd', 'status', 'conducaoRegime'] as const) {
-        (merged as any)[k] = (act as any)[k]
-      }
+  // SLA/rastreamento: a verdade é o PAINEL (prazo "Previsão Chegada Destino" real + KM/ETA ao vivo).
+  // A carga (canônica p/ identidade) tem window_end = DATA da carga (lixo p/ SLA) → usá-lo fazia a
+  // tabela classificar tudo como atrasado. Prefere o painel; senão a representação ATIVA com progresso.
+  const slaSrc =
+    group.find((o) => o.source === 'painel') ??
+    others.find((o) => ((o as any).progressPct ?? 0) > 0 && o.status === 'in_progress')
+  if (slaSrc && slaSrc !== base) {
+    for (const k of ['windowStart', 'windowEnd', 'eta', 'slaStatus', 'adiantamentoHoras', 'morosidadeHoras',
+      'distanceTotal', 'distanceDone', 'progressPct', 'conducaoRegime', 'departedAt', 'arrivedAt'] as const) {
+      if ((slaSrc as any)[k] != null) (merged as any)[k] = (slaSrc as any)[k]
     }
   }
   return merged
