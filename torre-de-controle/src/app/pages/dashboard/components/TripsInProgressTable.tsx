@@ -57,15 +57,24 @@ export const tripProgressColumns: ColumnDef<Trip>[] = [
  * lei do motorista) para um filtro. Sem ordenação — quem chama decide. Usado por
  * "Viagens em andamento" e "Viagens em maior risco".
  */
+// Os prazos (window_*) chegam como "hora-de-Brasília rotulada como UTC" (a planilha é
+// horário local; o backend grava o wall-clock e o formatDate exibe em UTC). Para o SLA
+// bater com o painel, o "agora" tem que estar no MESMO convênio: pega o wall-clock local
+// do navegador e rotula como UTC. Sem isto havia 3h de descompasso (atrasos absurdos/errados).
+function toBrasiliaWall(d: Date): Date {
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds()))
+}
+
 export function useLiveTrips(filter: TripFilters): Trip[] {
   const now = useNow(5000)
   // limit alto: o universo de viagens ativas (~155) passa do default 100 do servidor —
   // sem isso, atrasadas com janela mais antiga eram cortadas e sumiam da tabela (D-14 fix).
   const { data: active } = useTrips({ ...filter, limit: 2000 })
   return useMemo(() => {
+    const agora = toBrasiliaWall(now)
     return active.map((t): Trip => {
       const kmFalta = t.kmFalta ?? Math.max(0, t.distanceTotal - t.distanceDone)
-      const live = recomputeSla(t.distanceTotal, kmFalta, t.windowEnd ? new Date(t.windowEnd) : null, t.windowStart ? new Date(t.windowStart) : null, now)
+      const live = recomputeSla(t.distanceTotal, kmFalta, t.windowEnd ? new Date(t.windowEnd) : null, t.windowStart ? new Date(t.windowStart) : null, agora)
       const atraso = live.atrasoHoras ?? t.adiantamentoHoras ?? null
       return { ...t, eta: (live.eta ?? t.eta) as Trip['eta'], adiantamentoHoras: atraso, atrasoLabel: formatarAtraso(atraso), slaStatus: (live.slaStatus ?? t.slaStatus) as Trip['slaStatus'] }
     })
