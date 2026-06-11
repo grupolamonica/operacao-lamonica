@@ -1,10 +1,11 @@
 import { type ColumnDef } from '@tanstack/react-table'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DataTable } from '@/components/domain/DataTable'
 import { StatusBadge } from '@/components/domain/StatusBadge'
 import { DriverAvatar } from '@/components/domain/DriverAvatar'
 import { ProgressBar } from '@/components/domain/ProgressBar'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useTrips } from '@/hooks/useTrips'
 import { useNow } from '@/hooks/useNow'
 import { recomputeSla, formatarAtraso } from '@/lib/regulamentacao'
@@ -77,16 +78,33 @@ export function TripsInProgressTable() {
   // Ordena pelo atraso em MINUTOS (não horas-fração) + desempate estável por id: evita a
   // tabela "pular"/reordenar a cada recálculo de 5s por diferenças de segundos (bug reportado).
   const mapped = useLiveTrips({ status: 'in_progress' })
+  // Filtro de cliente (Casas Bahia, Nestlé, Shopee, B2W...) — opções dos próprios dados em rota.
+  const [cliente, setCliente] = useState<string>('__all')
+  const clientes = useMemo(
+    () => [...new Set(mapped.map((t) => t.clientName).filter(Boolean))].sort(),
+    [mapped],
+  )
   const ordered = useMemo(() => {
     const k = (t: Trip) => (t.adiantamentoHoras == null ? -1e9 : Math.round(t.adiantamentoHoras * 60))
-    return [...mapped].sort((a, b) => { const d = k(b) - k(a); return d !== 0 ? d : a.id.localeCompare(b.id) })
-  }, [mapped])
+    return [...mapped]
+      .filter((t) => cliente === '__all' || t.clientName === cliente)
+      .sort((a, b) => { const d = k(b) - k(a); return d !== 0 ? d : a.id.localeCompare(b.id) })
+  }, [mapped, cliente])
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-base font-semibold text-foreground">Viagens em andamento</h3>
-        <span className="text-xs text-muted-foreground">{ordered.length} em rota · mais atrasadas primeiro</span>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-base font-semibold text-foreground shrink-0">Viagens em andamento</h3>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-xs text-muted-foreground hidden sm:inline">{ordered.length} em rota · mais atrasadas primeiro</span>
+          <Select value={cliente} onValueChange={setCliente}>
+            <SelectTrigger className="h-8 w-[150px] text-xs"><SelectValue placeholder="Cliente" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all">Todos clientes</SelectItem>
+              {clientes.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
       <DataTable
         data={ordered}
