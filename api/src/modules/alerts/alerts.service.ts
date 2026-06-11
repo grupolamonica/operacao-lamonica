@@ -159,6 +159,21 @@ export async function assignAlert(alertId: string, userId: string) {
   return updated ?? null
 }
 
+/**
+ * Assume TODAS as ocorrências ABERTAS de uma viagem de uma vez (D-14) — o operador
+ * trata a viagem inteira num clique. Recebe os ids do grupo (o front já os tem),
+ * filtra só as não-resolvidas, atribui ao operador e move p/ em_tratativa.
+ */
+export async function assignAlertsBulk(ids: string[], userId: string): Promise<{ count: number }> {
+  const clean = [...new Set((ids ?? []).filter(Boolean))]
+  if (clean.length === 0) return { count: 0 }
+  const updated = await db.update(alerts)
+    .set({ assignedTo: userId, status: 'em_tratativa' })
+    .where(and(inArray(alerts.id, clean), sql`${alerts.status} NOT IN ('resolvido', 'encerrado')`))
+    .returning({ id: alerts.id })
+  return { count: updated.length }
+}
+
 export async function addTreatment(alertId: string, operatorId: string, body: { actionType?: string; notes?: string; outcome?: string }) {
   const alertRow = await db.query.alerts.findFirst({ where: eq(alerts.id, alertId) })
   if (!alertRow) return null

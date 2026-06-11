@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia'
 import { authGuard } from '../../lib/rbac'
-import { listAlerts, assignAlert, addTreatment, resolveAlert, getAlertStats, createAlert } from './alerts.service'
+import { listAlerts, assignAlert, assignAlertsBulk, addTreatment, resolveAlert, getAlertStats, createAlert } from './alerts.service'
 import {
   transitionAlert, addComment, setAlertPriority, assignAlertTo, listAlertHistory,
   WorkflowError, ALERT_STATUSES,
@@ -69,6 +69,13 @@ export const alertsPlugin = new Elysia({ name: 'alerts' })
       }, {
         params: t.Object({ id: t.String({ format: 'uuid' }) }),
         detail: { tags: ['alerts'], summary: 'Assign alert to current user (legacy)' },
+      })
+      // Assumir TODAS as ocorrências abertas de uma viagem (D-14) — bulk pro operador corrente.
+      .post('/assign-bulk', async ({ body, user }) => {
+        return assignAlertsBulk(body.ids, user.id)
+      }, {
+        body: t.Object({ ids: t.Array(t.String({ format: 'uuid' }), { minItems: 1 }) }),
+        detail: { tags: ['alerts'], summary: 'Assumir várias ocorrências (viagem inteira) p/ o usuário corrente' },
       })
       // Atribuir a um usuário específico — Sprint 2
       .post('/:id/assign', async ({ params, body, user, set }) => {
