@@ -97,11 +97,30 @@ export async function listTrips(filters: TripFilters, page = 0, limit = 100) {
  * frete); campos nulos preenchidos pela viagem; rastreamento (progresso/eta/SLA)
  * vem da que estiver ativa. Mantém ordenação por windowStart desc.
  */
+const normMot = (s: unknown) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toUpperCase()
+
 function mergeTripsByLh<T extends Record<string, any>>(rows: T[]): T[] {
+  // Mapa motorista→LH só das viagens ATIVAS com LH (cargas): um motorista dirige UMA viagem
+  // por vez, então a viagem-painel ativa sem LH e a carga ativa do mesmo motorista são a
+  // MESMA viagem — fundem mesmo quando o linked_lh não casou (dedup robusto no dashboard).
+  const motToLh = new Map<string, string>()
+  for (const r of rows) {
+    if (r.status !== 'in_progress') continue
+    const lh = String(r.sheetLh ?? r.linkedLh ?? '').toUpperCase().trim()
+    const mot = normMot(r.sheetMotorista)
+    if (lh && mot && !motToLh.has(mot)) motToLh.set(mot, lh)
+  }
+  const effLh = (r: T): string => {
+    const lh = String(r.sheetLh ?? r.linkedLh ?? '').toUpperCase().trim()
+    if (lh) return lh
+    if (r.status === 'in_progress') { const m = normMot(r.sheetMotorista); if (m) return motToLh.get(m) ?? '' }
+    return ''
+  }
+
   const byLh = new Map<string, T[]>()
   const out: T[] = []
   for (const r of rows) {
-    const lh = String(r.sheetLh ?? r.linkedLh ?? '').toUpperCase().trim()
+    const lh = effLh(r)
     if (!lh) { out.push(r); continue }
     const g = byLh.get(lh); if (g) g.push(r); else byLh.set(lh, [r])
   }

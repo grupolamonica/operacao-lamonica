@@ -47,10 +47,16 @@ const numStr = (v: number | string | null): string | null => (v == null || v ===
 /** Mapeia status do Cargas → status de trip da Torre. */
 function tripStatusFromCarga(c: CargaTripRow): string {
   const ss = (c.sheet_status ?? '').toUpperCase()
-  if (ss.includes('DESCARREGAD') || c.status === 'COMPLETED') return 'completed'
-  if (ss.includes('CANCEL') || c.status === 'CANCELLED' || c.status === 'FAILED') return 'cancelled'
+  // Terminais / CHEGOU AO DESTINO — alinha com o painel (chegou ⇒ sai de "em andamento"):
+  // descarregado/descarregando/aguardando descarga = veículo no destino, fora da rota.
+  if (ss.includes('DESCARREG') || ss.includes('AGUARDANDO DESCARGA') || c.status === 'COMPLETED') return 'completed'
+  if (ss.includes('CANCEL') || ss.includes('NO SHOW') || c.status === 'CANCELLED' || c.status === 'FAILED') return 'cancelled'
+  // Ciclo da carga ainda aberto (não alocada/rascunho) → planejada
   if (['OPEN', 'RESERVED', 'DRAFT', 'EXPIRED'].includes(c.status)) return 'planned'
-  return 'in_progress'
+  // EM ROTA (carregado / CTE enviado / em viagem) = "em andamento", igual ao painel ao vivo.
+  if (/CTE ENVIADO|CARREGAD|EM ANDAMENTO/.test(ss)) return 'in_progress'
+  // Pré-rota (aguardando carregar/chegar p/ carregar, CTE em emissão) ou sem status → planejada
+  return 'planned'
 }
 
 /**
@@ -169,6 +175,7 @@ export async function enrichDrivers(): Promise<{ driversRanked: number; driversC
 }
 
 export async function syncCargas(): Promise<SyncResult> {
+  const syncStart = new Date()
   // 1. Cargas em aberto → cache (replace)
   const openLoads = await getOpenLoads()
   await db.delete(cargasOpenLoads)
@@ -215,6 +222,14 @@ export async function syncCargas(): Promise<SyncResult> {
 
   // 3. Cargas como FONTE de viagens (Onda A) — upsert cargas → trips por LH (não duplica painel).
   const cargasTrips = await upsertCargasAsTrips()
+
+  // 3.5. Fecha cargas in_progress ÓRFÃS — trips que não foram tocados neste sync (saíram do
+  // fetch ativo = concluídas/antigas no Cargas, mas o sheet_status ficou defasado). Sem isso
+  // ficavam presas em "em andamento" inflando o dashboard (ex.: NO SHOW de meses atrás).
+  await db.execute(sql`
+    UPDATE trips SET status='completed', sla_status=NULL, updated_at=now()
+    WHERE source='cargas' AND status='in_progress' AND updated_at < ${syncStart.toISOString()}
+  `)
 
   // 4. Enrich trips.cargas_status / cargas_load_id por LH (bulk UPDATE FROM VALUES) — pega os trips do painel.
   const lhRows = await fetchCargasLhStatus()
