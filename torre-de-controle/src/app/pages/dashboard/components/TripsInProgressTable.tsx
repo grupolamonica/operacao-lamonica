@@ -58,7 +58,9 @@ export const tripProgressColumns: ColumnDef<Trip>[] = [
  */
 export function useLiveTrips(filter: TripFilters): Trip[] {
   const now = useNow(5000)
-  const { data: active } = useTrips(filter)
+  // limit alto: o universo de viagens ativas (~155) passa do default 100 do servidor —
+  // sem isso, atrasadas com janela mais antiga eram cortadas e sumiam da tabela (D-14 fix).
+  const { data: active } = useTrips({ ...filter, limit: 2000 })
   return useMemo(() => {
     return active.map((t): Trip => {
       const kmFalta = t.kmFalta ?? Math.max(0, t.distanceTotal - t.distanceDone)
@@ -72,11 +74,13 @@ export function useLiveTrips(filter: TripFilters): Trip[] {
 export function TripsInProgressTable() {
   const navigate = useNavigate()
   // Todas as viagens em andamento (ativas) ao vivo, ordenadas do MAIS ATRASADO → adiantado.
+  // Ordena pelo atraso em MINUTOS (não horas-fração) + desempate estável por id: evita a
+  // tabela "pular"/reordenar a cada recálculo de 5s por diferenças de segundos (bug reportado).
   const mapped = useLiveTrips({ status: 'in_progress' })
-  const ordered = useMemo(
-    () => [...mapped].sort((a, b) => (b.adiantamentoHoras ?? Number.NEGATIVE_INFINITY) - (a.adiantamentoHoras ?? Number.NEGATIVE_INFINITY)),
-    [mapped],
-  )
+  const ordered = useMemo(() => {
+    const k = (t: Trip) => (t.adiantamentoHoras == null ? -1e9 : Math.round(t.adiantamentoHoras * 60))
+    return [...mapped].sort((a, b) => { const d = k(b) - k(a); return d !== 0 ? d : a.id.localeCompare(b.id) })
+  }, [mapped])
 
   return (
     <div className="space-y-3">
