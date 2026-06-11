@@ -73,6 +73,7 @@ export async function listAlerts(f: AlertFilters) {
       trip:    { columns: { code: true, sheetLh: true } },
       driver:  { columns: { id: true, name: true, photoUrl: true } },
       vehicle: { columns: { plate: true } },
+      assignee: { columns: { name: true } },
     },
     orderBy: (a, { desc }) => [desc(a.occurredAt)],
     limit: 500,
@@ -144,6 +145,7 @@ export async function listAlerts(f: AlertFilters) {
       occurredAt:   r.occurredAt,
       slaDeadline:  r.slaDeadline ?? undefined,
       assignedTo:   r.assignedTo ?? undefined,
+      assignedToName: (r as { assignee?: { name?: string } }).assignee?.name ?? undefined,
       resolvedAt:   r.resolvedAt ?? undefined,
       // Phase 14 — dados do ticket do painel (atraso/km/placa/origem/destino/operador)
       painelMeta:   r.painelMeta ?? undefined,

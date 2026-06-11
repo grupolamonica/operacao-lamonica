@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Phone, Loader2, AlertTriangle } from 'lucide-react'
+import { Phone, Loader2, AlertTriangle, UserCheck } from 'lucide-react'
+import { useAuthStore } from '@/stores/useAuthStore'
 import { SidePanelLayout } from '@/components/domain/SidePanelLayout'
 import { SeverityBadge } from '@/components/domain/SeverityBadge'
 import { DriverAvatar } from '@/components/domain/DriverAvatar'
@@ -29,6 +30,7 @@ const PRIORITY_TONE: Record<Priority, string> = {
 }
 
 export function AlertDetailPanel({ alert, onClose }: Props) {
+  const uid = useAuthStore((s) => s.user?.id)
   const { data: history = [], isLoading: historyLoading } = useAlertHistory(alert.id)
   const transition = useTransitionAlert(alert.id)
   const comment    = useAddAlertComment(alert.id)
@@ -108,6 +110,21 @@ export function AlertDetailPanel({ alert, onClose }: Props) {
             {alert.source}
           </span>
         </div>
+
+        {/* Identificação de quem assumiu — troca de turno / registro */}
+        {alert.assignedTo && (
+          <div
+            className={cn('flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs',
+              alert.assignedTo === uid ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning')}
+          >
+            <UserCheck className="h-4 w-4 shrink-0" />
+            <span>
+              {alert.assignedTo === uid
+                ? 'Você está tratando este ticket.'
+                : <>Assumido por <strong>{alert.assignedToName ?? 'outro operador'}</strong>. Se você está em troca de turno, pode assumir mudando o status abaixo.</>}
+            </span>
+          </div>
+        )}
 
         {/* Status stepper */}
         <div className="rounded-md border border-border p-2.5 bg-card">

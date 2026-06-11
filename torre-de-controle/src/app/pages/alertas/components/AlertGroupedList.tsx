@@ -1,10 +1,13 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, CheckCheck } from 'lucide-react'
+import { ChevronDown, ChevronRight, CheckCheck, UserCheck } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { AlertItem } from '@/components/domain/AlertItem'
 import { DriverAvatar } from '@/components/domain/DriverAvatar'
 import { SeverityBadge } from '@/components/domain/SeverityBadge'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 import { useUIStore } from '@/stores/useUIStore'
+import { useAuthStore } from '@/stores/useAuthStore'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { Alert, AlertSeverity, AlertType } from '@/data/types'
@@ -69,9 +72,11 @@ export function AlertGroupedList({ alerts }: Props) {
   const { selectedAlertId, setSelectedAlertId } = useUIStore()
   const groups = useMemo(() => buildGroups(alerts), [alerts])
   const [open, setOpen] = useState<Record<string, boolean>>({})
+  const [confirm, setConfirm] = useState<{ ids: string[]; quem: string; lh: string } | null>(null)
   const qc = useQueryClient()
+  const uid = useAuthStore((s) => s.user?.id)
 
-  // Assumir TODAS as ocorrências abertas da viagem de uma vez → operador corrente.
+  // Assumir TODAS as ocorrências ativas (não minhas) da viagem de uma vez → operador corrente.
   const assumirViagem = useMutation({
     mutationFn: async (ids: string[]) => {
       const { error } = await (api.api.alerts as any)['assign-bulk'].post({ ids })
@@ -80,9 +85,27 @@ export function AlertGroupedList({ alerts }: Props) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['alerts'] })
       qc.invalidateQueries({ queryKey: ['alert-stats'] })
+      qc.invalidateQueries({ queryKey: ['operators-online'] })
+      setConfirm(null)
     },
   })
-  const aTratarIds = (g: TripGroup) => g.alerts.filter(a => a.status === 'aberto' || a.status === 'em_analise').map(a => a.id)
+
+  // Ativos = não resolvidos/encerrados. Divide por dono p/ identificar e permitir troca de turno.
+  const ativos = (g: TripGroup) => g.alerts.filter(a => a.status !== 'resolvido' && a.status !== 'encerrado')
+  const donoOutros = (g: TripGroup) => [...new Set(ativos(g).filter(a => a.assignedTo && a.assignedTo !== uid).map(a => a.assignedToName).filter(Boolean) as string[])]
+  const semDono = (g: TripGroup) => ativos(g).filter(a => !a.assignedTo).length
+  const meus = (g: TripGroup) => ativos(g).filter(a => a.assignedTo === uid).length
+  const assumiveisIds = (g: TripGroup) => ativos(g).filter(a => a.assignedTo !== uid).map(a => a.id)
+
+  function onAssumir(g: TripGroup) {
+    const outros = donoOutros(g)
+    if (outros.length > 0) {
+      // Troca de turno: outra pessoa está tratando → avisa antes de assumir também.
+      setConfirm({ ids: assumiveisIds(g), quem: outros.join(', '), lh: g.lh || g.code || g.driverName })
+    } else {
+      assumirViagem.mutate(assumiveisIds(g))
+    }
+  }
 
   if (groups.length === 0) {
     return (
@@ -119,25 +142,38 @@ export function AlertGroupedList({ alerts }: Props) {
                 </div>
                 <p className="text-[11px] text-muted-foreground truncate">{g.tipos.join(' · ')}</p>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {g.aTratar > 0 && (
-                  <span className="text-[11px] font-semibold rounded-full px-2 py-0.5 bg-danger/15 text-danger">{g.aTratar} a tratar</span>
-                )}
-                {g.emTratativa > 0 && (
-                  <span className="text-[11px] font-semibold rounded-full px-2 py-0.5 bg-info/15 text-info">{g.emTratativa} em tratativa</span>
-                )}
-                <span className="text-[11px] text-muted-foreground">{g.alerts.length} ocorr.</span>
-                {g.aTratar > 0 && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); assumirViagem.mutate(aTratarIds(g)) }}
-                    disabled={assumirViagem.isPending}
-                    className="inline-flex items-center gap-1 text-[11px] font-medium rounded-md px-2 py-1 bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-60 whitespace-nowrap"
-                    title={`Assumir as ${g.aTratar} ocorrências a tratar desta viagem`}
-                  >
-                    <CheckCheck className="h-3.5 w-3.5" /> Assumir viagem
-                  </button>
-                )}
-              </div>
+              {(() => {
+                const outros = donoOutros(g)
+                const nSemDono = semDono(g)
+                const nMeus = meus(g)
+                const podeAssumir = nSemDono + (outros.length > 0 ? ativos(g).filter(a => a.assignedTo && a.assignedTo !== uid).length : 0) > 0
+                return (
+                  <div className="flex items-center gap-2 shrink-0">
+                    {nSemDono > 0 && (
+                      <span className="text-[11px] font-semibold rounded-full px-2 py-0.5 bg-danger/15 text-danger">{nSemDono} a tratar</span>
+                    )}
+                    {outros.length > 0 && (
+                      <span className="text-[11px] font-medium rounded-full px-2 py-0.5 bg-warning/15 text-warning inline-flex items-center gap-1" title={`Em tratativa por ${outros.join(', ')}`}>
+                        <UserCheck className="h-3 w-3" /> {outros.join(', ')}
+                      </span>
+                    )}
+                    {nMeus > 0 && outros.length === 0 && (
+                      <span className="text-[11px] font-medium rounded-full px-2 py-0.5 bg-success/15 text-success">você está tratando</span>
+                    )}
+                    <span className="text-[11px] text-muted-foreground">{g.alerts.length} ocorr.</span>
+                    {podeAssumir && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onAssumir(g) }}
+                        disabled={assumirViagem.isPending}
+                        className="inline-flex items-center gap-1 text-[11px] font-medium rounded-md px-2 py-1 bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-60 whitespace-nowrap"
+                        title={outros.length > 0 ? `${outros.join(', ')} está tratando — assumir também (troca de turno)` : 'Assumir as ocorrências desta viagem'}
+                      >
+                        <CheckCheck className="h-3.5 w-3.5" /> Assumir viagem
+                      </button>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
 
             {/* Tickets da viagem (todos juntos) */}
@@ -162,6 +198,28 @@ export function AlertGroupedList({ alerts }: Props) {
           </div>
         )
       })}
+
+      {/* Aviso de troca de turno — outra pessoa está tratando a viagem agora */}
+      <Dialog open={!!confirm} onOpenChange={(o) => { if (!o) setConfirm(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserCheck className="h-5 w-5 text-warning" /> Viagem já está sendo tratada
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            <strong className="text-foreground">{confirm?.quem}</strong> está tratando as ocorrências desta viagem
+            {confirm?.lh ? <> (<span className="font-mono">{confirm.lh}</span>)</> : null} neste momento.
+            Se você está em <strong className="text-foreground">troca de turno</strong>, pode assumir também — os tickets passam para você e a tratativa anterior fica registrada.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setConfirm(null)}>Cancelar</Button>
+            <Button size="sm" disabled={assumirViagem.isPending} onClick={() => confirm && assumirViagem.mutate(confirm.ids)}>
+              {assumirViagem.isPending ? 'Assumindo…' : 'Assumir também'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

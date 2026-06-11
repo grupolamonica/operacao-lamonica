@@ -35,3 +35,21 @@ export async function listOnlineOperators(windowSeconds = ONLINE_WINDOW_SECONDS)
     ticketsAtivos: Number(r.tickets_ativos ?? 0),
   }))
 }
+
+/** Tickets ATIVOS (em análise/em tratativa) que um operador está tratando — p/ a fila de operadores. */
+export async function getOperatorTickets(userId: string) {
+  const rows = (await db.execute(sql`
+    SELECT a.id, a.type, a.severity, a.status, a.title, a.occurred_at,
+           t.sheet_lh AS lh, t.sheet_motorista AS motorista, c.name AS cliente
+    FROM alerts a
+    LEFT JOIN trips t   ON t.id = a.trip_id
+    LEFT JOIN clients c ON c.id = t.client_id
+    WHERE a.assigned_to = ${userId} AND a.status IN ('em_analise','em_tratativa')
+    ORDER BY a.occurred_at DESC
+    LIMIT 100
+  `)) as unknown as any[]
+  return rows.map((r) => ({
+    id: r.id, type: r.type, severity: r.severity, status: r.status, title: r.title,
+    occurredAt: r.occurred_at, lh: r.lh ?? '', motorista: r.motorista ?? '', cliente: r.cliente ?? '',
+  }))
+}

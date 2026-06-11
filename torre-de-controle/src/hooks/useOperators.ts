@@ -10,6 +10,33 @@ export interface OnlineOperator {
   ticketsAtivos: number
 }
 
+export interface OperatorTicket {
+  id: string
+  type: string
+  severity: string
+  status: string
+  title: string
+  occurredAt: string
+  lh: string
+  motorista: string
+  cliente: string
+}
+
+/** Tickets ativos que um operador está tratando — usado ao clicar no operador na fila. */
+export function useOperatorTickets(operatorId: string | null) {
+  const q = useQuery({
+    queryKey: ['operator-tickets', operatorId],
+    enabled: !!operatorId,
+    refetchInterval: 20_000,
+    queryFn: async (): Promise<OperatorTicket[]> => {
+      const { data, error } = await (api.api as any).operators[operatorId!].tickets.get()
+      if (error) throw new Error('Falha ao buscar tickets do operador')
+      return (data ?? []) as OperatorTicket[]
+    },
+  })
+  return { data: q.data ?? [], isLoading: q.isLoading }
+}
+
 /**
  * Presença de operador (Phase 12 — Fila de Operadores).
  * Envia heartbeat ao montar + a cada 30s, e busca a lista de operadores online

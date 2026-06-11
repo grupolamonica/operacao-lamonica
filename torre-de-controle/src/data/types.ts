@@ -163,6 +163,7 @@ export interface Alert {
   occurredAt: Date
   slaDeadline?: Date
   assignedTo?: string
+  assignedToName?: string   // nome do operador que assumiu (identificação / troca de turno)
   resolvedAt?: Date
   // Phase 14 — dados do ticket do painel (HistoricoTickets) p/ Ocorrências bater com o painel
   painelMeta?: {
