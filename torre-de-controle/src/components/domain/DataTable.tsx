@@ -7,7 +7,7 @@ import {
   type ColumnDef,
   type ColumnFiltersState,
 } from '@tanstack/react-table'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
@@ -46,7 +46,18 @@ export function DataTable<T extends { id: string }>({
     state: { columnFilters, pagination },
     onColumnFiltersChange: setColumnFilters,
     onPaginationChange: setPagination,
+    // NÃO resetar p/ pág. 1 a cada mudança de `data` (refetch ao vivo de 5s trocava
+    // a referência do array e jogava o usuário de volta p/ a página 1).
+    autoResetPageIndex: false,
   })
+
+  // Mas se um filtro/busca reduziu os dados e a página atual ficou fora do range, volta p/ a 1ª.
+  const pageCount = table.getPageCount()
+  useEffect(() => {
+    if (pagination.pageIndex > 0 && pagination.pageIndex >= pageCount) {
+      setPagination((p) => ({ ...p, pageIndex: 0 }))
+    }
+  }, [pageCount, pagination.pageIndex])
 
   return (
     <PanelCard title={title} subtitle={subtitle} noPadding>
