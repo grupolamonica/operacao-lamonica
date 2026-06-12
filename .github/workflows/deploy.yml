@@ -149,6 +149,8 @@ jobs:
           CARGAS_API_URL: ${{ secrets.CARGAS_API_URL }}
           CARGAS_OPERATOR_EMAIL: ${{ secrets.CARGAS_OPERATOR_EMAIL }}
           CARGAS_OPERATOR_PASSWORD: ${{ secrets.CARGAS_OPERATOR_PASSWORD }}
+          # Phase 15 — API key do endpoint GET /api/spx/asp (consumo máquina-a-máquina)
+          SPX_ASP_API_KEY: ${{ secrets.SPX_ASP_API_KEY }}
         run: |
           set -euo pipefail
           # Compose files vêm do checkout do runner; copia p/ o diretório de deploy
@@ -161,7 +163,8 @@ jobs:
           for kv in "ANGELLIRA_USER=${ANGELLIRA_USER}" "ANGELLIRA_PASS=${ANGELLIRA_PASS}" "ANGELLIRA_EMPRESA=${ANGELLIRA_EMPRESA}" \
                     "CARGAS_SUPABASE_URL=${CARGAS_SUPABASE_URL}" "CARGAS_SUPABASE_KEY=${CARGAS_SUPABASE_KEY}" \
                     "CARGAS_API_URL=${CARGAS_API_URL}" "CARGAS_OPERATOR_EMAIL=${CARGAS_OPERATOR_EMAIL}" \
-                    "CARGAS_OPERATOR_PASSWORD=${CARGAS_OPERATOR_PASSWORD}" "CARGAS_WRITE_ENABLED=false"; do
+                    "CARGAS_OPERATOR_PASSWORD=${CARGAS_OPERATOR_PASSWORD}" "CARGAS_WRITE_ENABLED=false" \
+                    "SPX_ASP_API_KEY=${SPX_ASP_API_KEY}"; do
             key="${kv%%=*}"
             if grep -q "^${key}=" .env; then
               sed -i "s|^${key}=.*|${kv}|" .env
