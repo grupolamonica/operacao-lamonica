@@ -96,22 +96,24 @@ function flatten(t: any): AspRow {
 async function fetchTab(cookie: string, station: string, win: string, queryType: number): Promise<any[]> {
   const all: any[] = []
   const st = encodeURIComponent(station)
-  for (let page = 1; page <= 30; page++) {
+  const isHistory = queryType === 3
+  const count = isHistory ? 100 : 200 // history/list limita page size a 100; trip/list aceita 200
+  for (let page = 1; page <= 40; page++) {
     // Concluído (3) usa o endpoint de HISTÓRICO, filtrando por mtime (não query_type).
     // Planejado (1) e Aceito (2) usam trip/list filtrando por sta.
-    const url = queryType === 3
-      ? `${SPX_BASE}/api/line_haul/agency/trip/history/list?pageno=${page}&count=200&mtime=${win}&agency_current_station_id=${st}`
-      : `${SPX_BASE}/api/line_haul/agency/trip/list?pageno=${page}&count=200&query_type=${queryType}&sta=${win}&agency_current_station_id=${st}`
+    const url = isHistory
+      ? `${SPX_BASE}/api/line_haul/agency/trip/history/list?pageno=${page}&count=${count}&mtime=${win}&agency_current_station_id=${st}`
+      : `${SPX_BASE}/api/line_haul/agency/trip/list?pageno=${page}&count=${count}&query_type=${queryType}&sta=${win}&agency_current_station_id=${st}`
     const r = await fetch(url, {
       headers: { Accept: 'application/json, text/plain, */*', Cookie: cookie, Origin: SPX_BASE, Referer: `${SPX_BASE}/` },
       signal: AbortSignal.timeout(60_000),
     })
-    if (!r.ok) throw new Error(`SPX trip/list HTTP ${r.status}`)
+    if (!r.ok) throw new Error(`SPX ${isHistory ? 'history/list' : 'trip/list'} HTTP ${r.status}`)
     const j = (await r.json()) as { retcode?: number; message?: string; data?: { list?: any[] } }
-    if (j.retcode !== 0) throw new Error(`SPX trip/list retcode ${j.retcode}: ${j.message || ''} (sessão SPX expirada? aspx-renewal renova)`)
+    if (j.retcode !== 0) throw new Error(`SPX ${isHistory ? 'history/list' : 'trip/list'} retcode ${j.retcode}: ${j.message || ''} (sessão SPX expirada? aspx-renewal renova)`)
     const lst = j.data?.list ?? []
     all.push(...lst)
-    if (lst.length < 200) break
+    if (lst.length < count) break
   }
   return all
 }
