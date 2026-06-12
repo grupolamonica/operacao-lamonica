@@ -90,8 +90,10 @@ Self-contained, **sem sidecar** (os sidecars Python não rodam no prod da Torre)
    `getCargasSupabase()` (`CARGAS_SUPABASE_*`). Cookies são auto-renovados pelo container
    `aspx-renewal` do Cargas (sessão `danilo.braga`, agência 297). **Só o cookie é necessário**
    no `trip/list` (app/device-id/version dispensáveis).
-2. Pagina `GET /api/line_haul/agency/trip/list` (count 200) por tab, achata pras 15 colunas,
-   deduplica por `trip_number` (tab mais avançado vence) e devolve.
+2. Pagina por tab (count 200), achata pras 15 colunas, deduplica por `trip_number`
+   (tab mais avançado vence) e devolve. Endpoints SPX por tab:
+   - Planejado (1) / Aceito (2): `GET /api/line_haul/agency/trip/list?query_type=N&sta=<ini>,<fim>&agency_current_station_id=`
+   - Concluído (3): `GET /api/line_haul/agency/trip/history/list?mtime=<ini>,<fim>&agency_current_station_id=` (histórico — trips Completed/Cancelled; filtra por `mtime`, não `query_type`).
 
 Código: `api/src/modules/spx/spx.plugin.ts` + `api/src/adapters/spx-portal/asp.adapter.ts`.
 

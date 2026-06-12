@@ -93,10 +93,15 @@ function flatten(t: any): AspRow {
   }
 }
 
-async function fetchTab(cookie: string, station: string, sta: string, queryType: number): Promise<any[]> {
+async function fetchTab(cookie: string, station: string, win: string, queryType: number): Promise<any[]> {
   const all: any[] = []
-  for (let page = 1; page <= 20; page++) {
-    const url = `${SPX_BASE}/api/line_haul/agency/trip/list?pageno=${page}&count=200&query_type=${queryType}&sta=${sta}&agency_current_station_id=${encodeURIComponent(station)}`
+  const st = encodeURIComponent(station)
+  for (let page = 1; page <= 30; page++) {
+    // Concluído (3) usa o endpoint de HISTÓRICO, filtrando por mtime (não query_type).
+    // Planejado (1) e Aceito (2) usam trip/list filtrando por sta.
+    const url = queryType === 3
+      ? `${SPX_BASE}/api/line_haul/agency/trip/history/list?pageno=${page}&count=200&mtime=${win}&agency_current_station_id=${st}`
+      : `${SPX_BASE}/api/line_haul/agency/trip/list?pageno=${page}&count=200&query_type=${queryType}&sta=${win}&agency_current_station_id=${st}`
     const r = await fetch(url, {
       headers: { Accept: 'application/json, text/plain, */*', Cookie: cookie, Origin: SPX_BASE, Referer: `${SPX_BASE}/` },
       signal: AbortSignal.timeout(60_000),
@@ -119,7 +124,8 @@ export async function fetchAspRows(opts: FetchAspOpts = {}): Promise<FetchAspRes
   const station = opts.station || DEFAULT_STATION
   if (!station) throw new Error('agency_current_station_id ausente — defina SPX_LINEHAUL_STATION_ID ou passe ?station=')
   const now = Math.floor(Date.now() / 1000)
-  const sta = `${now - (opts.daysBack ?? 45) * 86400},${now + (opts.daysFwd ?? 15) * 86400}`
+  // janela usada como `sta` (Planejado/Aceito) e como `mtime` (Concluído/histórico)
+  const win = `${now - (opts.daysBack ?? 45) * 86400},${now + (opts.daysFwd ?? 15) * 86400}`
   const qts = opts.queryTypes?.length ? opts.queryTypes : [1, 2, 3]
 
   const byTrip = new Map<string, any>() // dedupe por trip_number; tab mais avançado (ordem 1→3) vence
@@ -129,7 +135,7 @@ export async function fetchAspRows(opts: FetchAspOpts = {}): Promise<FetchAspRes
   for (const qt of qts) {
     const tab = TAB_NAME[qt] ?? `qt${qt}`
     try {
-      const trips = await fetchTab(cookie, station, sta, qt)
+      const trips = await fetchTab(cookie, station, win, qt)
       byTab[tab] = trips.length
       for (const t of trips) if (t.trip_number) byTrip.set(t.trip_number, t)
     } catch (e) {
