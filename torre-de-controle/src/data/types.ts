@@ -170,6 +170,17 @@ export interface Alert {
     atraso?: string; kmRestante?: string; placa?: string
     origem?: string; destino?: string; operador?: string; embarque?: string
   } | null
+  // Phase 14 — meta cruzada da viagem (cavalo/carreta, origem/destino, SLA/ETA, status Cargas, ID Shopee)
+  // Preenche os tickets Shopee/GPS que não têm painelMeta, dando contexto ao operador.
+  tripMeta?: {
+    origem?: string; destino?: string
+    cavalo?: string; carreta?: string
+    shopeeDriverId?: string; cargasStatus?: string
+    slaStatus?: SlaStatus | string
+    windowEnd?: Date; eta?: Date; departedAt?: Date
+    adiantamentoHoras?: number; progressPct?: number
+    kmFalta?: number; distanceTotal?: number
+  } | null
 }
 
 // ===== Timeline =====

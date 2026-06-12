@@ -88,37 +88,71 @@ export async function listAlerts(f: AlertFilters) {
     : []
   const tripMap = new Map(tripRows.map(t => [t.id, t]))
 
-  // Phase 14 — LH p/ trips das fontes vivas sem sheet_lh: (a) gêmeo do painel (PNLA/PNLC-<cod>),
-  // (b) carga ativa do mesmo motorista (trips source='cargas' por nome normalizado; motorista dirige
-  // 1 viagem por vez). Read-time porque uq_trips_sheet_lh impede persistir o mesmo LH em 2 trips.
-  const lhByTripId = new Map<string, string>()
-  const missingLh = tripRows.filter(t => !t.sheetLh).map(t => t.id)
-  if (missingLh.length) {
-    const found = (await db.execute(sql`
-      SELECT t.id, COALESCE(p.sheet_lh, cg.sheet_lh) AS lh
+  // Phase 14 — meta cruzada da viagem p/ a ocorrência. Crítico p/ Shopee: esses tickets vêm
+  // dos detectores GPS e NÃO trazem painelMeta (HistoricoTickets), então o operador via quase nada.
+  // Coalesce entre os gêmeos por LH/motorista: identidade (cavalo/carreta/origem/destino/ID Shopee/
+  // status Cargas) de qualquer fonte; SLA/tracking (prazo/ETA/atraso/progresso/distância) preferindo
+  // o PAINEL (prazo real, mesma regra do mergeGroup em trips.service). Read-time pois uq_trips_sheet_lh
+  // impede persistir o mesmo LH em 2 trips.
+  type TripMetaRow = {
+    id: string; lh: string | null
+    origin: string | null; destination: string | null
+    cavalo: string | null; carreta: string | null; shopee_driver_id: string | null
+    cargas_status: string | null; sla_status: string | null
+    window_end: Date | null; eta: Date | null; departed_at: Date | null
+    adiantamento_horas: string | null; progress_pct: number | null
+    distance_total: string | null; distance_done: string | null
+  }
+  const metaByTripId = new Map<string, TripMetaRow>()
+  if (tripIds.length) {
+    const metaRows = (await db.execute(sql`
+      SELECT t.id,
+        COALESCE(t.sheet_lh, p.sheet_lh, cg.sheet_lh)                          AS lh,
+        COALESCE(p.origin, cg.origin, t.origin)                               AS origin,
+        COALESCE(p.destination, cg.destination, t.destination)                AS destination,
+        COALESCE(t.sheet_cavalo, cg.sheet_cavalo, p.sheet_cavalo)             AS cavalo,
+        COALESCE(t.sheet_carreta, cg.sheet_carreta, p.sheet_carreta)          AS carreta,
+        COALESCE(t.shopee_driver_id, cg.shopee_driver_id, p.shopee_driver_id) AS shopee_driver_id,
+        COALESCE(cg.cargas_status, t.cargas_status, p.cargas_status)          AS cargas_status,
+        COALESCE(p.sla_status, t.sla_status, cg.sla_status)                   AS sla_status,
+        COALESCE(p.window_end, t.window_end)                                  AS window_end,
+        COALESCE(p.eta, t.eta, cg.eta)                                        AS eta,
+        COALESCE(p.departed_at, t.departed_at, cg.departed_at)                AS departed_at,
+        COALESCE(p.adiantamento_horas, t.adiantamento_horas)                  AS adiantamento_horas,
+        COALESCE(p.progress_pct, t.progress_pct)                              AS progress_pct,
+        COALESCE(p.distance_total, t.distance_total, cg.distance_total)       AS distance_total,
+        COALESCE(p.distance_done, t.distance_done, cg.distance_done)          AS distance_done
       FROM trips t
       LEFT JOIN LATERAL (
-        SELECT sheet_lh FROM trips
-        WHERE source = 'painel' AND sheet_lh IS NOT NULL
-          AND (code = 'PNLA-' || t.code OR code = 'PNLC-' || t.code)
-        LIMIT 1
+        SELECT * FROM trips x
+        WHERE x.source = 'painel' AND x.id <> t.id
+          AND ( (t.sheet_lh IS NOT NULL AND x.sheet_lh = t.sheet_lh)
+             OR (t.linked_lh IS NOT NULL AND x.sheet_lh = t.linked_lh)
+             OR x.code = 'PNLA-' || t.code OR x.code = 'PNLC-' || t.code )
+        ORDER BY x.updated_at DESC LIMIT 1
       ) p ON TRUE
       LEFT JOIN LATERAL (
-        SELECT c.sheet_lh FROM trips c
-        WHERE c.source = 'cargas' AND c.sheet_lh IS NOT NULL
-          AND t.status = 'in_progress' AND t.sheet_motorista IS NOT NULL
-          AND upper(translate(trim(c.sheet_motorista), ${sql.raw(ACC)})) = upper(translate(trim(t.sheet_motorista), ${sql.raw(ACC)}))
-          AND (c.cargas_status IS NULL OR c.cargas_status NOT IN ('DESCARREGADO', 'CANCELADO', 'NO SHOW'))
-        ORDER BY c.updated_at DESC
-        LIMIT 1
+        SELECT * FROM trips x
+        WHERE x.source = 'cargas' AND x.id <> t.id
+          AND ( (t.sheet_lh IS NOT NULL AND x.sheet_lh = t.sheet_lh)
+             OR (t.linked_lh IS NOT NULL AND x.linked_lh = t.linked_lh)
+             OR ( t.status = 'in_progress' AND t.sheet_motorista IS NOT NULL
+                  AND upper(translate(trim(x.sheet_motorista), ${sql.raw(ACC)})) = upper(translate(trim(t.sheet_motorista), ${sql.raw(ACC)}))
+                  AND (x.cargas_status IS NULL OR x.cargas_status NOT IN ('DESCARREGADO', 'CANCELADO', 'NO SHOW')) ) )
+        ORDER BY x.updated_at DESC LIMIT 1
       ) cg ON TRUE
-      WHERE t.id IN (${sql.join(missingLh.map(id => sql`${id}`), sql`, `)})
-    `)) as unknown as Array<{ id: string; lh: string | null }>
-    for (const r of found) if (r.lh) lhByTripId.set(r.id, r.lh)
+      WHERE t.id IN (${sql.join(tripIds.map(id => sql`${id}`), sql`, `)})
+    `)) as unknown as TripMetaRow[]
+    for (const m of metaRows) metaByTripId.set(m.id, m)
   }
 
   return rows.map(r => {
     const trip = r.tripId ? tripMap.get(r.tripId) : undefined
+    const meta = r.tripId ? metaByTripId.get(r.tripId) : undefined
+    const distTotal = meta?.distance_total != null ? Number(meta.distance_total) : undefined
+    const distDone  = meta?.distance_done  != null ? Number(meta.distance_done)  : undefined
+    const kmFalta   = distTotal != null && distDone != null ? Math.max(0, distTotal - distDone) : undefined
+    const adiant    = meta?.adiantamento_horas != null ? Number(meta.adiantamento_horas) : undefined
     return {
       id:           r.id,
       type:         r.type,
@@ -127,12 +161,12 @@ export async function listAlerts(f: AlertFilters) {
       priority:     r.priority ?? 'media',
       tripId:       r.tripId ?? '',
       tripCode:     r.trip?.code ?? '',
-      lh:           r.trip?.sheetLh ?? (r.tripId ? lhByTripId.get(r.tripId) : undefined) ?? '',
+      lh:           r.trip?.sheetLh ?? meta?.lh ?? '',
       driverId:     r.driverId ?? '',
       // Fontes vivas não populam alert.driver_id — cai p/ o nome da planilha (sheet_motorista).
       driverName:   r.driver?.name ?? trip?.sheetMotorista ?? '',
       driverPhoto:  r.driver?.photoUrl ?? undefined,
-      plate:        r.vehicle?.plate ?? (r.painelMeta as { placa?: string } | null)?.placa ?? '',
+      plate:        r.vehicle?.plate ?? (r.painelMeta as { placa?: string } | null)?.placa ?? meta?.cavalo ?? '',
       clientName:   trip?.client?.name ?? '',
       routeCode:    trip?.route?.code ?? '',
       title:        r.title,
@@ -149,6 +183,23 @@ export async function listAlerts(f: AlertFilters) {
       resolvedAt:   r.resolvedAt ?? undefined,
       // Phase 14 — dados do ticket do painel (atraso/km/placa/origem/destino/operador)
       painelMeta:   r.painelMeta ?? undefined,
+      // Phase 14 — meta cruzada da viagem (preenche tickets Shopee/GPS sem painelMeta)
+      tripMeta:     meta ? {
+        origem:            meta.origin ?? undefined,
+        destino:           meta.destination ?? undefined,
+        cavalo:            meta.cavalo ?? undefined,
+        carreta:           meta.carreta ?? undefined,
+        shopeeDriverId:    meta.shopee_driver_id ?? undefined,
+        cargasStatus:      meta.cargas_status ?? undefined,
+        slaStatus:         meta.sla_status ?? undefined,
+        windowEnd:         meta.window_end ?? undefined,
+        eta:               meta.eta ?? undefined,
+        departedAt:        meta.departed_at ?? undefined,
+        adiantamentoHoras: adiant,
+        progressPct:       meta.progress_pct ?? undefined,
+        kmFalta:           kmFalta,
+        distanceTotal:     distTotal,
+      } : undefined,
     }
   })
 }

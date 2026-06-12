@@ -161,22 +161,46 @@ export function AlertDetailPanel({ alert, onClose }: Props) {
         <Separator />
 
         <div>
-          <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Detalhes</h4>
+          <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Detalhes da viagem</h4>
           <div className="space-y-2 text-xs text-muted-foreground">
-            {alert.lh && <Row label="LH" value={alert.lh} mono />}
-            {/* Phase 14 — dados do ticket igual ao painel (HistoricoTickets) */}
-            {alert.painelMeta?.atraso && <Row label="Atraso" value={alert.painelMeta.atraso} highlight="text-danger" mono />}
-            {alert.painelMeta?.kmRestante && <Row label="KM Restante" value={`${alert.painelMeta.kmRestante} km`} mono />}
-            {alert.painelMeta?.placa && <Row label="Placa" value={alert.painelMeta.placa} mono />}
-            {alert.painelMeta?.origem && <Row label="Origem" value={alert.painelMeta.origem} />}
-            {alert.painelMeta?.destino && <Row label="Destino" value={alert.painelMeta.destino} />}
-            {alert.painelMeta?.operador && <Row label="Operador" value={alert.painelMeta.operador} />}
-            <Row label="Entrega/Rota" value={`${alert.tripCode} · ${alert.routeCode}`} />
-            <Row label="Cliente"       value={alert.clientName} />
-            {alert.delayMinutes !== undefined && <Row label="Desvio ETA" value={`+${alert.delayMinutes} min`} highlight="text-danger" />}
-            {alert.deviationKm !== undefined  && <Row label="Desvio rota" value={`${alert.deviationKm.toFixed(1)} km`} highlight="text-warning" />}
-            {alert.lat && alert.lng && <Row label="Local" value={`${alert.lat.toFixed(4)}, ${alert.lng.toFixed(4)}`} mono />}
-            <Row label="Descrição" value={alert.description} />
+            {(() => {
+              // Coalesce: painelMeta (ticket do painel) tem precedência; tripMeta preenche o resto.
+              // Para tickets Shopee/GPS (sem painelMeta) é o tripMeta que dá o contexto ao operador.
+              const tm      = alert.tripMeta
+              const origem  = alert.painelMeta?.origem  ?? tm?.origem
+              const destino = alert.painelMeta?.destino ?? tm?.destino
+              const cavalo  = alert.painelMeta?.placa   ?? tm?.cavalo ?? alert.plate
+              const kmRest  = alert.painelMeta?.kmRestante
+                ?? (tm?.kmFalta != null ? String(Math.round(tm.kmFalta)) : undefined)
+              const atrasado = tm?.adiantamentoHoras != null && tm.adiantamentoHoras > 0.01
+              return (
+                <>
+                  {alert.lh && <Row label="LH" value={alert.lh} mono />}
+                  {alert.painelMeta?.atraso
+                    ? <Row label="Atraso" value={alert.painelMeta.atraso} highlight="text-danger" mono />
+                    : atrasado && <Row label="Atraso" value={fmtHoras(tm!.adiantamentoHoras!)} highlight="text-danger" mono />}
+                  {tm?.slaStatus && <Row label="SLA" value={slaLabel(tm.slaStatus)} highlight={slaTone(tm.slaStatus)} />}
+                  {kmRest && <Row label="KM restante" value={`${kmRest} km`} mono />}
+                  {tm?.progressPct != null && <Row label="Progresso" value={`${tm.progressPct}%`} />}
+                  {cavalo && <Row label="Cavalo" value={cavalo} mono />}
+                  {tm?.carreta && <Row label="Carreta" value={tm.carreta} mono />}
+                  {origem && <Row label="Origem" value={origem} />}
+                  {destino && <Row label="Destino" value={destino} />}
+                  {tm?.windowEnd && <Row label="Prazo" value={formatDate(tm.windowEnd, 'dd/MM HH:mm')} />}
+                  {tm?.eta && <Row label="ETA" value={formatDate(tm.eta, 'dd/MM HH:mm')} />}
+                  {tm?.departedAt && <Row label="Em rota desde" value={formatDate(tm.departedAt, 'dd/MM HH:mm')} />}
+                  {tm?.cargasStatus && <Row label="Status Cargas" value={tm.cargasStatus} />}
+                  {tm?.shopeeDriverId && <Row label="ID Shopee" value={tm.shopeeDriverId} mono />}
+                  {alert.painelMeta?.operador && <Row label="Operador" value={alert.painelMeta.operador} />}
+                  <Row label="Entrega/Rota" value={[alert.tripCode, alert.routeCode].filter(Boolean).join(' · ') || '—'} />
+                  {alert.clientName && <Row label="Cliente" value={alert.clientName} />}
+                  {alert.delayMinutes !== undefined && <Row label="Desvio ETA" value={`+${alert.delayMinutes} min`} highlight="text-danger" />}
+                  {alert.deviationKm !== undefined  && <Row label="Desvio rota" value={`${alert.deviationKm.toFixed(1)} km`} highlight="text-warning" />}
+                  {alert.lat && alert.lng && <Row label="Local" value={`${alert.lat.toFixed(4)}, ${alert.lng.toFixed(4)}`} mono />}
+                  {alert.description && <Row label="Descrição" value={alert.description} />}
+                </>
+              )
+            })()}
           </div>
         </div>
 
@@ -247,6 +271,22 @@ export function AlertDetailPanel({ alert, onClose }: Props) {
     </SidePanelLayout>
   )
 }
+
+// adiantamentoHoras: + = ATRASADO (convenção do painel) → "+HH:MM"
+function fmtHoras(h: number): string {
+  const sign = h >= 0 ? '+' : '-'
+  const abs = Math.abs(h)
+  const hh = Math.floor(abs)
+  const mm = Math.round((abs - hh) * 60)
+  return `${sign}${hh}:${String(mm).padStart(2, '0')}`
+}
+
+const SLA_LABEL: Record<string, string> = {
+  no_prazo: 'No prazo', em_risco: 'Em risco', atrasado: 'Atrasado', sem_sinal: 'Sem sinal',
+}
+const slaLabel = (s: string) => SLA_LABEL[s] ?? s
+const slaTone = (s: string) =>
+  s === 'atrasado' || s === 'sem_sinal' ? 'text-danger' : s === 'em_risco' ? 'text-warning' : 'text-success'
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
