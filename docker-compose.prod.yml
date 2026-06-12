@@ -83,6 +83,11 @@ services:
       ANGELLIRA_USER: ${ANGELLIRA_USER:-}
       ANGELLIRA_PASS: ${ANGELLIRA_PASS:-}
       ANGELLIRA_EMPRESA: ${ANGELLIRA_EMPRESA:-}
+      # Phase 14 — Cargas (leitura Supabase). Provisionado no .env pelo deploy; mapear no container.
+      CARGAS_SUPABASE_URL: ${CARGAS_SUPABASE_URL:-}
+      CARGAS_SUPABASE_KEY: ${CARGAS_SUPABASE_KEY:-}
+      # Phase 15 — API key do endpoint GET /api/spx/asp (consumo máquina-a-máquina)
+      SPX_ASP_API_KEY: ${SPX_ASP_API_KEY:-}
       TZ: America/Sao_Paulo
     depends_on:
       redis:
