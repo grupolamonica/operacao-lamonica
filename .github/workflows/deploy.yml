@@ -191,7 +191,7 @@ jobs:
             -f docker-compose.prod.yml \
             -f docker-compose.domain.yml \
             -f docker-compose.deploy.yml \
-            up -d --remove-orphans
+            up -d --remove-orphans --force-recreate
 
           echo "Waiting for backend health..."
           ok=0
