@@ -13,6 +13,7 @@ export type AlertHistoryItem = {
   notes:      string | null
   outcome:    string | null
   createdAt:  string
+  authorName: string | null   // quem escreveu (usuário do sistema ou operador do painel)
 }
 
 const KEY = (alertId: string) => ['alert-history', alertId]

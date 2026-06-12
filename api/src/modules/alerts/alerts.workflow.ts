@@ -138,8 +138,15 @@ export async function assignAlertTo(opts: { alertId: string; userId: string; cur
 }
 
 export async function listAlertHistory(alertId: string) {
-  return db.query.treatments.findMany({
+  const rows = await db.query.treatments.findMany({
     where: eq(treatments.alertId, alertId),
+    with: { operator: { columns: { name: true } } },
     orderBy: (t, { asc }) => [asc(t.createdAt)],
   })
+  // authorName: usuário do sistema (operatorId) tem precedência; senão o operador do painel (author_name).
+  return rows.map((r) => ({
+    id: r.id, alertId: r.alertId, tripId: r.tripId, operatorId: r.operatorId,
+    actionType: r.actionType, notes: r.notes, outcome: r.outcome, createdAt: r.createdAt,
+    authorName: (r as { operator?: { name?: string } }).operator?.name ?? r.authorName ?? null,
+  }))
 }

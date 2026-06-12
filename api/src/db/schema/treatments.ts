@@ -13,6 +13,9 @@ export const treatments = pgTable('treatments', {
   // 'assumiu'|'registrou_tratativa'|'ligou_motorista'|'escalou'|'resolveu'
   notes:      text('notes'),
   outcome:    varchar('outcome', { length: 30 }),  // pendente|resolvido|escalado
+  // Phase 14 — autor externo (operador do painel GAS: Filipe, Kevin, SISTEMA...).
+  // operatorId fica NULL nesses casos; o nome de quem mandou a mensagem vem aqui.
+  authorName: varchar('author_name', { length: 120 }),
   createdAt:  timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })
 
