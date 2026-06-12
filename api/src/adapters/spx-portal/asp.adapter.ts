@@ -7,8 +7,9 @@
  * aspx-renewal. Só o cookie é necessário no GET /trip/list (verificado: app/
  * device-id/version são dispensáveis). `agency_current_station_id` é OBRIGATÓRIO.
  *
- * Cruzamento validado 2026-06-12: 377 viagens em comum com a aba, 15/15 colunas
- * 100% iguais. Ver [[spx-linehaul-trips-endpoint]].
+ * Une os 3 tabs por default — Planejado(1) ∪ Aceito(2) ∪ Concluído(3) — com dedupe
+ * por trip_number (tab mais avançado vence). Resiliente: tab que falhar não derruba
+ * os demais (vai pra `errors`). Cruzamento validado 2026-06-12 vs a aba: 15/15 colunas.
  */
 import { getCargasSupabase } from '../../modules/cargas/cargas.supabase'
 
@@ -28,6 +29,7 @@ const OP: Record<string, string> = {
   Departed: 'CARREGADO', Arrived: 'AGUARDANDO DESCARGA', Unseal: 'DESCARREGANDO',
   Unloaded: 'DESCARREGADO', Completed: 'DESCARREGADO', Cancelled: 'CANCELADO',
 }
+const TAB_NAME: Record<number, string> = { 1: 'planejado', 2: 'aceito', 3: 'concluido' }
 
 export const ASP_COLUMNS = [
   'LH Trip Number', 'LH Trip Name', 'Status', 'Status Operacional', 'Driver ID',
@@ -91,18 +93,10 @@ function flatten(t: any): AspRow {
   }
 }
 
-export interface FetchAspOpts { daysBack?: number; daysFwd?: number; station?: string; queryType?: number }
-
-export async function fetchAspRows(opts: FetchAspOpts = {}): Promise<{ fetched: number; rows: AspRow[] }> {
-  const cookie = await getCookieHeader()
-  const station = opts.station || DEFAULT_STATION
-  if (!station) throw new Error('agency_current_station_id ausente — defina SPX_LINEHAUL_STATION_ID ou passe ?station=')
-  const now = Math.floor(Date.now() / 1000)
-  const sta = `${now - (opts.daysBack ?? 45) * 86400},${now + (opts.daysFwd ?? 15) * 86400}`
-  const qt = opts.queryType ?? 1
+async function fetchTab(cookie: string, station: string, sta: string, queryType: number): Promise<any[]> {
   const all: any[] = []
   for (let page = 1; page <= 20; page++) {
-    const url = `${SPX_BASE}/api/line_haul/agency/trip/list?pageno=${page}&count=200&query_type=${qt}&sta=${sta}&agency_current_station_id=${encodeURIComponent(station)}`
+    const url = `${SPX_BASE}/api/line_haul/agency/trip/list?pageno=${page}&count=200&query_type=${queryType}&sta=${sta}&agency_current_station_id=${encodeURIComponent(station)}`
     const r = await fetch(url, {
       headers: { Accept: 'application/json, text/plain, */*', Cookie: cookie, Origin: SPX_BASE, Referer: `${SPX_BASE}/` },
       signal: AbortSignal.timeout(60_000),
@@ -114,7 +108,42 @@ export async function fetchAspRows(opts: FetchAspOpts = {}): Promise<{ fetched: 
     all.push(...lst)
     if (lst.length < 200) break
   }
-  return { fetched: all.length, rows: all.map(flatten) }
+  return all
+}
+
+export interface FetchAspOpts { daysBack?: number; daysFwd?: number; station?: string; queryTypes?: number[] }
+export interface FetchAspResult { fetched: number; rows: AspRow[]; byTab: Record<string, number>; errors: { tab: string; error: string }[] }
+
+export async function fetchAspRows(opts: FetchAspOpts = {}): Promise<FetchAspResult> {
+  const cookie = await getCookieHeader()
+  const station = opts.station || DEFAULT_STATION
+  if (!station) throw new Error('agency_current_station_id ausente — defina SPX_LINEHAUL_STATION_ID ou passe ?station=')
+  const now = Math.floor(Date.now() / 1000)
+  const sta = `${now - (opts.daysBack ?? 45) * 86400},${now + (opts.daysFwd ?? 15) * 86400}`
+  const qts = opts.queryTypes?.length ? opts.queryTypes : [1, 2, 3]
+
+  const byTrip = new Map<string, any>() // dedupe por trip_number; tab mais avançado (ordem 1→3) vence
+  const byTab: Record<string, number> = {}
+  const errors: { tab: string; error: string }[] = []
+
+  for (const qt of qts) {
+    const tab = TAB_NAME[qt] ?? `qt${qt}`
+    try {
+      const trips = await fetchTab(cookie, station, sta, qt)
+      byTab[tab] = trips.length
+      for (const t of trips) if (t.trip_number) byTrip.set(t.trip_number, t)
+    } catch (e) {
+      byTab[tab] = 0
+      errors.push({ tab, error: (e as Error)?.message ?? String(e) })
+    }
+  }
+
+  // Se TODOS os tabs falharam, propaga o erro (não devolve vazio mascarando falha total).
+  if (errors.length === qts.length) {
+    throw new Error(`todas as consultas falharam: ${errors.map((e) => `${e.tab}=${e.error}`).join(' | ')}`)
+  }
+
+  return { fetched: byTrip.size, rows: [...byTrip.values()].map(flatten), byTab, errors }
 }
 
 export function aspRowsToCsv(rows: AspRow[]): string {
