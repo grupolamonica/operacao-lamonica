@@ -143,15 +143,25 @@ jobs:
           ANGELLIRA_USER: ${{ secrets.ANGELLIRA_USER }}
           ANGELLIRA_PASS: ${{ secrets.ANGELLIRA_PASS }}
           ANGELLIRA_EMPRESA: ${{ secrets.ANGELLIRA_EMPRESA }}
+          # Phase 14 — cutover Cargas p/ PRODUÇÃO (leitura Supabase + creds do operador p/ escrita futura)
+          CARGAS_SUPABASE_URL: ${{ secrets.CARGAS_SUPABASE_URL }}
+          CARGAS_SUPABASE_KEY: ${{ secrets.CARGAS_SUPABASE_KEY }}
+          CARGAS_API_URL: ${{ secrets.CARGAS_API_URL }}
+          CARGAS_OPERATOR_EMAIL: ${{ secrets.CARGAS_OPERATOR_EMAIL }}
+          CARGAS_OPERATOR_PASSWORD: ${{ secrets.CARGAS_OPERATOR_PASSWORD }}
         run: |
           set -euo pipefail
           # Compose files vêm do checkout do runner; copia p/ o diretório de deploy
           cp docker-compose.prod.yml docker-compose.domain.yml /opt/apps/torre/
           cd /opt/apps/torre
 
-          # Phase 12 — garante credenciais Angellira no .env (upsert idempotente)
+          # Phase 12/14 — garante credenciais no .env (upsert idempotente).
+          # CARGAS_WRITE_ENABLED fixo em false: produção só LÊ do Cargas até autorização explícita de escrita.
           touch .env
-          for kv in "ANGELLIRA_USER=${ANGELLIRA_USER}" "ANGELLIRA_PASS=${ANGELLIRA_PASS}" "ANGELLIRA_EMPRESA=${ANGELLIRA_EMPRESA}"; do
+          for kv in "ANGELLIRA_USER=${ANGELLIRA_USER}" "ANGELLIRA_PASS=${ANGELLIRA_PASS}" "ANGELLIRA_EMPRESA=${ANGELLIRA_EMPRESA}" \
+                    "CARGAS_SUPABASE_URL=${CARGAS_SUPABASE_URL}" "CARGAS_SUPABASE_KEY=${CARGAS_SUPABASE_KEY}" \
+                    "CARGAS_API_URL=${CARGAS_API_URL}" "CARGAS_OPERATOR_EMAIL=${CARGAS_OPERATOR_EMAIL}" \
+                    "CARGAS_OPERATOR_PASSWORD=${CARGAS_OPERATOR_PASSWORD}" "CARGAS_WRITE_ENABLED=false"; do
             key="${kv%%=*}"
             if grep -q "^${key}=" .env; then
               sed -i "s|^${key}=.*|${kv}|" .env
