@@ -216,6 +216,11 @@ export async function syncPainel(): Promise<PainelSyncResult> {
     let tp = 0; const alertaCods = new Set<string>()
     // Dedup por episódio (cod|tipo) — mantém a ocorrência mais recente (igual ao "último ticket" do painel).
     const epis = new Map<string, { cod: string; tipo: string; stt: string; ab: string | null; op: string; obs: string; trat: string | null; emb: string; mot: string; dst: string; atraso: string; km: string; placa: string; ori: string }>()
+    // Phase 14 — mensagens do operador (Observação + Operador) → histórico do ticket (treatments).
+    // Dedup por (cod|tipo|operador|texto): a mesma mensagem reaparece a cada ciclo de detecção; guardamos
+    // uma só, com o horário mais antigo (quando o operador realmente escreveu). Auto-detecções (Operador
+    // vazio, "Atraso previsto de...") são ignoradas — já viram a description do alerta.
+    const obsMap = new Map<string, { id: string; alertId: string; author: string; notes: string; when: string }>()
     for (const r of tickets.slice(1)) {
       const cod = String(r[iCod] ?? '').trim(); const tipo = String(r[iTipo] ?? '').trim()
       if (!cod || tipo === '1H_INTERVALO') continue
@@ -226,6 +231,15 @@ export async function syncPainel(): Promise<PainelSyncResult> {
         if (tipo === 'PARADA') { const a = dateBR(r[iAbert]); if (!a || a.getTime() >= limiteParada) alertaCods.add(cod) }
       }
       const ab = isoDt(r[iAbert]); const key = cod + '|' + tipo
+      // mensagem do operador desta linha → histórico do ticket (só HUMANO + observação).
+      // "SISTEMA" é auto-gerado (Tudo OK / fechado automaticamente) — ruído, fica de fora.
+      const opMsg = String(r[iOp] ?? '').trim(); const obsMsg = String(r[iObs] ?? '').trim()
+      if (opMsg && obsMsg && opMsg.toUpperCase() !== 'SISTEMA') {
+        const oid = uuid5('painelobs|' + cod + '|' + tipo + '|' + opMsg + '|' + obsMsg)
+        const when = isoDt(r[iTrat]) ?? ab ?? agora.toISOString()
+        const ex = obsMap.get(oid)
+        if (!ex || when < ex.when) obsMap.set(oid, { id: oid, alertId: uuid5('ticket|' + cod + '|' + tipo), author: opMsg.slice(0, 120), notes: obsMsg.slice(0, 2000), when })
+      }
       const prev = epis.get(key)
       if (!prev || (ab && prev.ab && ab > prev.ab) || (ab && !prev.ab)) {
         epis.set(key, { cod, tipo, stt, ab, op: String(r[iOp] ?? '').trim(), obs: String(r[iObs] ?? '').trim(),
@@ -280,6 +294,26 @@ export async function syncPainel(): Promise<PainelSyncResult> {
       }
     })
     logger.info({ episodios: arows.length, ticketsPendentes, alertas }, '[painel-sync] tickets->alerts importados')
+
+    // --- Mensagens do operador (Observação) → histórico do ticket (treatments) ---
+    // Operadores do painel não são usuários do sistema: operator_id NULL, nome em author_name.
+    // alert_id sempre existe (todo cod|tipo entrou em epis e foi inserido como alerta acima).
+    const obsList = [...obsMap.values()]
+    if (obsList.length) {
+      await db.transaction(async (tx) => {
+        const B = 500
+        for (let i = 0; i < obsList.length; i += B) {
+          const batch = obsList.slice(i, i + B)
+          const vals = batch.map((o) => sql`(${o.id}, ${o.alertId}, 'painel_obs', ${o.notes}, ${o.author}, ${o.when})`)
+          await tx.execute(sql`
+            INSERT INTO treatments (id, alert_id, action_type, notes, author_name, created_at)
+            VALUES ${sql.join(vals, sql`, `)}
+            ON CONFLICT (id) DO UPDATE SET notes=EXCLUDED.notes, author_name=EXCLUDED.author_name, created_at=EXCLUDED.created_at
+          `)
+        }
+      })
+      logger.info({ mensagens: obsList.length }, '[painel-sync] mensagens do operador -> histórico (treatments)')
+    }
 
     // Phase 14 — paradas → buffer (vira trip_events 'stopped' depois do upsert de trips, p/ FK válido).
     try {

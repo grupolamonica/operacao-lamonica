@@ -13,6 +13,7 @@ interface Props {
 function iconFor(actionType: string | null) {
   if (!actionType) return MessageSquare
   if (actionType === 'comment')        return MessageSquare
+  if (actionType === 'painel_obs')     return MessageSquare
   if (actionType.startsWith('transition:')) return ArrowRightCircle
   if (actionType === 'assign')         return UserCog
   return FileEdit
@@ -20,8 +21,9 @@ function iconFor(actionType: string | null) {
 
 function labelFor(actionType: string | null) {
   if (!actionType) return 'Tratativa'
-  if (actionType === 'comment')  return 'Comentário'
-  if (actionType === 'assign')   return 'Atribuição'
+  if (actionType === 'comment')     return 'Comentário'
+  if (actionType === 'painel_obs')  return 'Mensagem do operador'
+  if (actionType === 'assign')      return 'Atribuição'
   if (actionType.startsWith('transition:')) {
     const [, payload] = actionType.split(':')
     const [from, , to] = payload?.split('_') ?? []
@@ -56,7 +58,10 @@ export function AlertCommentThread({ items, onSubmit, isPending }: Props) {
               <Icon className="h-3.5 w-3.5 shrink-0 mt-0.5 text-muted-foreground" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] font-medium text-foreground">{labelFor(it.actionType)}</span>
+                  <span className="text-[11px] font-medium text-foreground">
+                    {labelFor(it.actionType)}
+                    {it.authorName && <span className="text-muted-foreground font-normal"> · {it.authorName}</span>}
+                  </span>
                   <span className="text-[10px] text-muted-foreground shrink-0">{formatRelative(it.createdAt)}</span>
                 </div>
                 {it.notes && <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap break-words">{it.notes}</p>}

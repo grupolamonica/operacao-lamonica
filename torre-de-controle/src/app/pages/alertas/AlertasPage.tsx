@@ -1,22 +1,34 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { LayoutGrid, List } from 'lucide-react'
 import { AlertasKPIRow } from './components/AlertasKPIRow'
 import { AlertasFiltersBar } from './components/AlertasFiltersBar'
 import { AlertGroupedList } from './components/AlertGroupedList'
+import { AlertSimpleList } from './components/AlertSimpleList'
 import { AlertDetailPanel } from './components/AlertDetailPanel'
 import { AlertasStatusBreakdown } from './components/AlertasStatusBreakdown'
 import { ExportButton } from '@/components/common/ExportButton'
 import { FixedPanel } from '@/components/domain/FixedPanel'
 import { useAlerts, useAlert } from '@/hooks/useAlerts'
 import { useUIStore } from '@/stores/useUIStore'
+import { cn } from '@/lib/utils'
 import type { AlertFilters, AlertStatus } from '@/data/types'
+
+// Visão preferida do operador persiste entre sessões.
+const VIEW_KEY = 'ocorrencias:view'
 
 export function AlertasPage() {
   const [filters, setFilters] = useState<AlertFilters>({ period: 'today' })
+  const [view, setView] = useState<'simples' | 'detalhada'>(
+    () => (localStorage.getItem(VIEW_KEY) as 'simples' | 'detalhada') || 'simples',
+  )
   const { data: alerts } = useAlerts(filters)
   const { selectedAlertId, setSelectedAlertId } = useUIStore()
   const { data: selected } = useAlert(selectedAlertId)
   const isOpen = selected !== null
+  const simples = view === 'simples'
+
+  function setViewPersist(v: 'simples' | 'detalhada') { setView(v); localStorage.setItem(VIEW_KEY, v) }
 
   // Phase 13 — deep-link do dashboard: /alertas?alert=<id> abre o ticket direto.
   const [searchParams] = useSearchParams()
@@ -35,26 +47,50 @@ export function AlertasPage() {
       <header className="pb-4 flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">Ocorrências</h1>
-          <p className="text-sm text-white/70">Centro operacional — funil, tratativas e SLA</p>
+          <p className="text-sm text-white/70">
+            {simples ? 'Tickets e alertas — visão do operador' : 'Centro operacional — funil, tratativas e SLA'}
+          </p>
         </div>
-        <ExportButton entity="alertas" filters={filters} />
+        <div className="flex items-center gap-2">
+          {/* Toggle Visão simples / detalhada */}
+          <div className="inline-flex rounded-md border border-white/20 overflow-hidden">
+            <button
+              onClick={() => setViewPersist('simples')}
+              className={cn('inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors',
+                simples ? 'bg-white text-slate-900' : 'text-white/80 hover:bg-white/10')}
+            >
+              <List className="h-3.5 w-3.5" /> Simples
+            </button>
+            <button
+              onClick={() => setViewPersist('detalhada')}
+              className={cn('inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors',
+                !simples ? 'bg-white text-slate-900' : 'text-white/80 hover:bg-white/10')}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" /> Detalhada
+            </button>
+          </div>
+          <ExportButton entity="alertas" filters={filters} />
+        </div>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        <div className="lg:col-span-3">
-          <AlertasKPIRow />
+      {/* KPIs e funil só na visão detalhada — a simples é enxuta p/ o operador */}
+      {!simples && (
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          <div className="lg:col-span-3">
+            <AlertasKPIRow />
+          </div>
+          <AlertasStatusBreakdown
+            activeStatus={(filters.status ?? null) as AlertStatus | null}
+            onSelect={handleStatusSelect}
+          />
         </div>
-        <AlertasStatusBreakdown
-          activeStatus={(filters.status ?? null) as AlertStatus | null}
-          onSelect={handleStatusSelect}
-        />
-      </div>
+      )}
 
       <AlertasFiltersBar filters={filters} onChange={setFilters} />
 
       <div className="flex gap-5 items-start">
         <div className="flex-1 min-w-0">
-          <AlertGroupedList alerts={alerts} />
+          {simples ? <AlertSimpleList alerts={alerts} /> : <AlertGroupedList alerts={alerts} />}
         </div>
 
         {isOpen && selected && (
