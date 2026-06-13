@@ -20,6 +20,7 @@
  */
 
 import type { SheetTrip, VinculoRecord } from './ranking.types';
+import { getRankSupabase } from './ranking.supabase';
 
 // Lazy redis import: ../../redis/client throws at module-eval if REDIS_URL is
 // unset (fail-fast). Importing it at top-level would make merely *importing* this
@@ -30,10 +31,9 @@ async function getRedis() {
   return redis;
 }
 
-const SHEET_ID = process.env.RANK_SHEET_ID ?? '1MWTiaXU3HXW_iVn-n70WSk3o8rcHTRrQP2ac07W9cCU';
-const SHEET_TAB = process.env.RANK_SHEET_TAB ?? 'DBLHHISTORICO';
-const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(SHEET_TAB)}`;
-
+// "Trabalhar só com a API": as viagens do ranking vêm da tabela `trips` (consolidada —
+// backfill das abas shopee/shopee_2025 cruzado com a API + alimentada ao vivo pelo job
+// rank-sync com os dados do SPX). NÃO lê mais a planilha DBLHHISTORICO.
 export const SHEET_TRIPS_CACHE_KEY = 'ranking:sheets:trips';
 // TTL is 60s (D-V2 short cache, T-07-07); inlined as a literal in redis.set below.
 
@@ -62,39 +62,52 @@ function parseCSVLine(line: string): string[] {
   return result;
 }
 
-function parseCSV(csv: string): SheetTrip[] {
-  const lines = csv.split('\n').filter((line) => line.trim() !== '');
-  if (lines.length < 2) return [];
+const sval = (v: unknown) => (v == null ? '' : String(v));
 
-  const headers = parseCSVLine(lines[0]).map((h) => h.replace(/^"|"$/g, '').trim());
-
-  const trips: SheetTrip[] = [];
-
-  for (let i = 1; i < lines.length; i++) {
-    const values = parseCSVLine(lines[i]);
-    // Skip empty rows
-    if (values.every((v) => v === '' || v === '""')) continue;
-
-    const row: Record<string, string> = {};
-    headers.forEach((header, idx) => {
-      if (header) {
-        row[header] = (values[idx] || '').replace(/^"|"$/g, '').trim();
-      }
-    });
-
-    // Only include rows that have at least a trip_number
-    if (row.trip_number) {
-      trips.push(row as SheetTrip);
-    }
-  }
-
-  return trips;
+/** Mapeia uma linha da tabela `trips` para o shape SheetTrip que o pipeline consome. */
+function tripRowToSheetTrip(r: Record<string, unknown>): SheetTrip {
+  return {
+    sta_origin_date: sval(r.sta_origin_date),
+    trip_number: sval(r.trip_number),
+    status_agrupado: sval(r.status_agrupado),
+    solicitation_by: '',
+    planned_vehicle: '',
+    used_vehicle: '',
+    used_agency_name: '',
+    driver_id: sval(r.driver_id),
+    driver_name: sval(r.driver_name),
+    vehicle_number: sval(r.vehicle_plate_number),
+    origin_station_code: sval(r.origin_station_code),
+    destination_station_code: sval(r.destination_station_code),
+    eta_scheduled_origin_edited: sval(r.eta_scheduled_origin_edited),
+    cpt_scheduled_origin_edited: '',
+    eta_destination_edited: sval(r.eta_destination_edited),
+    id_rota: '',
+    eta_realizado: sval(r.eta_realizado),
+    status_eta: '',
+    ocorrencia_eta: '',
+    cpt_realizado: '',
+    status_cpt: '',
+    ocorrencia_cpt: '',
+    eta_destino_realizado: sval(r.eta_destino_realizado),
+    status_eta_destino: '',
+    ocorrencia_eta_destino: '',
+    horario_de_descarga: '',
+    sum_orders: '',
+    checkin_origin_operator: '',
+    checkout_origin_operator: '',
+    checkin_destination_operator: '',
+    eta_origin_realized: '',
+    cpt_origin_realized: '',
+    eta_destination_realized: '',
+    atualizacao: sval(r.updated_at),
+  } as SheetTrip;
 }
 
 /**
- * Fetch the public DBLHHISTORICO CSV, parse it into SheetTrip[], and cache the
- * result in Redis for 60s. On a cache hit returns the cached value; otherwise
- * fetches, parses, caches and returns. Fetch/parse errors PROPAGATE.
+ * Lê as viagens do ranking da tabela `trips` (Supabase do ranking) — consolidada
+ * das planilhas Shopee + alimentada ao vivo pelo SPX (job rank-sync). Resultado
+ * cacheado no Redis 60s (D-V2). Erros PROPAGAM (o endpoint da Plan 04 trata).
  */
 export async function getSheetTrips(): Promise<SheetTrip[]> {
   const redis = await getRedis();
@@ -107,14 +120,20 @@ export async function getSheetTrips(): Promise<SheetTrip[]> {
     }
   }
 
-  const response = await fetch(CSV_URL);
-  if (!response.ok) {
-    // T-07-06: log only the status, never the body/PII.
-    throw new Error(`Failed to fetch sheet: ${response.status}`);
+  const db = getRankSupabase();
+  const all: Record<string, unknown>[] = [];
+  let from = 0;
+  const pageSize = 1000;
+  for (;;) {
+    const { data, error } = await db.from('trips').select('*').range(from, from + pageSize - 1);
+    if (error) throw new Error(`Failed to read trips: ${error.message}`);
+    if (!data || data.length === 0) break;
+    all.push(...(data as Record<string, unknown>[]));
+    if (data.length < pageSize) break;
+    from += pageSize;
   }
 
-  const csv = await response.text();
-  const trips = parseCSV(csv);
+  const trips = all.map(tripRowToSheetTrip);
 
   await redis.set(SHEET_TRIPS_CACHE_KEY, JSON.stringify(trips), 'EX', 60);
   return trips;
