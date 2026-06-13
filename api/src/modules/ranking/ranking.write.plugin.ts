@@ -39,7 +39,20 @@ import {
   updateRouteScoreLogged,
   deleteRouteScoreLogged,
   importDriversLogged,
+  updateDriverVinculoLogged,
 } from './ranking.write.service';
+
+const vinculoSchema = t.Union([
+  t.Literal('TERCEIRO'),
+  t.Literal('AGREGADO DEDICADO'),
+  t.Literal('TERCEIRO DEDICADO'),
+  t.Literal('PME'),
+  t.Literal('FROTA'),
+  t.Literal('PX'),
+  t.Literal('AGREGADO'),
+  t.Literal('TERCEIRO (SEVERO)'),
+  t.Null(),
+]);
 
 // ---------------------------------------------------------------------------
 // Typebox enum schemas (D-09-06, T5)
@@ -237,6 +250,34 @@ export const rankingWritePlugin = new Elysia({ name: 'ranking-write' })
       detail: {
         tags: ['ranking'],
         summary: 'Remover pontuação de rota + ROTA_REMOCAO audit + cache bust (admin|supervisor)',
+      },
+    },
+  )
+
+  // ----- PATCH /api/ranking/drivers/:driver_id/vinculo --------------------------
+  .patch(
+    '/api/ranking/drivers/:driver_id/vinculo',
+    async ({ params, body, user, set }) => {
+      try {
+        await updateDriverVinculoLogged(
+          { driver_id: params.driver_id, driver_name: body.driver_name, vinculo: body.vinculo },
+          user.id,
+        );
+        return { ok: true };
+      } catch (e: any) {
+        set.status = 500;
+        throw e;
+      }
+    },
+    {
+      params: t.Object({ driver_id: t.String({ minLength: 1 }) }),
+      body: t.Object({
+        driver_name: t.String(),
+        vinculo: vinculoSchema,
+      }),
+      detail: {
+        tags: ['ranking'],
+        summary: 'Editar vínculo canônico do motorista + EDICAO_VINCULO audit (admin|supervisor)',
       },
     },
   )

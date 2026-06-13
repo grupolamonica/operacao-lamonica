@@ -40,6 +40,7 @@ import {
   updateRouteScore,
   deleteRouteScore,
   upsertDrivers,
+  updateDriverVinculo,
 } from './ranking.writes';
 import type { RouteScoreRecord } from './ranking.types';
 import { createEvaluationLog } from './ranking.audit';
@@ -358,6 +359,37 @@ export async function deleteRouteScoreLogged(
 // Driver names override the trip-sheet names for matching driver_ids (re-derives
 // the ranking on next read — composeRanking step 2). operador server-resolved.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// updateDriverVinculoLogged — edita drivers.vinculo + EDICAO_VINCULO audit + bust
+//
+// Vínculo é atributo canônico do motorista (1 por driver_id). operador resolvido
+// server-side do JWT (T-09-12). Sobrepõe o seed da planilha; o composeRanking
+// passa a refletir esse valor (precedência por driver_id).
+// ---------------------------------------------------------------------------
+
+export interface UpdateDriverVinculoInput {
+  driver_id: string;
+  driver_name: string;
+  vinculo: string | null;
+}
+
+export async function updateDriverVinculoLogged(
+  input: UpdateDriverVinculoInput,
+  userId: string,
+): Promise<void> {
+  const operador = await resolveOperador(userId);
+  await updateDriverVinculo(input.driver_id, input.driver_name, input.vinculo);
+  await createEvaluationLog({
+    driver_id: input.driver_id,
+    driver_name: input.driver_name,
+    operador,
+    acao: 'EDICAO_VINCULO',
+    dados_antes: null,
+    dados_depois: { vinculo: input.vinculo || null } as Record<string, unknown>,
+  });
+  await bustRankingCache();
+}
 
 export async function importDriversLogged(
   drivers: { driver_id: string; driver_name: string }[],
