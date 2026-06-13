@@ -262,10 +262,10 @@ export function formatTripDelta(deltaMinutes?: number | null): string {
     : `Adiantou ${abs} min em relação ao previsto`
 }
 
-/** Display label for a driver vinculo; empty/dash variants → "Terceiros". */
+/** Display label for a driver vinculo; sem vínculo (vazio/traço) = TERCEIRO. */
 export function getDriverVinculoLabel(vinculo?: string | null): string {
   const v = (vinculo || '').trim()
-  if (!v || v === '-' || v === '—' || v === 'â€”') return 'Terceiros'
+  if (!v || v === '-' || v === '—' || v === 'â€”') return 'TERCEIRO'
   return v
 }
 

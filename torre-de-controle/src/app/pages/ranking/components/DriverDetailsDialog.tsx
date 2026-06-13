@@ -388,9 +388,9 @@ export function DriverDetailsDialog({ driver, open, onOpenChange }: DriverDetail
                         value={editVinculo || '__none'}
                         onValueChange={(v) => setEditVinculo(v === '__none' ? '' : v)}
                       >
-                        <SelectTrigger><SelectValue placeholder="Terceiros" /></SelectTrigger>
+                        <SelectTrigger><SelectValue placeholder="TERCEIRO" /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="__none">Terceiros (sem vínculo)</SelectItem>
+                          <SelectItem value="__none">TERCEIRO (sem vínculo definido)</SelectItem>
                           {VINCULO_OPTIONS.map((o) => (
                             <SelectItem key={o} value={o}>{o}</SelectItem>
                           ))}
