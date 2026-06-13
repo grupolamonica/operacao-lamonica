@@ -18,6 +18,8 @@ const normPlate = (p: string) => (p || '').toUpperCase().replace(/[^A-Z0-9]/g, '
 const normName = (s: string) =>
   (s || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim()
 const CONCLUIDO_SPX = new Set(['Completed', 'Arrived', 'Unseal', 'Unloaded'])
+// Status SPX terminais: a viagem acabou (não é candidata a casar com uma viagem ainda em andamento na Torre).
+const TERMINAL_SPX = new Set(['Completed', 'Cancelled'])
 
 interface TorreTrip {
   id: string
@@ -112,12 +114,21 @@ export async function crossReferenceShopeeInProgress(opts: { daysBack?: number; 
       if (spx) matchBy = 'placa'
     }
     if (!spx && t.motorista) {
-      // Fallback por motorista — SÓ quando inequívoco (1 viagem desse motorista no SPX),
-      // pra nunca casar errado.
+      // Fallback por motorista — só quando dá pra apontar UMA viagem sem ambiguidade,
+      // pra nunca casar errado. Um motorista está fisicamente em 1 viagem ativa por vez,
+      // então: 1 viagem no SPX → essa; senão, a única NÃO-terminal (descarta o histórico
+      // Completed/Cancelled). 2+ ativas (ambíguo) ou 0 ativas → não casa.
       const cand = byDriver.get(normName(t.motorista))
-      if (cand && cand.length === 1) {
-        spx = cand[0]
-        matchBy = 'motorista'
+      if (cand?.length) {
+        let pick = cand.length === 1 ? cand[0] : undefined
+        if (!pick) {
+          const live = cand.filter((r) => !TERMINAL_SPX.has(r['Status']))
+          if (live.length === 1) pick = live[0]
+        }
+        if (pick) {
+          spx = pick
+          matchBy = 'motorista'
+        }
       }
     }
     return {

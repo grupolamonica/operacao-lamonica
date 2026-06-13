@@ -85,7 +85,7 @@ curl -H "x-api-key: $KEY" "https://torre.grupolamonica.com/api/spx/asp?format=cs
 
 ## Endpoint extra: `GET /api/spx/em-andamento` (cruzamento dinâmico)
 
-Cruza **ao vivo** as viagens **Shopee EM ANDAMENTO** da Torre (`trips.status='in_progress'`, `clients.name='Shopee'`) com o SPX (aba asp). A LH vem do sistema de Cargas (`sheet_lh`/`linked_lh`); o match é em cascata: **LH** (principal) → **placa do cavalo** → **nome do motorista** (este só quando o motorista tem **1 viagem única** no SPX, pra nunca casar errado). Mesma auth (`x-api-key`).
+Cruza **ao vivo** as viagens **Shopee EM ANDAMENTO** da Torre (`trips.status='in_progress'`, `clients.name='Shopee'`) com o SPX (aba asp). A LH vem do sistema de Cargas (`sheet_lh`/`linked_lh`); o match é em **cascata**: **LH** (principal) → **placa do cavalo** → **nome do motorista**. O fallback por motorista só casa quando dá pra apontar UMA viagem sem ambiguidade — 1 viagem do motorista no SPX, ou a única **não-terminal** dele (descarta o histórico Completed/Cancelled, já que um motorista está em 1 viagem ativa por vez). 2+ ativas ou 0 ativas → não casa (fica `sem_match`, nunca casa errado). Mesma auth (`x-api-key`).
 
 ```bash
 curl -H "x-api-key: $KEY" "https://torre.grupolamonica.com/api/spx/em-andamento"
@@ -94,8 +94,8 @@ Resposta:
 ```jsonc
 {
   "ok": true,
-  "total": 32, "matched": 30, "by_lh": 26, "by_placa": 2, "by_motorista": 2, "sem_match": 2,
-  "stale": 4,                 // Torre diz "em andamento" mas o SPX já concluiu/chegou
+  "total": 33, "matched": 31, "by_lh": 17, "by_placa": 0, "by_motorista": 14, "sem_match": 2,
+  "stale": 3,                 // Torre diz "em andamento" mas o SPX já concluiu/chegou
   "rows": [
     { "lh": "LT0Q...", "code": "CRG-LT0Q...", "placa": "OUH6609", "motorista": "...",
       "match_by": "lh", "stale": false,
@@ -106,7 +106,9 @@ Resposta:
   ]
 }
 ```
-`stale: true` = viagem aberta na Torre que o SPX já marcou DESCARREGADO/chegou (candidata a fechar). `match_by: null` = viagem Shopee sem LH, sem placa e sem motorista único no SPX (tipicamente viagem crua do monitoramento/painel ainda não linkada a uma LH do Cargas).
+`stale: true` = viagem aberta na Torre que o SPX já marcou DESCARREGADO/chegou (candidata a fechar). `match_by: null` = viagem Shopee sem LH, sem placa e sem motorista único no SPX (tipicamente viagem crua do monitoramento/painel ainda não linkada a uma LH do Cargas, ou cujo motorista não tem viagem ativa no SPX).
+
+> **`total` conta linhas da Torre, não viagens físicas.** A mesma viagem Shopee costuma aparecer 2× em andamento na Torre — uma do monitoramento (`code` numérico `38…`) e uma do painel (`code` `PNLA-…`) — pois nenhuma das duas carrega a LH ainda. As duas casam para o MESMO SPX, então o cruzamento não erra; só não as deduplica (sem LH, não há como saber que são a mesma).
 
 ## Como funciona (arquitetura)
 
