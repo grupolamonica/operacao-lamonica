@@ -15,7 +15,13 @@ const queryClient = new QueryClient({
     queries: {
       retry: 1,
       staleTime: 30_000,     // 30s — matches API Redis cache
-      refetchOnWindowFocus: false,
+      // Operador "sempre atualizado" sem clicar em nada, gastando o mínimo:
+      // - volta à aba → atualiza na hora (refetch grátis, só quando ele olha);
+      // - aba oculta → o poll (refetchInterval dos hooks) PAUSA (consumo zero em background);
+      // - reconectou a internet → revalida.
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+      refetchIntervalInBackground: false,
     },
   },
 })

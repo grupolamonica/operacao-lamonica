@@ -11,6 +11,9 @@ export function useAlerts(filters?: AlertFilters) {
       if (error) throw new Error((error.value as any)?.error ?? 'Failed to fetch alerts')
       return (data ?? []) as Alert[]
     },
+    // Ocorrências atualiza sozinha (20s) — sem precisar do botão. Pausa com a aba oculta
+    // (refetchIntervalInBackground:false no QueryClient) e revalida ao focar a aba.
+    refetchInterval: 20_000,
   })
   return {
     data:      q.data ?? [],
