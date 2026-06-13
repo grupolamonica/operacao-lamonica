@@ -13,7 +13,6 @@ import { syncMonitoring } from '../adapters/angellira/monitoring.adapter'
 import { syncPainel } from '../adapters/painel-sheet/painel-sync'
 import { runDetectors } from '../modules/alerts/detectors.service'
 import { syncCargas } from '../modules/cargas/cargas.sync'
-import { syncSpxAngelira } from '../adapters/spx-sidecar/spx-angelira.adapter'
 import { syncRankTrips } from '../adapters/spx-portal/rank-trips-sync.adapter'
 
 const QUEUE_NAME = 'angellira-cron'
@@ -47,7 +46,6 @@ export function startAngelliraJobs(): void {
     if (job.name === 'painel') return syncPainel()
     if (job.name === 'detectors') return runDetectors()
     if (job.name === 'cargas') return syncCargas()
-    if (job.name === 'spx-angelira') return syncSpxAngelira()
     if (job.name === 'rank-sync') return syncRankTrips()
   }, { connection })
 
@@ -62,10 +60,8 @@ export function startAngelliraJobs(): void {
   void queue.add('detectors', {}, { repeat: { pattern: '0 * * * *' },   jobId: 'angellira-detectors' })
   // Phase 14 — sync do Cargas a cada 15min: open-loads + candidatos + cargas→trips + enrich por LH.
   void queue.add('cargas', {}, { repeat: { pattern: '*/15 * * * *' }, jobId: 'cargas-sync' })
-  // Phase 15 — checagem SPX x Angellira a cada 5min: viagens com veículo vencido/sem consulta de risco.
-  void queue.add('spx-angelira', {}, { repeat: { pattern: '*/5 * * * *' }, jobId: 'spx-angelira-check' })
   // Phase 15 — sync das viagens Shopee (SPX/asp) → tabela `trips` do ranking a cada 10min.
   void queue.add('rank-sync', {}, { repeat: { pattern: '*/10 * * * *' }, jobId: 'rank-trips-sync' })
 
-  logger.info('[angellira] jobs agendados — positions */3min, monitoring */5min, painel */10min, cargas */15min, spx-angelira */5min, rank-sync */10min, detectors hora cheia')
+  logger.info('[angellira] jobs agendados — positions */3min, monitoring */5min, painel */10min, cargas */15min, rank-sync */10min, detectors hora cheia')
 }
