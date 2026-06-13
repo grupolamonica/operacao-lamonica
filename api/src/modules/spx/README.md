@@ -83,6 +83,31 @@ curl -H "x-api-key: $KEY" "https://torre.grupolamonica.com/api/spx/asp?query_typ
 curl -H "x-api-key: $KEY" "https://torre.grupolamonica.com/api/spx/asp?format=csv" -o spx_asp.csv
 ```
 
+## Endpoint extra: `GET /api/spx/em-andamento` (cruzamento dinâmico)
+
+Cruza **ao vivo** as viagens **Shopee EM ANDAMENTO** da Torre (`trips.status='in_progress'`, `clients.name='Shopee'`) com o SPX (aba asp). A LH vem do sistema de Cargas (`sheet_lh`/`linked_lh`); o match é por **LH** (principal) com **fallback por placa do cavalo**. Mesma auth (`x-api-key`).
+
+```bash
+curl -H "x-api-key: $KEY" "https://torre.grupolamonica.com/api/spx/em-andamento"
+```
+Resposta:
+```jsonc
+{
+  "ok": true,
+  "total": 32, "matched": 30, "by_lh": 26, "by_placa": 4, "sem_match": 2,
+  "stale": 4,                 // Torre diz "em andamento" mas o SPX já concluiu/chegou
+  "rows": [
+    { "lh": "LT0Q...", "code": "CRG-LT0Q...", "placa": "OUH6609", "motorista": "...",
+      "match_by": "lh", "stale": false,
+      "spx": { "status": "Departed", "status_operacional": "CARREGADO",
+               "origem": "[...]...", "destino": "[...]...",
+               "eta_destino_prog": "13/06/2026 02:00", "eta_destino_real": "",
+               "placa": "OUH6609,...", "motorista": "..." } }
+  ]
+}
+```
+`stale: true` = viagem aberta na Torre que o SPX já marcou DESCARREGADO/chegou (candidata a fechar). `match_by: null` = viagem Shopee sem LH e sem placa achável no SPX.
+
 ## Como funciona (arquitetura)
 
 Self-contained, **sem sidecar** (os sidecars Python não rodam no prod da Torre):

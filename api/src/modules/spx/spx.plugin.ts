@@ -13,6 +13,7 @@
  */
 import { Elysia, t } from 'elysia'
 import { fetchAspRows, aspRowsToCsv, ASP_COLUMNS } from '../../adapters/spx-portal/asp.adapter'
+import { crossReferenceShopeeInProgress } from '../../adapters/spx-portal/cross.adapter'
 
 function checkApiKey(request: Request): { ok: true } | { ok: false; status: number; error: string } {
   const expected = process.env.SPX_ASP_API_KEY
@@ -71,6 +72,35 @@ export const spxPlugin = new Elysia({ name: 'spx-asp' }).group('/api/spx', (app)
       detail: {
         tags: ['spx'],
         summary: 'Viagens SPX linehaul (aba asp) via HTTP — une Planejado+Aceito+Concluído; auth x-api-key; JSON ou CSV',
+      },
+    },
+  ).get(
+    '/em-andamento',
+    async ({ query, set, request }) => {
+      const auth = checkApiKey(request)
+      if (!auth.ok) {
+        set.status = auth.status
+        return { ok: false, error: auth.error }
+      }
+      try {
+        const res = await crossReferenceShopeeInProgress({
+          daysBack: query.days_back ? Number(query.days_back) : undefined,
+          daysFwd: query.days_fwd ? Number(query.days_fwd) : undefined,
+        })
+        return { ok: true, ...res }
+      } catch (e) {
+        set.status = 502
+        return { ok: false, error: (e as Error)?.message ?? String(e) }
+      }
+    },
+    {
+      query: t.Object({
+        days_back: t.Optional(t.String()),
+        days_fwd: t.Optional(t.String()),
+      }),
+      detail: {
+        tags: ['spx'],
+        summary: 'Viagens Shopee EM ANDAMENTO (Torre) cruzadas ao vivo com o SPX por LH (fallback placa); marca stale',
       },
     },
   ),
