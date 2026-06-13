@@ -199,9 +199,24 @@ export function composeRanking(input: ComposeRankingInput): ComposeRankingResult
       : undefined;
   const derived = deriveDrivers(trips, getVinculo);
 
+  // 6b. drivers.vinculo (editado pelo operador na Torre, canônico por driver_id)
+  //     tem precedência sobre o casamento por nome da planilha.
+  const vinculoById = new Map(
+    driverRecords
+      .filter((d) => (d.vinculo ?? '').trim())
+      .map((d) => [normalizeDriverId(d.driver_id), (d.vinculo as string).trim()]),
+  );
+  const derivedDrivers =
+    vinculoById.size > 0
+      ? derived.map((d) => {
+          const v = vinculoById.get(normalizeDriverId(d.id));
+          return v ? { ...d, vinculo: v } : d;
+        })
+      : derived;
+
   // 7 + 8. Status + rank (rank counts only ATIVO drivers, 1..N).
   let activeRank = 0;
-  const drivers: RankedDriver[] = derived.map((driver) => {
+  const drivers: RankedDriver[] = derivedDrivers.map((driver) => {
     const status = activelyBlockedIds.has(driver.id) ? 'BLOQUEADO' : 'ATIVO';
     if (status === 'BLOQUEADO') {
       return { ...driver, status, rank: null };

@@ -356,6 +356,33 @@ export function useImportDrivers() {
   })
 }
 
+export interface UpdateDriverVinculoInput {
+  driver_id: string
+  driver_name: string
+  vinculo: string | null
+}
+
+/**
+ * PATCH /api/ranking/drivers/:driver_id/vinculo — edita o vínculo canônico do
+ * motorista + EDICAO_VINCULO audit. operador resolvido server-side do JWT.
+ * Invalidates: drivers (vínculo entra na composição), logs.
+ */
+export function useUpdateDriverVinculo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ driver_id, driver_name, vinculo }: UpdateDriverVinculoInput) => {
+      const { data, error } = await (api.api.ranking.drivers as any)({ driver_id }).vinculo.patch({ driver_name, vinculo })
+      if (error) throw new Error((error.value as any)?.error ?? 'Falha ao salvar vínculo')
+      return data
+    },
+    onSuccess: () => {
+      ;(['drivers', 'logs'] as const).forEach(key =>
+        qc.invalidateQueries({ queryKey: ['ranking', key] })
+      )
+    },
+  })
+}
+
 /**
  * POST /api/ranking/blocks — manual driver block + BLOQUEIO_MANUAL audit.
  * Invalidates: blocks, drivers, stats, logs.

@@ -196,6 +196,7 @@ export interface DriverRecord {
   id?: string;
   driver_id: string;
   driver_name: string;
+  vinculo?: string | null;
 }
 
 // --- Vinculo (driver employment bond) — public Google Sheet (vinculoService.ts) ---

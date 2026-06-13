@@ -178,6 +178,23 @@ export async function deleteRouteScore(id: string): Promise<void> {
  * (`onConflict: 'driver_id'`). Returns the number of rows written. RLS is open
  * (D-09-03) so the anon client writes; the endpoint enforces requireRole.
  */
+/**
+ * Atualiza o vínculo canônico de um motorista (1 por driver_id). Upsert por
+ * driver_id garante persistência mesmo se o motorista ainda não estiver na
+ * tabela. Editável pelo operador via PATCH /api/ranking/drivers/:id/vinculo.
+ */
+export async function updateDriverVinculo(
+  driver_id: string,
+  driver_name: string,
+  vinculo: string | null,
+): Promise<void> {
+  const { error } = await rankSupabase.from('drivers').upsert(
+    { driver_id, driver_name, vinculo: vinculo || null, updated_at: new Date().toISOString() } as any,
+    { onConflict: 'driver_id' },
+  );
+  if (error) throw error;
+}
+
 export async function upsertDrivers(
   drivers: { driver_id: string; driver_name: string }[],
 ): Promise<number> {

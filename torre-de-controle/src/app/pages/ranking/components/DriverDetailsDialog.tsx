@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import {
   Activity, AlertCircle, Building2, CalendarDays, FileText, MapPinned,
@@ -12,6 +12,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { PanelCard } from '@/components/domain/PanelCard'
@@ -21,6 +23,8 @@ import {
   useRankingEvaluations,
   useRankingRouteScores,
   useRankingDrivers,
+  useUpdateDriverVinculo,
+  useCanWriteRanking,
   type RankedDriver,
 } from '@/hooks/useRanking'
 import { fixMojibake } from '@/lib/mojibake'
@@ -54,6 +58,18 @@ interface DriverDetailsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
 }
+
+// Enum canônico de vínculo (mesmos valores da planilha de cargas).
+const VINCULO_OPTIONS = [
+  'AGREGADO DEDICADO',
+  'AGREGADO',
+  'TERCEIRO',
+  'TERCEIRO DEDICADO',
+  'TERCEIRO (SEVERO)',
+  'PME',
+  'FROTA',
+  'PX',
+] as const
 
 /** KPI compacto (ícone + label + valor) no tom Argon. */
 function KpiTile({
@@ -168,6 +184,31 @@ export function DriverDetailsDialog({ driver, open, onOpenChange }: DriverDetail
   const { data: routeScores } = useRankingRouteScores()
   const { data: allDrivers } = useRankingDrivers()
 
+  // Edição de vínculo — só admin|supervisor (gate de UI; o backend re-checa o papel).
+  const canWriteVinculo = useCanWriteRanking()
+  const updateVinculo = useUpdateDriverVinculo()
+  const [currentVinculo, setCurrentVinculo] = useState('')
+  const [editVinculo, setEditVinculo] = useState('')
+
+  useEffect(() => {
+    const raw = (driver?.vinculo ?? '').trim()
+    const clean = ['', '—', '-', 'â€”', 'Terceiros'].includes(raw) ? '' : raw
+    setCurrentVinculo(clean)
+    setEditVinculo(clean)
+  }, [driver?.id, driver?.vinculo])
+
+  const handleSaveVinculo = async () => {
+    if (!driver) return
+    const dn = stripDriverIdSuffix(fixMojibake(driver.nome), driver.id)
+    const next = editVinculo.trim()
+    try {
+      await updateVinculo.mutateAsync({ driver_id: driver.id, driver_name: dn, vinculo: next || null })
+      setCurrentVinculo(next)
+    } catch {
+      /* erro fica visível via updateVinculo.isError abaixo */
+    }
+  }
+
   const driverTrips = useMemo(
     () => (driver ? allTrips.filter((t) => t.driver_id === driver.id) : []),
     [allTrips, driver],
@@ -265,7 +306,7 @@ export function DriverDetailsDialog({ driver, open, onOpenChange }: DriverDetail
   if (!driver || !evaluationSummary || !analysis) return null
 
   const displayName = stripDriverIdSuffix(fixMojibake(driver.nome), driver.id)
-  const vinculo = getDriverVinculoLabel(driver.vinculo)
+  const vinculo = getDriverVinculoLabel(currentVinculo)
   const isActive = driver.status === 'ATIVO'
   const rankLabel = formatDriverRank(driver.rank, totalRanked)
   const routeCount = routeSummaries.length
@@ -332,6 +373,43 @@ export function DriverDetailsDialog({ driver, open, onOpenChange }: DriverDetail
 
             {/* ---- Resumo ---- */}
             <TabsContent value="resumo" className="space-y-4">
+              {canWriteVinculo && (
+                <PanelCard
+                  title={
+                    <span className="flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4 text-primary" /> Vínculo do Motorista
+                    </span>
+                  }
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <div className="space-y-1.5 sm:w-64">
+                      <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Vínculo</div>
+                      <Select
+                        value={editVinculo || '__none'}
+                        onValueChange={(v) => setEditVinculo(v === '__none' ? '' : v)}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Terceiros" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none">Terceiros (sem vínculo)</SelectItem>
+                          {VINCULO_OPTIONS.map((o) => (
+                            <SelectItem key={o} value={o}>{o}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button
+                      onClick={handleSaveVinculo}
+                      disabled={updateVinculo.isPending || editVinculo.trim() === currentVinculo.trim()}
+                    >
+                      {updateVinculo.isPending ? 'Salvando…' : 'Salvar vínculo'}
+                    </Button>
+                    {updateVinculo.isError && (
+                      <span className="text-xs text-red-500">Falha ao salvar — tente de novo.</span>
+                    )}
+                  </div>
+                </PanelCard>
+              )}
+
               <div className={cn('rounded-xl border p-5', analysisToneClass)}>
                 <h4 className="mb-3 flex items-center gap-2 text-base font-semibold">
                   <Building2 className="h-4 w-4 text-primary" /> Análise da Lamônica
