@@ -15,6 +15,8 @@ import { db } from '../../db/client'
 import { fetchAspRows, type AspRow } from './asp.adapter'
 
 const normPlate = (p: string) => (p || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+const normName = (s: string) =>
+  (s || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim()
 const CONCLUIDO_SPX = new Set(['Completed', 'Arrived', 'Unseal', 'Unloaded'])
 
 interface TorreTrip {
@@ -33,7 +35,7 @@ export interface CrossRow {
   placa: string | null
   motorista: string | null
   torre_eta: string | null
-  match_by: 'lh' | 'placa' | null
+  match_by: 'lh' | 'placa' | 'motorista' | null
   stale: boolean
   spx: {
     status: string
@@ -52,6 +54,7 @@ export interface CrossResult {
   matched: number
   by_lh: number
   by_placa: number
+  by_motorista: number
   sem_match: number
   stale: number
   rows: CrossRow[]
@@ -79,11 +82,14 @@ export async function crossReferenceShopeeInProgress(opts: { daysBack?: number; 
   const { rows: asp } = await fetchAspRows({ daysBack: opts.daysBack ?? 30, daysFwd: opts.daysFwd ?? 15 })
   const byLh = new Map<string, AspRow>()
   const byPlaca = new Map<string, AspRow>()
+  const byDriver = new Map<string, AspRow[]>() // nome → linhas (usado só quando inequívoco)
   for (const r of asp) {
     if (r['LH Trip Number']) byLh.set(r['LH Trip Number'], r)
     for (const p of (r['Vehicle Plate Number'] || '').split(',').map(normPlate).filter(Boolean)) {
       if (!byPlaca.has(p)) byPlaca.set(p, r)
     }
+    const nm = normName((r['Driver ID'] || '').replace(/^\[\d+\]/, ''))
+    if (nm) (byDriver.get(nm) ?? byDriver.set(nm, []).get(nm)!).push(r)
   }
 
   // 3. Cruza por LH (principal) com fallback por placa do cavalo.
@@ -100,10 +106,19 @@ export async function crossReferenceShopeeInProgress(opts: { daysBack?: number; 
 
   const rows: CrossRow[] = trips.map((t) => {
     let spx: AspRow | undefined = t.lh ? byLh.get(t.lh) : undefined
-    let matchBy: 'lh' | 'placa' | null = spx ? 'lh' : null
+    let matchBy: 'lh' | 'placa' | 'motorista' | null = spx ? 'lh' : null
     if (!spx && t.placa) {
       spx = byPlaca.get(t.placa)
       if (spx) matchBy = 'placa'
+    }
+    if (!spx && t.motorista) {
+      // Fallback por motorista — SÓ quando inequívoco (1 viagem desse motorista no SPX),
+      // pra nunca casar errado.
+      const cand = byDriver.get(normName(t.motorista))
+      if (cand && cand.length === 1) {
+        spx = cand[0]
+        matchBy = 'motorista'
+      }
     }
     return {
       lh: t.lh,
@@ -122,6 +137,7 @@ export async function crossReferenceShopeeInProgress(opts: { daysBack?: number; 
     matched: rows.filter((o) => o.match_by).length,
     by_lh: rows.filter((o) => o.match_by === 'lh').length,
     by_placa: rows.filter((o) => o.match_by === 'placa').length,
+    by_motorista: rows.filter((o) => o.match_by === 'motorista').length,
     sem_match: rows.filter((o) => !o.match_by).length,
     stale: rows.filter((o) => o.stale).length,
     rows,
