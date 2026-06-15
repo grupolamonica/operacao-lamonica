@@ -40,6 +40,9 @@ const PrevisaoPage = lazy(() =>
 const ConfiguracoesPage = lazy(() =>
   import('./pages/configuracoes/ConfiguracoesPage').then(m => ({ default: m.ConfiguracoesPage })),
 )
+const AuditoriaPage = lazy(() =>
+  import('./pages/auditoria/AuditoriaPage').then(m => ({ default: m.AuditoriaPage })),
+)
 
 /**
  * Suspense wrapper for lazy route chunks.
@@ -75,6 +78,7 @@ export const router = createBrowserRouter([
           { path: 'previsao',          element: <L><PrevisaoPage /></L> },
           { path: 'ranking',           element: <L><RankingPage /></L> },
           { path: 'configuracoes',     element: <L><ConfiguracoesPage /></L> },
+          { path: 'auditoria',         element: <L><AuditoriaPage /></L> },
         ],
       },
     ],
