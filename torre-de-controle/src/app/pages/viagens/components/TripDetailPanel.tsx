@@ -30,18 +30,8 @@ export function TripDetailPanel({ trip, onClose }: Props) {
   const events = (v360?.timeline ?? []) as any
   const risk   = v360?.risco ?? null
   const gps    = v360?.gps ?? null
-  // Phase 14 — trajeto do motorista p/ traçar a rota no mapa (só este motorista).
-  // Janela = partida → chegada (ou agora, se em curso): isola os pontos DESTA viagem.
-  // Sem a janela, driver_positions devolve todas as viagens do motorista e a
-  // polyline liga trajetos distintos (bug "puxa de várias viagens").
-  const toIso = (d: Date | string | null | undefined) => {
-    if (!d) return undefined
-    const x = new Date(d)
-    return isNaN(x.getTime()) ? undefined : x.toISOString()
-  }
-  const trackFrom = toIso(trip.departedAt ?? trip.windowStart)
-  const trackTo   = toIso(trip.arrivedAt) ?? new Date().toISOString()
-  const { data: track }  = useDriverTrack(trip.driverName || null, trackFrom, trackTo)
+  // Trajeto do motorista p/ traçar a rota no mapa.
+  const { data: track } = useDriverTrack(trip.driverName || null)
   // Dossiê cruzado (motorista+ranking+cargas+veículos) vem do mesmo envelope 360.
   const cross = v360
   // Datas de vigência são date-only (chegam como string 'YYYY-MM-DD' ou Date) —
