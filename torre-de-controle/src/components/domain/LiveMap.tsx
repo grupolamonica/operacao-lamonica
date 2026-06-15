@@ -9,6 +9,7 @@ import { useGeofences, type Geofence } from '@/hooks/useGeofences'
 import { useTrips } from '@/hooks/useTrips'
 import { RISK_HEX } from '@/components/domain/RiskBadge'
 import { formatDate } from '@/lib/formatters'
+import { snapTrackToRoads, type LngLat } from '@/lib/snapToRoads'
 import type { RiskLevel } from '@/data/types'
 
 const SLA_COLORS: Record<string, string> = {
@@ -50,11 +51,11 @@ interface Props {
 
 // Azul vivo do trajeto (estilo rota Google Maps)
 const TRACK_BLUE = '#2496ED'
+// Linha sólida (encaixada nas vias) — visual de rota do Google Maps.
 const TRACK_LINE_PAINT = {
-  'line-color':     TRACK_BLUE,
-  'line-width':     3.5,
-  'line-opacity':   0.9,
-  'line-dasharray': [2, 1.5],
+  'line-color':   TRACK_BLUE,
+  'line-width':   4,
+  'line-opacity': 0.95,
 }
 const TRACK_CASING_PAINT = {
   'line-color':   '#ffffff',
@@ -68,11 +69,12 @@ const TRACK_CURRENT_PAINT = {
   'circle-stroke-color': '#ffffff',
 }
 
-/** Add/update a polyline (trajeto) + ponto atual para UM motorista (Phase 14). */
-function renderTrack(map: maplibregl.Map, track: Array<{ lat: number; lng: number }>) {
-  const coords = track
-    .filter((p) => Number.isFinite(p.lng) && Number.isFinite(p.lat))
-    .map((p) => [p.lng, p.lat] as [number, number])
+/**
+ * Add/update a polyline (trajeto) + ponto atual para UM motorista (Phase 14).
+ * `coords` já vem encaixado nas vias (snapToRoads) — o ponto atual é o último
+ * vértice da rota, sobre a pista, para a posição "ficar perfeita" no mapa.
+ */
+function renderTrack(map: maplibregl.Map, coords: LngLat[]) {
   const lineGeo: GeoJSON.FeatureCollection = {
     type: 'FeatureCollection',
     features: coords.length >= 2 ? [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } }] : [],
@@ -264,6 +266,8 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
   const [mapReady, setMapReady] = useState(false)
   // Modo "só o motorista" (Phase 14): frota OFF por padrão. Senão default ON (pedido do usuário).
   const [showFleet, setShowFleet] = useState(!driverOnly)
+  // Trajeto encaixado nas vias (snapToRoads). Pinta cru primeiro, refina p/ a estrada.
+  const [trackCoords, setTrackCoords] = useState<LngLat[]>([])
 
   // Read from global positions store (WS managed in AppLayout)
   const positions = usePositionsStore(s => s.positions)
@@ -345,8 +349,8 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
           renderFleet(map, fleet)
           registerFleetHandlers(map)
         }
-        // Trajeto (Phase 14) — setStyle derruba sources/layers, re-adiciona
-        if (track && track.length > 0) renderTrack(map, track)
+        // Trajeto (Phase 14) — setStyle derruba sources/layers, re-adiciona (coords já encaixadas)
+        if (trackCoords.length > 0) renderTrack(map, trackCoords)
       }
       setTimeout(doRender, 100)
     })
@@ -500,22 +504,50 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
     doRender()
   }, [geofences, mapReady, driverOnly])
 
-  // Trajeto do motorista (Phase 14, D-14-08) — polyline + ponto atual quando `track` é passado.
+  // Assinatura estável do trajeto: re-encaixa só quando o CONTEÚDO muda. O polling
+  // de 12s da viagem devolve um array NOVO (mesma identidade) a cada render; depender
+  // de `track` por referência re-rodaria o efeito e o AbortController cancelaria a
+  // chamada OSRM em andamento — o mapa ficaria preso na reta crua. A chave abaixo só
+  // muda quando o trajeto realmente muda (tamanho/extremos/último ts).
+  const trackKey = useMemo(() => {
+    if (!track || track.length === 0) return ''
+    const f = track[0]!, l = track[track.length - 1]!
+    return `${track.length}|${f.lat},${f.lng}|${l.lat},${l.lng}|${l.ts ?? ''}`
+  }, [track])
+
+  // Trajeto do motorista (Phase 14, D-14-08) — encaixa os pontos brutos nas vias.
+  // Pinta a reta crua de imediato (feedback instantâneo) e troca pela rota
+  // seguindo a estrada quando o OSRM responde. Refit só na 1ª pintura por trajeto.
+  useEffect(() => {
+    if (!track || track.length === 0) { setTrackCoords([]); trackFittedRef.current = false; return }
+    const raw: LngLat[] = track
+      .filter((p) => Number.isFinite(p.lng) && Number.isFinite(p.lat))
+      .map((p) => [p.lng, p.lat] as LngLat)
+      .filter((c, i, a) => i === 0 || c[0] !== a[i - 1]![0] || c[1] !== a[i - 1]![1]) // sem dups consecutivas
+    trackFittedRef.current = false // novo trajeto → permite refit
+    setTrackCoords(raw)            // paint cru imediato (breve, até o OSRM responder)
+    if (raw.length < 2) return
+    const ctrl = new AbortController()
+    snapTrackToRoads(track, ctrl.signal)
+      .then((snapped) => { if (!ctrl.signal.aborted && snapped.length >= 2) setTrackCoords(snapped) })
+      .catch(() => {/* mantém a reta crua */})
+    return () => ctrl.abort()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackKey])
+
+  // Render do trajeto (coords já encaixadas) — polyline + ponto atual (último vértice).
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapReady) return
     const doRender = () => {
       if (!map.isStyleLoaded()) { map.once('idle', doRender); return }
-      if (track && track.length > 0) {
-        renderTrack(map, track)
-        if (!trackFittedRef.current) {
-          const pts = track.filter((p) => Number.isFinite(p.lng) && Number.isFinite(p.lat))
-          if (pts.length > 0) {
-            const lngs = pts.map((p) => p.lng)
-            const lats = pts.map((p) => p.lat)
-            map.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]], { padding: 50, maxZoom: 13, duration: 600 })
-            trackFittedRef.current = true
-          }
+      if (trackCoords.length > 0) {
+        renderTrack(map, trackCoords)
+        if (!trackFittedRef.current && trackCoords.length > 0) {
+          const lngs = trackCoords.map((c) => c[0])
+          const lats = trackCoords.map((c) => c[1])
+          map.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]], { padding: 50, maxZoom: 13, duration: 600 })
+          trackFittedRef.current = true
         }
       } else {
         removeTrack(map)
@@ -523,7 +555,7 @@ export function LiveMap({ height = 400, showLegend = true, selectedVehicleId, on
       }
     }
     doRender()
-  }, [track, mapReady])
+  }, [trackCoords, mapReady])
 
   // Update vehicle markers (live layer — DO NOT TOUCH markersRef/usePositionsStore)
   useEffect(() => {

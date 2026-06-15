@@ -20,6 +20,8 @@ export type NotificationPreferences = {
   critico?: boolean
   medio?:   boolean
   baixo?:   boolean
+  // "Marcar como lida" do sino — instante (ISO) em que o usuário viu as notificações.
+  seenAt?:  string
 }
 
 export type User = {
@@ -125,5 +127,45 @@ export function useUpdateMyPreferences() {
       return data
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  })
+}
+
+// Usuário autenticado atual (inclui notificationPreferences.seenAt p/ o sino).
+export function useMe() {
+  const q = useQuery({
+    queryKey: ['auth-me'],
+    queryFn: async () => {
+      const { data, error } = await api.api.auth.me.get()
+      if (error) throw new Error('Failed to fetch current user')
+      return ((data as any)?.user ?? null) as (User & { notificationPreferences: NotificationPreferences | null }) | null
+    },
+    staleTime: 60_000,
+  })
+  return { data: q.data ?? null, isLoading: q.isLoading }
+}
+
+// "Marcar todas como lidas" — carimba seenAt=agora no servidor; otimista no cache.
+export function useMarkNotificationsSeen() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const { data, error } = await (api.api.users as any).me['notifications-seen'].post()
+      if (error) {
+        const msg = (error.value as any)?.error ?? 'Mark notifications seen failed'
+        throw new Error(msg)
+      }
+      return data
+    },
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: ['auth-me'] })
+      const prev = qc.getQueryData(['auth-me'])
+      const nowIso = new Date().toISOString()
+      qc.setQueryData(['auth-me'], (u: any) =>
+        u ? { ...u, notificationPreferences: { ...(u.notificationPreferences ?? {}), seenAt: nowIso } } : u,
+      )
+      return { prev }
+    },
+    onError: (_e, _v, ctx) => { if (ctx?.prev !== undefined) qc.setQueryData(['auth-me'], ctx.prev) },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['auth-me'] }),
   })
 }

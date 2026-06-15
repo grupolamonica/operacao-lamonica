@@ -5,6 +5,7 @@ import {
   deactivateUser,
   getUserById,
   listUsers,
+  markMyNotificationsSeen,
   updateMyNotificationPreferences,
   updateUser,
 } from './users.service'
@@ -59,6 +60,24 @@ const selfPlugin = new Elysia({ name: 'users-self' })
       detail: {
         tags: ['users'],
         summary: 'Update my notification preferences (any role)',
+      },
+    },
+  )
+  // "Marcar todas como lidas" do sino — carimba seenAt=agora (sem corpo).
+  .post(
+    '/api/users/me/notifications-seen',
+    async ({ user, set }) => {
+      const updated = await markMyNotificationsSeen(user.id)
+      if (!updated) {
+        set.status = 404
+        return { error: 'User not found' }
+      }
+      return updated
+    },
+    {
+      detail: {
+        tags: ['users'],
+        summary: 'Mark all notifications as read (stamp seenAt=now, any role)',
       },
     },
   )

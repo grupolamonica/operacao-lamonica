@@ -26,12 +26,18 @@ export const positionsReadPlugin = new Elysia({ name: 'positions-read' })
           summary: 'Última posição geocodada por motorista (frota importada) enriquecida com ranking',
         },
       })
-      // Phase 14 — trajeto histórico de um motorista (rota no mapa da tela de Viagens)
-      .get('/track', ({ query }) => getDriverTrack(query.motorista), {
-        query: t.Object({ motorista: t.String() }),
+      // Phase 14 — trajeto histórico de um motorista (rota no mapa da tela de Viagens).
+      // from/to (ISO, opcionais) restringem à janela de UMA viagem — evita ligar
+      // pontos de viagens diferentes numa só polyline.
+      .get('/track', ({ query }) => getDriverTrack(query.motorista, query.from, query.to), {
+        query: t.Object({
+          motorista: t.String(),
+          from: t.Optional(t.String()),
+          to:   t.Optional(t.String()),
+        }),
         detail: {
           tags: ['positions'],
-          summary: 'Trajeto histórico (lat/lng ordenado) de um motorista para traçar a rota',
+          summary: 'Trajeto histórico (lat/lng ordenado) de um motorista para traçar a rota, opcionalmente limitado a uma janela (from/to)',
         },
       })
   )

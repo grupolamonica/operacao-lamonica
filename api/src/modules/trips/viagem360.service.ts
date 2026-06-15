@@ -18,7 +18,7 @@ import { getTripById } from './trips.service'
 import { getTripDossie } from './dossie.service'
 import { getTripTimeline } from './timeline.service'
 import { getTripRisk, recalcTripRisk } from '../risk/risk.service'
-import { getDriverLastPosition } from '../positions/positions.service'
+import { getDriverLastPosition, getDriverTrack } from '../positions/positions.service'
 
 const CACHE_TTL_S = 20
 const cacheKey = (id: string) => `viagem360:${id}`
@@ -26,6 +26,38 @@ const cacheKey = (id: string) => `viagem360:${id}`
 async function getRedis() {
   const { redis } = await import('../../redis/client')
   return redis
+}
+
+// Janela temporal DESTA viagem p/ recortar o trajeto (driver_positions não tem FK
+// de viagem). Sem recorte, a polyline liga pontos de TODAS as viagens do motorista
+// (o bug das "várias linhas"). Início = partida real (ou janela planejada); fim =
+// chegada real; senão agora (em curso) ou o prazo + folga (concluída, p/ pegar a
+// chegada atrasada). Teto de 5 dias cobre um long-haul mas exclui semanas de outras
+// viagens quando os campos de data faltam/estão ruins.
+const TRACK_MAX_WINDOW_MS  = 5 * 24 * 3600 * 1000 // teto defensivo p/ UMA viagem
+const TRACK_LATE_GRACE_MS  = 12 * 3600 * 1000     // folga p/ chegada após o prazo planejado
+function tripTrackWindow(v: Record<string, unknown>): { from: string; to: string } {
+  const parse = (x: unknown): Date | null => {
+    if (!x) return null
+    const d = new Date(x as string | number | Date)
+    return isNaN(d.getTime()) ? null : d
+  }
+  const active  = !['completed', 'cancelled'].includes(String(v.status ?? ''))
+  const nowMs   = Date.now()
+  const startD  = parse(v.departedAt) ?? parse(v.windowStart)
+  const arrived = parse(v.arrivedAt)
+  const planned = parse(v.windowEnd) ?? parse(v.eta)
+  // Fim da janela.
+  let endMs: number
+  if (arrived) endMs = arrived.getTime()                 // chegada real = verdade
+  else if (active) endMs = nowMs                          // em curso → até agora
+  else endMs = planned ? planned.getTime() + TRACK_LATE_GRACE_MS : nowMs // concluída sem chegada → prazo+folga
+  if (endMs > nowMs) endMs = nowMs                        // não existe GPS no futuro
+  // Início: partida real/planejada. Sem isso, OU janela > teto, OU início depois do fim
+  // (dado ruim, ex.: departedAt no futuro) → recua só o teto a partir do fim.
+  let startMs = startD ? startD.getTime() : endMs - TRACK_MAX_WINDOW_MS
+  if (startMs > endMs || endMs - startMs > TRACK_MAX_WINDOW_MS) startMs = endMs - TRACK_MAX_WINDOW_MS
+  return { from: new Date(startMs).toISOString(), to: new Date(endMs).toISOString() }
 }
 
 export async function getViagem360(tripId: string): Promise<Record<string, unknown> | null> {
@@ -51,7 +83,12 @@ export async function getViagem360(tripId: string): Promise<Record<string, unkno
     (viagem as Record<string, unknown>).driverName as string ||
     (viagem as Record<string, unknown>).motorista as string ||
     ''
-  const gps = motNome ? await getDriverLastPosition(motNome).catch(() => null) : null
+  // Trajeto recortado à janela DESTA viagem (não todas as viagens do motorista).
+  const win = tripTrackWindow(viagem as Record<string, unknown>)
+  const [gps, track] = await Promise.all([
+    motNome ? getDriverLastPosition(motNome).catch(() => null)              : Promise.resolve(null),
+    motNome ? getDriverTrack(motNome, win.from, win.to).catch(() => [])     : Promise.resolve([]),
+  ])
 
   const envelope = {
     viagem,
@@ -61,6 +98,7 @@ export async function getViagem360(tripId: string): Promise<Record<string, unkno
     carreta: dossie?.carreta ?? null,
     risco: risco ?? null,
     gps,
+    track,
     timeline,
     geradoEm: new Date().toISOString(),
   }
