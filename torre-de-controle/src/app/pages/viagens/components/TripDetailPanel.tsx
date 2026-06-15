@@ -11,7 +11,6 @@ import { LogCallDialog } from '@/components/domain/LogCallDialog'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { api } from '@/lib/api'
-import { useDriverTrack } from '@/hooks/useDriverTrack'
 import { type VeiculoDossie } from '@/hooks/useTripDossie'
 import { useViagem360 } from '@/hooks/useViagem360'
 import { formatKm, formatDate } from '@/lib/formatters'
@@ -30,8 +29,9 @@ export function TripDetailPanel({ trip, onClose }: Props) {
   const events = (v360?.timeline ?? []) as any
   const risk   = v360?.risco ?? null
   const gps    = v360?.gps ?? null
-  // Trajeto do motorista p/ traçar a rota no mapa.
-  const { data: track } = useDriverTrack(trip.driverName || null)
+  // Trajeto p/ o mapa — já recortado à janela DESTA viagem no servidor (não todas
+  // as viagens do motorista). Evita a polyline ligando trajetos distintos.
+  const track  = v360?.track ?? []
   // Dossiê cruzado (motorista+ranking+cargas+veículos) vem do mesmo envelope 360.
   const cross = v360
   // Datas de vigência são date-only (chegam como string 'YYYY-MM-DD' ou Date) —

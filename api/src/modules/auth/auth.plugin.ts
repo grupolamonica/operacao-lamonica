@@ -77,7 +77,11 @@ export const authPlugin = new Elysia({ name: 'auth' })
 
       .get('/me', async ({ user }) => {
         const [u] = await db
-          .select({ id: users.id, name: users.name, email: users.email, role: users.role })
+          .select({
+            id: users.id, name: users.name, email: users.email, role: users.role,
+            // sino de notificações: prefs (inclui seenAt do "marcar como lida")
+            notificationPreferences: users.notificationPreferences,
+          })
           .from(users)
           .where(eq(users.id, user.id))
           .limit(1)

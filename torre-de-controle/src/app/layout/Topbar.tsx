@@ -1,5 +1,6 @@
-import { Bell, Sun, Moon, LogOut, RefreshCw } from 'lucide-react'
+import { Sun, Moon, LogOut, RefreshCw } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { NotificationsDropdown } from '@/components/domain/NotificationsDropdown'
 import { useThemeStore } from '@/stores/useThemeStore'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useSyncAll, useSyncStatus } from '@/hooks/useSync'
@@ -78,16 +79,8 @@ export function Topbar() {
           )}
         </button>
 
-        {/* Notification bell */}
-        <button
-          className="relative p-2 rounded-lg transition-colors"
-          style={{ color: 'white' }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)' }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-        >
-          <Bell className="h-4 w-4" />
-          <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-red-400" />
-        </button>
+        {/* Notification bell — ocorrências abertas, deep-link p/ /alertas */}
+        <NotificationsDropdown />
 
         {/* Theme toggle */}
         <button

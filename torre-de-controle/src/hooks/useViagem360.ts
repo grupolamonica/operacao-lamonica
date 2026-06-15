@@ -9,6 +9,7 @@ import type { MotoristaDossie, VeiculoDossie } from './useTripDossie'
 // sem re-rodar os joins pesados (eles batem no cache).
 
 export interface Gps360 { lat: number; lng: number; cidade: string | null; uf: string | null; veiculo: string | null; at: string }
+export interface TrackPoint360 { lat: number; lng: number; ts: string }
 
 export interface Viagem360 {
   viagem: Record<string, unknown> | null
@@ -18,6 +19,8 @@ export interface Viagem360 {
   carreta: VeiculoDossie | null
   risco: RiskSnapshot | null
   gps: Gps360 | null
+  // Trajeto da viagem já recortado à sua janela no servidor (só esta viagem).
+  track: TrackPoint360[]
   timeline: unknown[]
   geradoEm: string
 }

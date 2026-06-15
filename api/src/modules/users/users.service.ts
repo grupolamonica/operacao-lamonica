@@ -25,6 +25,10 @@ export type NotificationPreferences = {
   critico?: boolean
   medio?:   boolean
   baixo?:   boolean
+  // "Marcar como lida" do sino: instante (ISO) em que o usuário viu as notificações.
+  // Não-lidas = ocorrências abertas com occurredAt > seenAt. Guardado no MESMO JSONB
+  // (sem coluna nova) — chave arbitrária preservada pelo merge.
+  seenAt?:  string
 }
 
 type UserProjection = {
@@ -164,7 +168,31 @@ export async function updateMyNotificationPreferences(
     critico: prefs.critico ?? existing.critico,
     medio:   prefs.medio   ?? existing.medio,
     baixo:   prefs.baixo   ?? existing.baixo,
+    seenAt:  existing.seenAt,  // preserva o "lido" do sino ao salvar preferências de severidade
   }
+
+  const [row] = await db
+    .update(users)
+    .set({ notificationPreferences: merged })
+    .where(eq(users.id, userId))
+    .returning()
+  return row ? project(row) : null
+}
+
+/**
+ * "Marcar todas como lidas" do sino de notificações. Carimba seenAt = agora
+ * (relógio do servidor, nunca do cliente) preservando as preferências de
+ * severidade. As não-lidas (ocorrências abertas posteriores a seenAt) zeram.
+ */
+export async function markMyNotificationsSeen(userId: string): Promise<UserProjection | null> {
+  const current = await getUserById(userId)
+  if (!current) return null
+
+  const existing = (current.notificationPreferences ?? {
+    critico: true, medio: false, baixo: false,
+  }) as NotificationPreferences
+
+  const merged: NotificationPreferences = { ...existing, seenAt: new Date().toISOString() }
 
   const [row] = await db
     .update(users)
