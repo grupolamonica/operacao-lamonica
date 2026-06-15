@@ -30,7 +30,6 @@
 
 import {
   deriveDrivers,
-  getVinculoForDriver,
   parseDateBR,
   transformTrips,
 } from './ranking.scoring';
@@ -41,7 +40,7 @@ import {
   fetchEvaluations,
   fetchRouteScores,
 } from './ranking.reads';
-import { getSheetTrips, fetchVinculos } from './ranking.sheets';
+import { getSheetTrips } from './ranking.sheets';
 import type {
   Driver,
   DriverBlockRecord,
@@ -51,7 +50,6 @@ import type {
   RouteScoreRecord,
   SheetTrip,
   Trip,
-  VinculoRecord,
 } from './ranking.types';
 
 /**
@@ -102,9 +100,6 @@ export interface ComposeRankingInput {
   driverBlocks: DriverBlockRecord[];
   routeScores: RouteScoreRecord[];
   drivers: DriverRecord[];
-  /** Driver→vinculo map from the public vinculo sheet (optional; absent in pure
-   *  unit tests, where drivers keep the byte-for-byte '—' fallback). */
-  vinculos?: VinculoRecord[];
   ignoredOccurrences?: string[];
   dateRange?: DateRangeInput;
 }
@@ -147,7 +142,6 @@ export function composeRanking(input: ComposeRankingInput): ComposeRankingResult
     driverBlocks,
     routeScores,
     drivers: driverRecords,
-    vinculos,
     ignoredOccurrences = DEFAULT_IGNORED_OCCURRENCES,
     dateRange,
   } = input;
@@ -190,14 +184,10 @@ export function composeRanking(input: ComposeRankingInput): ComposeRankingResult
     driverBlocks.filter((b) => b.ativo && !b.manual_override).map((b) => b.driver_id),
   );
 
-  // 6. Aggregate drivers (already sorted pontuacao desc). Enrich `vinculo` by
-  //    name from the vinculo sheet when available (parity with the ride-rank
-  //    DataContext); without it, deriveDrivers keeps the '—' fallback.
-  const getVinculo =
-    vinculos && vinculos.length > 0
-      ? (driverName: string) => getVinculoForDriver(vinculos, driverName)
-      : undefined;
-  const derived = deriveDrivers(trips, getVinculo);
+  // 6. Aggregate drivers (already sorted pontuacao desc). Vínculo NÃO vem mais de
+  //    planilha — deriveDrivers usa o default '—' e o passo 6b sobrepõe pelo
+  //    drivers.vinculo (canônico por driver_id, editável pelo operador).
+  const derived = deriveDrivers(trips);
 
   // 6b. drivers.vinculo (editado pelo operador na Torre, canônico por driver_id)
   //     tem precedência sobre o casamento por nome da planilha.
@@ -265,17 +255,15 @@ async function loadRankingInputs(): Promise<{
   driverBlocks: DriverBlockRecord[];
   routeScores: RouteScoreRecord[];
   drivers: DriverRecord[];
-  vinculos: VinculoRecord[];
 }> {
-  const [sheetTrips, evaluations, driverBlocks, routeScores, drivers, vinculos] = await Promise.all([
+  const [sheetTrips, evaluations, driverBlocks, routeScores, drivers] = await Promise.all([
     getSheetTrips(),
     fetchEvaluations(),
     fetchDriverBlocks(),
     fetchRouteScores(),
     fetchDrivers(),
-    fetchVinculos(),
   ]);
-  return { sheetTrips, evaluations, driverBlocks, routeScores, drivers, vinculos };
+  return { sheetTrips, evaluations, driverBlocks, routeScores, drivers };
 }
 
 /**
