@@ -47,13 +47,15 @@ function tripRowToSheetTrip(r: Record<string, unknown>): SheetTrip {
     eta_destination_edited: sval(r.eta_destination_edited),
     id_rota: '',
     eta_realizado: sval(r.eta_realizado),
-    status_eta: '',
+    // Status REAL da fonte (Shopee, com tolerância). resolveStatus o usa quando
+    // for ON TIME/EARLY/DELAY; só recalcula pela data quando vazio (ex.: SPX recente).
+    status_eta: sval(r.status_eta),
     ocorrencia_eta: '',
     cpt_realizado: '',
     status_cpt: '',
     ocorrencia_cpt: '',
     eta_destino_realizado: sval(r.eta_destino_realizado),
-    status_eta_destino: '',
+    status_eta_destino: sval(r.status_eta_destino),
     ocorrencia_eta_destino: '',
     horario_de_descarga: '',
     sum_orders: '',
