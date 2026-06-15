@@ -11,10 +11,9 @@ import { LogCallDialog } from '@/components/domain/LogCallDialog'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { api } from '@/lib/api'
-import { useTripTimeline } from '@/hooks/useTripTimeline'
-import { useTripRisk } from '@/hooks/useTripRisk'
 import { useDriverTrack } from '@/hooks/useDriverTrack'
-import { useTripDossie, type VeiculoDossie } from '@/hooks/useTripDossie'
+import { type VeiculoDossie } from '@/hooks/useTripDossie'
+import { useViagem360 } from '@/hooks/useViagem360'
 import { formatKm, formatDate } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 import type { Trip } from '@/data/types'
@@ -25,12 +24,26 @@ interface Props {
 }
 
 export function TripDetailPanel({ trip, onClose }: Props) {
-  const { data: events } = useTripTimeline(trip.id)
-  const { data: risk }   = useTripRisk(trip.id)
+  // Visão 360 — UMA chamada cacheada (20s no servidor) com tudo cruzado; polling 12s
+  // mantém a viagem aberta sempre fresca sem martelar os sistemas.
+  const { data: v360 } = useViagem360(trip.id)
+  const events = (v360?.timeline ?? []) as any
+  const risk   = v360?.risco ?? null
+  const gps    = v360?.gps ?? null
   // Phase 14 — trajeto do motorista p/ traçar a rota no mapa (só este motorista).
-  const { data: track }  = useDriverTrack(trip.driverName || null)
-  // Phase 14 — dossiê cruzado (torre+ranking+cargas): vigências Angellira + detalhes de cavalo/carreta.
-  const { data: cross } = useTripDossie(trip.id)
+  // Janela = partida → chegada (ou agora, se em curso): isola os pontos DESTA viagem.
+  // Sem a janela, driver_positions devolve todas as viagens do motorista e a
+  // polyline liga trajetos distintos (bug "puxa de várias viagens").
+  const toIso = (d: Date | string | null | undefined) => {
+    if (!d) return undefined
+    const x = new Date(d)
+    return isNaN(x.getTime()) ? undefined : x.toISOString()
+  }
+  const trackFrom = toIso(trip.departedAt ?? trip.windowStart)
+  const trackTo   = toIso(trip.arrivedAt) ?? new Date().toISOString()
+  const { data: track }  = useDriverTrack(trip.driverName || null, trackFrom, trackTo)
+  // Dossiê cruzado (motorista+ranking+cargas+veículos) vem do mesmo envelope 360.
+  const cross = v360
   // Datas de vigência são date-only (chegam como string 'YYYY-MM-DD' ou Date) —
   // formata em UTC p/ não deslocar -1 dia pelo fuso (-03:00).
   const fmtDia = (s: string | Date | null | undefined) => {
@@ -57,7 +70,7 @@ export function TripDetailPanel({ trip, onClose }: Props) {
     },
     onSuccess: () => {
       setNoteText(''); setNoteOpen(false)
-      qc.invalidateQueries({ queryKey: ['trip-timeline', trip.id] })
+      qc.invalidateQueries({ queryKey: ['viagem360', trip.id] })
     },
   })
 
@@ -72,7 +85,7 @@ export function TripDetailPanel({ trip, onClose }: Props) {
     onSuccess: () => {
       setOccTitle(''); setOccOpen(false)
       qc.invalidateQueries({ queryKey: ['alerts'] })
-      qc.invalidateQueries({ queryKey: ['trip-timeline', trip.id] })
+      qc.invalidateQueries({ queryKey: ['viagem360', trip.id] })
     },
   })
 
@@ -140,6 +153,7 @@ export function TripDetailPanel({ trip, onClose }: Props) {
           <Metric label="Progresso" value={`${trip.progressPct}%`} />
           <Metric label="Meta KM/Dia" value={trip.metaKmDia ?? '—'} />
           <Metric label="Condução" value={(trip.conducaoRegime ?? 'intensivo') === 'intensivo' ? 'Intensivo' : 'Regular'} />
+          {gps && <Metric label="Última posição GPS" value={`${[gps.cidade, gps.uf].filter(Boolean).join('/') || '—'} · ${formatDate(gps.at, 'dd/MM HH:mm')}`} />}
         </div>
 
         {/* Phase 14 — Motorista & Veículos cruzados (torre + ranking + cargas): vigências Angellira + detalhes */}
