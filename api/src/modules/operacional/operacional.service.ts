@@ -97,7 +97,13 @@ export async function getOperacionalViagens(): Promise<OpViagem[]> {
     if (!lh || seen.has(lh)) continue
     seen.add(lh)
     const d = parseDriver(r['Driver ID'])
-    const base = r['Status Operacional'] || ''
+    let base = r['Status Operacional'] || ''
+    // 'Arrived' é ambíguo na SPX: chegou na ORIGEM (aguardando carregar) ou no DESTINO
+    // (aguardando descarregar). O de-para da aba "asp" assume sempre destino. Corrige:
+    // se ainda NÃO partiu da origem (sem saída real), está aguardando carregamento.
+    if (r['Status'] === 'Arrived' && !(r['CPT ORIGEM REAL'] || '').trim()) {
+      base = 'AGUARDANDO CARREGAMENTO'
+    }
     const ov = ovMap.get(lh)
     out.push({
       lh,
