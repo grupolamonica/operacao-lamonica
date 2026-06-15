@@ -1,23 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Truck, Volume2, VolumeX, History, ShoppingBag } from 'lucide-react'
+import { Truck, Volume2, VolumeX, History, ShoppingBag, X, Loader2 } from 'lucide-react'
 import { PanelCard } from '@/components/domain/PanelCard'
-import { RiskBadge } from '@/components/domain/RiskBadge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { TripDetailPanel } from '@/app/pages/viagens/components/TripDetailPanel'
-import { useTrips } from '@/hooks/useTrips'
-import { formatDate } from '@/lib/formatters'
-import type { Trip } from '@/data/types'
+import {
+  useOperacionalViagens,
+  useMovimentacoes,
+  useLhLog,
+  useSetOpStatus,
+  OP_STATUSES,
+  type OpStatus,
+  type OpViagem,
+} from '@/hooks/useOperacional'
 
 /**
  * Controle Operacional — réplica do painel Shopee (Google Apps Script) na Torre,
- * com a UI do Argon. Mesmas informações e funcionalidades:
- *   • 6 KPIs por status operacional (cargasStatus)
- *   • "Últimas movimentações" — detectadas no cliente (diff de status entre polls)
- *   • Tabela LH/Carregamento/Descarga/Motorista/Origem/Destino/Status/GR/Log
- *   • Áudio em nova movimentação (Web Audio, sem asset) + auto-atualização (5s)
- *   • Log = painel completo da viagem (TripDetailPanel, com timeline)
- * Tudo a partir do /api/trips (cliente Shopee) — sem novo backend.
+ * com a UI do Argon. Os dados vêm SÓ da API SPX (aba "asp"); nada do /api/trips.
+ *   • 6 KPIs por status operacional
+ *   • Status operacional EDITÁVEL pelo operador (override persistido na Torre)
+ *   • "Últimas movimentações" — as alterações de status reais (server-side) + áudio
+ *   • Tabela LH/Carregamento/Descarga/Motorista/Origem/Destino/Status(editável)/Log
+ *   • Log = histórico de status da viagem · auto-atualização (10s)
  */
 
 const norm = (s?: string | null) => (s ?? '').trim().toUpperCase()
@@ -28,8 +31,7 @@ function statusTone(s?: string | null): { bg: string; fg: string } {
   if (u === 'CARREGADO' || u === 'DESCARREGADO') return { bg: 'var(--status-no-prazo-bg)', fg: 'var(--status-no-prazo-fg)' }
   if (u === 'CANCELADO') return { bg: 'var(--status-atrasado-bg)', fg: 'var(--status-atrasado-fg)' }
   if (u.startsWith('CTE')) return { bg: 'rgba(45,118,232,0.15)', fg: '#2d76e8' }
-  // aguardando (carregamento / chegar no cliente)
-  return { bg: 'var(--status-em-risco-bg)', fg: 'var(--status-em-risco-fg)' }
+  return { bg: 'var(--status-em-risco-bg)', fg: 'var(--status-em-risco-fg)' } // aguardando / descarregando
 }
 
 function beep() {
@@ -49,8 +51,6 @@ function beep() {
   } catch { /* autoplay bloqueado até interação — o toggle resolve */ }
 }
 
-interface Movimentacao { id: string; lh: string; motorista: string; status: string; at: number }
-
 const KPIS: Array<{ label: string; match: (u: string) => boolean; color: string }> = [
   { label: 'TOTAL DE VIAGENS', match: () => true, color: 'var(--primary)' },
   { label: 'CARREGADO', match: (u) => u === 'CARREGADO', color: '#2dce89' },
@@ -60,58 +60,61 @@ const KPIS: Array<{ label: string; match: (u: string) => boolean; color: string 
   { label: 'CANCELADO', match: (u) => u === 'CANCELADO', color: '#f5365c' },
 ]
 
+function agoLabel(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime()
+  if (!Number.isFinite(ms)) return ''
+  const min = Math.round(ms / 60000)
+  if (min <= 0) return 'agora'
+  if (min === 1) return 'há 1 min'
+  if (min < 60) return `há ${min} min`
+  const h = Math.round(min / 60)
+  return h === 1 ? 'há 1 h' : `há ${h} h`
+}
+
 export function ControleOperacionalPage() {
-  const { data: allTrips, isLoading } = useTrips({ clientName: 'Shopee', limit: 2000 }, { refetchMs: 5000 })
-  // operação corrente: exclui concluídas (DESCARREGADO some da lista, como no painel)
-  const trips = useMemo(
-    () => allTrips.filter((t) => norm(t.cargasStatus) !== 'DESCARREGADO' && t.status !== 'completed'),
-    [allTrips],
-  )
+  const { data: viagens, isLoading } = useOperacionalViagens({ refetchMs: 10_000 })
+  const { data: movs } = useMovimentacoes({ refetchMs: 10_000 })
+  const setStatus = useSetOpStatus()
 
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [soundOn, setSoundOn] = useState(true)
-  const [movs, setMovs] = useState<Movimentacao[]>([])
-  const [logTrip, setLogTrip] = useState<Trip | null>(null)
-  const lastStatus = useRef<Map<string, string> | null>(null)
+  const [logLh, setLogLh] = useState<string | null>(null)
+  const [savingLh, setSavingLh] = useState<string | null>(null)
+  const lastTopEvent = useRef<string | null>(null)
 
-  // Detecta mudanças de status entre polls → "movimentações" + áudio (como o painel).
+  // Áudio quando chega uma movimentação nova (compara a chave do evento mais recente).
   useEffect(() => {
-    if (!trips.length && lastStatus.current === null) return
-    const cur = new Map(trips.map((t) => [t.id, norm(t.cargasStatus)]))
-    const prev = lastStatus.current
-    if (prev) {
-      const novas: Movimentacao[] = []
-      for (const t of trips) {
-        const before = prev.get(t.id)
-        const now = norm(t.cargasStatus)
-        if (before !== undefined && before !== now && now) {
-          novas.push({ id: `${t.id}-${now}-${Date.now()}`, lh: t.lh || t.code, motorista: t.driverName, status: t.cargasStatus || now, at: Date.now() })
-        }
-      }
-      if (novas.length) {
-        setMovs((m) => [...novas, ...m].slice(0, 8))
-        if (soundOn) beep()
-      }
-    }
-    lastStatus.current = cur
-  }, [trips, soundOn])
+    const top = movs[0]
+    if (!top) return
+    const key = `${top.lh}|${top.status_operacional}|${top.created_at}`
+    if (lastTopEvent.current !== null && lastTopEvent.current !== key && soundOn) beep()
+    lastTopEvent.current = key
+  }, [movs, soundOn])
 
-  const counts = useMemo(() => KPIS.map((k) => trips.filter((t) => k.match(norm(t.cargasStatus))).length), [trips])
+  const counts = useMemo(
+    () => KPIS.map((k) => viagens.filter((t) => k.match(norm(t.statusOperacional))).length),
+    [viagens],
+  )
 
   const statusOptions = useMemo(() => {
     const set = new Set<string>()
-    for (const t of trips) if (t.cargasStatus) set.add(t.cargasStatus)
+    for (const t of viagens) if (t.statusOperacional) set.add(t.statusOperacional)
     return [...set].sort()
-  }, [trips])
+  }, [viagens])
 
   const rows = useMemo(
-    () => (statusFilter === 'all' ? trips : trips.filter((t) => t.cargasStatus === statusFilter)),
-    [trips, statusFilter],
+    () => (statusFilter === 'all' ? viagens : viagens.filter((t) => t.statusOperacional === statusFilter)),
+    [viagens, statusFilter],
   )
 
-  const agoLabel = (at: number) => {
-    const min = Math.round((Date.now() - at) / 60000)
-    return min <= 0 ? 'agora' : min === 1 ? 'há 1 min' : `há ${min} min`
+  async function changeStatus(t: OpViagem, status: OpStatus) {
+    if (status === t.statusOperacional) return
+    setSavingLh(t.lh)
+    try {
+      await setStatus.mutateAsync({ lh: t.lh, status })
+    } finally {
+      setSavingLh(null)
+    }
   }
 
   return (
@@ -124,7 +127,7 @@ export function ControleOperacionalPage() {
           </div>
           <div>
             <h1 className="text-lg font-bold text-primary">Controle Operacional</h1>
-            <p className="text-xs text-muted-foreground">Operação Shopee · atualiza a cada 5s</p>
+            <p className="text-xs text-muted-foreground">Direto da SPX (linehaul) · atualiza a cada 10s</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -152,13 +155,13 @@ export function ControleOperacionalPage() {
       {/* Últimas movimentações */}
       <PanelCard title={<span className="text-sm">Últimas movimentações</span>}>
         {movs.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Aguardando movimentações… (mudanças de status aparecem aqui ao vivo)</p>
+          <p className="text-xs text-muted-foreground">Sem movimentações ainda — alterações de status do operador aparecem aqui ao vivo.</p>
         ) : (
           <ul className="space-y-1.5">
-            {movs.map((m) => (
-              <li key={m.id} className="flex items-center justify-between gap-2 text-xs">
-                <span><strong className="font-mono">{m.lh}</strong> ({m.motorista}) — <span className="font-semibold text-foreground">{m.status}</span></span>
-                <span className="shrink-0 text-muted-foreground">{agoLabel(m.at)}</span>
+            {movs.map((m, i) => (
+              <li key={`${m.lh}-${m.created_at}-${i}`} className="flex items-center justify-between gap-2 text-xs">
+                <span><strong className="font-mono">{m.lh}</strong>{m.operador ? ` (${m.operador})` : ''} — <span className="font-semibold text-foreground">{m.status_operacional}</span></span>
+                <span className="shrink-0 text-muted-foreground">{agoLabel(m.created_at)}</span>
               </li>
             ))}
           </ul>
@@ -190,30 +193,41 @@ export function ControleOperacionalPage() {
                 <th className="px-3 py-2.5 font-medium">Motorista</th>
                 <th className="px-3 py-2.5 font-medium">Origem</th>
                 <th className="px-3 py-2.5 font-medium">Destino</th>
-                <th className="px-3 py-2.5 font-medium">Status</th>
-                <th className="px-3 py-2.5 text-center font-medium">GR</th>
+                <th className="px-3 py-2.5 font-medium">Status operacional</th>
                 <th className="px-3 py-2.5 text-center font-medium">Log</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((t) => {
-                const tone = statusTone(t.cargasStatus)
+                const tone = statusTone(t.statusOperacional)
+                const saving = savingLh === t.lh
                 return (
-                  <tr key={t.id} className="border-b hover:bg-muted/30" style={{ borderColor: 'var(--border)' }}>
-                    <td className="px-3 py-2 font-mono">{t.lh || t.code}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{t.windowStart ? formatDate(t.windowStart, 'dd/MM/yyyy HH:mm') : '—'}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{t.windowEnd ? formatDate(t.windowEnd, 'dd/MM/yyyy HH:mm') : '—'}</td>
-                    <td className="px-3 py-2 font-medium">{t.driverName}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{t.origin}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{t.destination}</td>
+                  <tr key={t.lh} className="border-b hover:bg-muted/30" style={{ borderColor: 'var(--border)' }}>
+                    <td className="px-3 py-2 font-mono">{t.lh}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{t.carregamento || '—'}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{t.descarga || '—'}</td>
+                    <td className="px-3 py-2 font-medium">{t.motorista || '—'}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{t.origem || '—'}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{t.destino || '—'}</td>
                     <td className="px-3 py-2">
-                      <span className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: tone.bg, color: tone.fg }}>
-                        {t.cargasStatus || '—'}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <Select value={t.statusOperacional} onValueChange={(v) => changeStatus(t, v as OpStatus)} disabled={saving}>
+                          <SelectTrigger
+                            className="h-7 w-[210px] border-0 text-[11px] font-semibold"
+                            style={{ background: tone.bg, color: tone.fg }}
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {OP_STATUSES.map((s) => <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                        {saving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+                        {t.overridden && !saving && <span title="Status editado pelo operador" className="text-[9px] text-muted-foreground">✎</span>}
+                      </div>
                     </td>
-                    <td className="px-3 py-2 text-center"><RiskBadge level={t.riskLevel} score={t.riskScore} size="sm" /></td>
                     <td className="px-3 py-2 text-center">
-                      <button className="text-muted-foreground hover:text-primary" title="Histórico da viagem" onClick={() => setLogTrip(t)}>
+                      <button className="text-muted-foreground hover:text-primary" title="Histórico de status" onClick={() => setLogLh(t.lh)}>
                         <History className="mx-auto h-4 w-4" />
                       </button>
                     </td>
@@ -221,14 +235,45 @@ export function ControleOperacionalPage() {
                 )
               })}
               {rows.length === 0 && (
-                <tr><td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">Nenhuma viagem no recorte.</td></tr>
+                <tr><td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">{isLoading ? 'Carregando viagens da SPX…' : 'Nenhuma viagem no recorte.'}</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </PanelCard>
 
-      {logTrip && <TripDetailPanel trip={logTrip} onClose={() => setLogTrip(null)} />}
+      {logLh && <LogDialog lh={logLh} onClose={() => setLogLh(null)} />}
+    </div>
+  )
+}
+
+function LogDialog({ lh, onClose }: { lh: string; onClose: () => void }) {
+  const { data: log, isLoading } = useLhLog(lh)
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-xl bg-card p-5 shadow-xl" style={{ border: '1px solid var(--border)' }} onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="flex items-center gap-2 text-sm font-bold text-primary"><History className="h-4 w-4" /> Log — LH <span className="font-mono">{lh}</span></h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+        </div>
+        {isLoading ? (
+          <p className="text-xs text-muted-foreground">Carregando…</p>
+        ) : log.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Sem alterações de status registradas para esta viagem.</p>
+        ) : (
+          <ol className="space-y-2">
+            {log.map((e, i) => (
+              <li key={`${e.created_at}-${i}`} className="flex items-start gap-2 text-xs">
+                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: statusTone(e.status_operacional).fg }} />
+                <div>
+                  <div className="font-semibold text-foreground">{e.status_operacional}</div>
+                  <div className="text-[11px] text-muted-foreground">{e.operador ?? '—'} · {agoLabel(e.created_at)}</div>
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
     </div>
   )
 }
