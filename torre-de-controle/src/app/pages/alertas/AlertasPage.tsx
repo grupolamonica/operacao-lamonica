@@ -9,7 +9,7 @@ import { AlertDetailPanel } from './components/AlertDetailPanel'
 import { AlertasStatusBreakdown } from './components/AlertasStatusBreakdown'
 import { ExportButton } from '@/components/common/ExportButton'
 import { FixedPanel } from '@/components/domain/FixedPanel'
-import { PeriodFilter } from '@/components/domain/PeriodFilter'
+import { PrazoFinalFilter, defaultPrazoRange } from '@/components/domain/PrazoFinalFilter'
 import { useAlerts, useAlert } from '@/hooks/useAlerts'
 import { useUIStore } from '@/stores/useUIStore'
 import { cn } from '@/lib/utils'
@@ -19,7 +19,7 @@ import type { AlertFilters, AlertStatus } from '@/data/types'
 const VIEW_KEY = 'ocorrencias:view'
 
 export function AlertasPage() {
-  const [filters, setFilters] = useState<AlertFilters>({ period: 'today' })
+  const [filters, setFilters] = useState<AlertFilters>(() => defaultPrazoRange('op')) // Prazo Final = hoje
   const [view, setView] = useState<'simples' | 'detalhada'>(
     () => (localStorage.getItem(VIEW_KEY) as 'simples' | 'detalhada') || 'simples',
   )
@@ -53,16 +53,9 @@ export function AlertasPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
-          <PeriodFilter<NonNullable<AlertFilters['period']>>
-            value={filters.period ?? 'today'}
-            onChange={(p) => setFilters((f) => ({ ...f, period: p }))}
-            options={[
-              { id: 'today', label: 'Hoje' },
-              { id: '7d', label: '7 dias' },
-              { id: '30d', label: '30 dias' },
-              { id: '90d', label: '90 dias' },
-              { id: 'tudo', label: 'Tudo' },
-            ]}
+          <PrazoFinalFilter
+            value={{ inicio: filters.inicio ?? null, fim: filters.fim ?? null }}
+            onChange={(r) => setFilters((f) => ({ ...f, inicio: r.inicio, fim: r.fim }))}
           />
           {/* Toggle Visão simples / detalhada */}
           <div className="inline-flex rounded-md border border-white/20 overflow-hidden">

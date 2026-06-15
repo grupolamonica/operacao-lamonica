@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import type { KPIDashboard, KPITorre, KPIViagens, KPIMotoristas, KPIAlertas, PeriodoSla } from '@/data/types'
+import { type PrazoRange, rangeQuery } from '@/components/domain/PrazoFinalFilter'
+import type { KPIDashboard, KPITorre, KPIViagens, KPIMotoristas, KPIAlertas } from '@/data/types'
 
 // Phase 13 — dashboard com paridade painel; default zerado p/ estado inicial/erro.
 const EMPTY_DASHBOARD: KPIDashboard = {
-  filtroSla: '30d', total: 0, concluidas: 0, noPrazo: 0, atrasadas: 0, aferidas: 0,
+  filtroSla: '', total: 0, concluidas: 0, noPrazo: 0, atrasadas: 0, aferidas: 0,
   pctNoPrazo: 100, alertas: 0, ticketsPendentes: 0, motoristasEmRisco: 0, meta: 95,
 }
 const EMPTY_TORRE: KPITorre = {
@@ -26,11 +27,11 @@ const EMPTY_ALERTAS: KPIAlertas = {
   criticos: { count: 0 }, abertos: { count: 0 }, resolvidosHoje: { count: 0 }, slaTratativas: { pct: 100 },
 }
 
-export function useDashboardKPIs(periodo: PeriodoSla = '30d') {
+export function useDashboardKPIs(range: PrazoRange) {
   const q = useQuery({
-    queryKey: ['dashboard-kpis', periodo],
+    queryKey: ['dashboard-kpis', range.inicio, range.fim],
     queryFn: async () => {
-      const { data, error } = await api.api.dashboard.kpis.get({ query: { periodo } })
+      const { data, error } = await api.api.dashboard.kpis.get({ query: rangeQuery(range) })
       if (error) throw error
       return (data ?? EMPTY_DASHBOARD) as KPIDashboard
     },
@@ -40,12 +41,12 @@ export function useDashboardKPIs(periodo: PeriodoSla = '30d') {
   return { data: q.data ?? EMPTY_DASHBOARD, isLoading: q.isLoading, isError: q.isError, error: q.error, refetch: q.refetch }
 }
 
-// Torre KPIs — Phase 12: backend real /api/torre/kpis (D-12-34). Período "filtra tudo".
-export function useTorreKPIs(periodo: PeriodoSla = 'tudo') {
+// Torre KPIs — Phase 12: backend real /api/torre/kpis (D-12-34). Prazo Final "filtra tudo".
+export function useTorreKPIs(range: PrazoRange) {
   const q = useQuery({
-    queryKey: ['torre-kpis', periodo],
+    queryKey: ['torre-kpis', range.inicio, range.fim],
     queryFn: async () => {
-      const { data, error } = await api.api.torre.kpis.get({ query: { periodo } })
+      const { data, error } = await api.api.torre.kpis.get({ query: rangeQuery(range) })
       if (error) throw error
       return (data ?? EMPTY_TORRE) as KPITorre
     },

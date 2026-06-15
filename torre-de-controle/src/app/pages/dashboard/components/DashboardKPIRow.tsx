@@ -1,12 +1,12 @@
 import { KPICard } from '@/components/domain/KPICard'
 import { useDashboardKPIs } from '@/hooks/useDashboardKPIs'
 import { formatPercent } from '@/lib/formatters'
-import type { PeriodoSla } from '@/data/types'
+import { type PrazoRange, rangeLabel } from '@/components/domain/PrazoFinalFilter'
 
 // Phase 13 — métricas iguais ao painel GAS:
 // Total · No Prazo · Atrasadas · Concluídas · Alertas · Tickets Pendentes · % No Prazo
-export function DashboardKPIRow({ periodo = '30d' }: { periodo?: PeriodoSla }) {
-  const { data: k } = useDashboardKPIs(periodo)
+export function DashboardKPIRow({ range }: { range: PrazoRange }) {
+  const { data: k } = useDashboardKPIs(range)
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
@@ -19,7 +19,7 @@ export function DashboardKPIRow({ periodo = '30d' }: { periodo?: PeriodoSla }) {
       <KPICard
         title="% No Prazo"
         value={formatPercent(k.pctNoPrazo ?? 0)}
-        subtitle={`${k.noPrazo ?? 0} de ${k.aferidas ?? 0} aferidas · ${k.filtroSla ?? '30d'}`}
+        subtitle={`${k.noPrazo ?? 0} de ${k.aferidas ?? 0} aferidas · ${rangeLabel(range)}`}
         progressValue={k.pctNoPrazo ?? 0}
         color="blue"
       />

@@ -1,45 +1,33 @@
 import { sql } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { redis } from '../../redis/client'
+import { prazoRangeSql } from '../../lib/prazoRange'
 
 /**
  * KPIs do Dashboard — espelham a planilha do painel GAS (trips.source='painel', sync incremental 10min).
  * Total/Concluídas/No Prazo/Atrasadas: contagem estática do snapshot. Tickets/Alertas: do painel-sync (Redis).
  */
 const TTL = 5
-export type PeriodoSla = 'hoje' | '7d' | '30d' | '90d' | 'tudo'
-
-// Filtro de período por DATA DE DESCARGA (decisão do usuário): real (chegada/conclusão)
-// p/ concluídas, prevista (eta/prazo) p/ as ativas → assim a viagem aparece na janela em
-// que (vai) descarregar. 'tudo' = sem corte. 'hoje' usa o dia-calendário de Brasília.
-function descargaCutoff(periodo: PeriodoSla) {
-  if (periodo === 'tudo') return sql`TRUE`
-  const anchor = sql`COALESCE(arrived_at, eta, window_end)`
-  if (periodo === 'hoje') {
-    return sql`${anchor} >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'`
-  }
-  const days = periodo === '7d' ? 7 : periodo === '30d' ? 30 : 90
-  return sql`${anchor} >= now() - make_interval(days => ${days})`
-}
 
 export interface DashboardKpis {
-  filtroSla: PeriodoSla
+  filtroSla: string
   total: number; concluidas: number; noPrazo: number; atrasadas: number; aferidas: number
   pctNoPrazo: number; alertas: number; ticketsPendentes: number; motoristasEmRisco: number; meta: number
 }
 
-export async function getDashboardKpis(periodo: PeriodoSla = 'tudo'): Promise<DashboardKpis> {
-  const key = `kpi:dashboard:${periodo}`
+export async function getDashboardKpis(
+  { inicio, fim }: { inicio?: string | null; fim?: string | null } = {},
+): Promise<DashboardKpis> {
+  const key = `kpi:dashboard:${inicio ?? ''}..${fim ?? ''}`
   try { const c = await redis.get(key); if (c) return JSON.parse(c) } catch { /* fall through */ }
 
-  const cut = descargaCutoff(periodo)
   const [tot] = (await db.execute(sql`
     SELECT
       count(*)::int                                      AS total,
       count(*) FILTER (WHERE status='completed')::int    AS concluidas,
       count(*) FILTER (WHERE sla_status='no_prazo')::int AS no_prazo,
       count(*) FILTER (WHERE sla_status='atrasado')::int AS atrasadas
-    FROM trips WHERE source='painel' AND (${cut})
+    FROM trips WHERE source='painel' AND (${prazoRangeSql(sql`window_end`, inicio, fim)})
   `)) as unknown as Array<{ total: number; concluidas: number; no_prazo: number; atrasadas: number }>
 
   const n = (v: unknown) => Number(v ?? 0)
@@ -73,7 +61,7 @@ export async function getDashboardKpis(periodo: PeriodoSla = 'tudo'): Promise<Da
   `)) as unknown as Array<{ em_risco: number }>
 
   const kpis: DashboardKpis = {
-    filtroSla: periodo, total, concluidas, noPrazo, atrasadas, aferidas, pctNoPrazo,
+    filtroSla: `${inicio ?? ''}..${fim ?? ''}`, total, concluidas, noPrazo, atrasadas, aferidas, pctNoPrazo,
     alertas, ticketsPendentes, motoristasEmRisco: n(d?.em_risco), meta: 95,
   }
   try { await redis.set(key, JSON.stringify(kpis), 'EX', TTL) } catch { /* noop */ }

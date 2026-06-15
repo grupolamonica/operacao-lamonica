@@ -1,22 +1,20 @@
-import { sql, and, eq, gte, inArray } from 'drizzle-orm'
+import { sql, and, eq, inArray } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { trips } from '../../db/schema/trips'
 import { alerts } from '../../db/schema/alerts'
 import { clients } from '../../db/schema/clients'
 import { drivers } from '../../db/schema/drivers'
 import { routes } from '../../db/schema/routes'
+import { prazoRangeSql } from '../../lib/prazoRange'
 
-export type BiPeriod    = 'today' | '7d' | '30d' | '90d'
 export type BiDimension = 'client' | 'driver' | 'region' | 'route'
 export type BiMetric    = 'deliveries' | 'sla_pct' | 'alerts' | 'delay_avg'
 
-function periodCutoff(p: BiPeriod): Date {
-  const d = new Date()
-  if (p === 'today') d.setHours(0, 0, 0, 0)
-  else if (p === '7d')  d.setDate(d.getDate() - 7)
-  else if (p === '30d') d.setDate(d.getDate() - 30)
-  else                  d.setDate(d.getDate() - 90)
-  return d
+// Filtro de Prazo Final por intervalo de datas (window_end). Ambos opcionais; nenhum => sem corte.
+export interface BiDateRange {
+  inicio?: string | null
+  fim?:    string | null
+  clientId?: string
 }
 
 // Atraso em minutos — adiantamento_horas: + = ATRASADO (adapter grava -calcularAdiantamentoHoras,
@@ -31,7 +29,7 @@ function delayMinutes(t: { adiantamentoHoras: string | null; arrivedAt: Date | n
 const normName = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase()
 
 export interface BiKpis {
-  period: BiPeriod
+  period: string
   deliveries: { total: number; completed: number; onTimePct: number }
   sla:        { pct: number; onTime: number; closed: number }
   alerts:     { open: number; critical: number; createdInWindow: number }
@@ -39,11 +37,9 @@ export interface BiKpis {
   risk:       { critico: number; alto: number; medio: number; baixo: number }
 }
 
-export async function getExecutiveKpis(period: BiPeriod, clientId?: string): Promise<BiKpis> {
-  const cutoff = periodCutoff(period)
-
+export async function getExecutiveKpis({ inicio, fim, clientId }: BiDateRange): Promise<BiKpis> {
   // Universo canônico = painel + cargas (igual Viagens, trips.service.ts) — exclui seed/histórico (source nulo).
-  const tripConditions = [gte(trips.windowStart, cutoff), sql`${trips.source} IN ('painel', 'cargas')`]
+  const tripConditions = [sql`(${prazoRangeSql(sql`window_end`, inicio, fim)})`, sql`${trips.source} IN ('painel', 'cargas')`]
   if (clientId) tripConditions.push(eq(trips.clientId, clientId))
   const tripsRows = await db.select().from(trips).where(and(...tripConditions))
 
@@ -63,15 +59,17 @@ export async function getExecutiveKpis(period: BiPeriod, clientId?: string): Pro
   }
 
   const tripIds = tripsRows.map((t) => t.id)
-  const alertConditions = [gte(alerts.occurredAt, cutoff)]
+  const alertConditions = [sql`(${prazoRangeSql(sql`occurred_at`, inicio, fim)})`]
   if (clientId) {
     if (tripIds.length > 0) alertConditions.push(inArray(alerts.tripId, tripIds))
     else alertConditions.push(sql`false`)
   }
   const alertRows = await db.select().from(alerts).where(and(...alertConditions)) // createdInWindow (período)
 
-  // Ocorrências ABERTAS = não-terminais, igual Torre (SEM corte de período) — Onda E / D-14.
+  // Ocorrências ABERTAS = não-terminais, escopadas pelo Prazo Final da viagem do ticket
+  // (igual Torre) p/ a tela inteira honrar o intervalo. Sem datas = todas as abertas.
   const openConds = [sql`${alerts.status} NOT IN ('resolvido','encerrado')`]
+  if (inicio || fim) openConds.push(sql`EXISTS (SELECT 1 FROM trips t WHERE t.id = ${alerts.tripId} AND (${prazoRangeSql(sql`t.window_end`, inicio, fim)}))`)
   if (clientId) {
     if (tripIds.length > 0) openConds.push(inArray(alerts.tripId, tripIds))
     else openConds.push(sql`false`)
@@ -86,7 +84,7 @@ export async function getExecutiveKpis(period: BiPeriod, clientId?: string): Pro
     : 0
 
   return {
-    period,
+    period: `${inicio ?? ''}..${fim ?? ''}`,
     deliveries: { total: deliveriesTotal, completed: completed.length, onTimePct },
     sla:        { pct: onTimePct, onTime: noPrazoCount, closed: aferidas },
     alerts:     { open: openAlerts.length, critical: criticalAlerts.length, createdInWindow: alertRows.length },
@@ -106,10 +104,9 @@ export interface BiBreakdownRow {
   delayAvgMin:  number
 }
 
-export async function getBreakdown(dimension: BiDimension, period: BiPeriod, clientId?: string): Promise<BiBreakdownRow[]> {
-  const cutoff = periodCutoff(period)
+export async function getBreakdown(dimension: BiDimension, { inicio, fim, clientId }: BiDateRange): Promise<BiBreakdownRow[]> {
   // Universo canônico = painel + cargas (igual Viagens, trips.service.ts) — exclui seed/histórico (source nulo).
-  const conditions = [gte(trips.windowStart, cutoff), sql`${trips.source} IN ('painel', 'cargas')`]
+  const conditions = [sql`(${prazoRangeSql(sql`window_end`, inicio, fim)})`, sql`${trips.source} IN ('painel', 'cargas')`]
   if (clientId) conditions.push(eq(trips.clientId, clientId))
 
   // Pre-fetch entity names for the active dimension
@@ -204,16 +201,13 @@ export async function getBreakdown(dimension: BiDimension, period: BiPeriod, cli
 
 export interface BiTrendPoint { date: string; value: number }
 
-export async function getTrendSeries(metric: BiMetric, period: BiPeriod, clientId?: string): Promise<BiTrendPoint[]> {
-  const cutoff = periodCutoff(period)
-
+export async function getTrendSeries(metric: BiMetric, { inicio, fim, clientId }: BiDateRange): Promise<BiTrendPoint[]> {
   if (metric === 'alerts') {
-    const cutoffIso = cutoff.toISOString()
     const rows = await db.execute<{ date: string; value: string }>(sql`
       SELECT TO_CHAR(DATE(occurred_at), 'YYYY-MM-DD') AS date,
              COUNT(*)::text AS value
       FROM alerts
-      WHERE occurred_at >= ${cutoffIso}::timestamptz
+      WHERE (${prazoRangeSql(sql`occurred_at`, inicio, fim)})
       GROUP BY 1 ORDER BY 1 ASC
     `)
     return (rows as unknown as Array<{ date: string; value: string }>).map((r) => ({ date: String(r.date), value: Number(r.value) }))
@@ -221,7 +215,7 @@ export async function getTrendSeries(metric: BiMetric, period: BiPeriod, clientI
 
   // deliveries / sla_pct / delay_avg are derived from trips
   // Universo canônico = painel + cargas (igual Viagens, trips.service.ts) — exclui seed/histórico (source nulo).
-  const conditions = [gte(trips.windowStart, cutoff), sql`${trips.source} IN ('painel', 'cargas')`]
+  const conditions = [sql`(${prazoRangeSql(sql`window_end`, inicio, fim)})`, sql`${trips.source} IN ('painel', 'cargas')`]
   if (clientId) conditions.push(eq(trips.clientId, clientId))
   const tripsRows = await db.select().from(trips).where(and(...conditions))
 

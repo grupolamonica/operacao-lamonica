@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { redis } from '../../redis/client'
+import { prazoRangeSql } from '../../lib/prazoRange'
 
 /**
  * Insights aggregation service — 4 endpoints feed the InsightsPage analytics
@@ -8,11 +9,13 @@ import { redis } from '../../redis/client'
  * prefix `kpi:insights:` and TTL = 30 s, matching the staleTime configured on
  * TanStack Query (CONTEXT D-29).
  *
- * Range presets are whitelisted via TypeBox at the plugin layer (7d / 30d / 90d)
- * and converted to an integer at this layer. SQL is parameterised via the
- * Drizzle `sql` template — no SQL injection vector (T-06.02-01).
+ * O corte temporal é um intervalo de datas "Prazo Final" (inicio/fim, ambos
+ * opcionais, 'YYYY-MM-DD') aplicado sobre trips.window_end (e occurred_at nos
+ * alertas) via prazoRangeSql — réplica do checkVisibilityDate do painel legado.
+ * SQL é parametrizado pelo template `sql` do Drizzle — sem vetor de injeção
+ * (T-06.02-01).
  *
- * @see CONTEXT D-01 (4 metrics), D-02 (range presets), D-29 (cache TTL)
+ * @see CONTEXT D-01 (4 metrics), D-29 (cache TTL)
  * @see RESEARCH Pattern 1 lines 250-294 — Insights aggregation SQL
  */
 
@@ -21,14 +24,11 @@ const CACHE_TTL = 30 // seconds (D-29)
 // Pares from/to do translate() p/ strip de acentos no Postgres (mesma normalização do normalizeMotorista / drivers.service).
 const ACC = "'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇç','AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCc'"
 
-export type Range = '7d' | '30d' | '90d'
+export type PrazoRange = { inicio?: string | null; fim?: string | null }
 
-function rangeDays(r: Range): number {
-  return r === '7d' ? 7 : r === '90d' ? 90 : 30
-}
-
-function cacheKey(metric: string, range: Range, extra?: string): string {
-  return `kpi:insights:${metric}:${range}${extra ? ':' + extra : ''}`
+function cacheKey(metric: string, range: PrazoRange, extra?: string): string {
+  const window = `${range.inicio ?? ''}..${range.fim ?? ''}`
+  return `kpi:insights:${metric}:${window}${extra ? ':' + extra : ''}`
 }
 
 export type SlaHistoryRow = {
@@ -38,14 +38,13 @@ export type SlaHistoryRow = {
   sla:    number
 }
 
-export async function getSlaHistory(range: Range = '30d'): Promise<SlaHistoryRow[]> {
-  const key = cacheKey('sla-history', range)
+export async function getSlaHistory({ inicio, fim }: PrazoRange = {}): Promise<SlaHistoryRow[]> {
+  const key = cacheKey('sla-history', { inicio, fim })
   const cached = await redis.get(key)
   if (cached) {
     try { return JSON.parse(cached) as SlaHistoryRow[] } catch { /* fall through */ }
   }
 
-  const days = rangeDays(range)
   // SLA canônico (Onda E / D-14): no_prazo/(no_prazo+atrasado) sobre source='painel' — mesmo
   // universo do Dashboard (dashboard.service) e do sla_pct do BI. Não exige status='completed'
   // (o painel-sync grava concluídas com sla_status NULL — ficam fora da aferição).
@@ -57,7 +56,7 @@ export async function getSlaHistory(range: Range = '30d'): Promise<SlaHistoryRow
     FROM trips
     WHERE source = 'painel'
       AND sla_status IN ('no_prazo', 'atrasado')
-      AND window_end >= NOW() - (${days}::int * INTERVAL '1 day')
+      AND (${prazoRangeSql(sql`window_end`, inicio, fim)})
     GROUP BY DATE(window_end)
     ORDER BY DATE(window_end) ASC
   `) as unknown as Array<{ date: string; total: number | string; on_time: number | string }>
@@ -88,16 +87,15 @@ export type DriverRankingRow = {
 }
 
 export async function getDriversRanking(
-  range: Range = '30d',
+  { inicio, fim }: PrazoRange = {},
   limit: number = 10,
 ): Promise<DriverRankingRow[]> {
-  const key = cacheKey('drivers-ranking', range, `limit=${limit}`)
+  const key = cacheKey('drivers-ranking', { inicio, fim }, `limit=${limit}`)
   const cached = await redis.get(key)
   if (cached) {
     try { return JSON.parse(cached) as DriverRankingRow[] } catch { /* fall through */ }
   }
 
-  const days = rangeDays(range)
   // Clamp limit to safe bounds (defence in depth even though TypeBox already validates 1..50)
   const safeLimit = Math.min(Math.max(1, Math.trunc(limit)), 50)
 
@@ -119,7 +117,7 @@ export async function getDriversRanking(
       FROM trips
       WHERE source IN ('painel', 'cargas')
         AND sheet_motorista IS NOT NULL AND trim(sheet_motorista) <> ''
-        AND window_end >= NOW() - (${days}::int * INTERVAL '1 day')
+        AND (${prazoRangeSql(sql`window_end`, inicio, fim)})
       GROUP BY 1
     )
     SELECT
@@ -186,14 +184,12 @@ export type ProblematicRouteRow = {
   slaPercent: number
 }
 
-export async function getProblematicRoutes(range: Range = '30d'): Promise<ProblematicRouteRow[]> {
-  const key = cacheKey('problematic-routes', range)
+export async function getProblematicRoutes({ inicio, fim }: PrazoRange = {}): Promise<ProblematicRouteRow[]> {
+  const key = cacheKey('problematic-routes', { inicio, fim })
   const cached = await redis.get(key)
   if (cached) {
     try { return JSON.parse(cached) as ProblematicRouteRow[] } catch { /* fall through */ }
   }
-
-  const days = rangeDays(range)
 
   // Viagens vivas (painel/cargas) não têm route_id — agrupa pelo par (origin, destination).
   // Atrasos via sla_status='atrasado' + adiantamento_horas (+ = atrasado, em horas → min);
@@ -213,7 +209,7 @@ export async function getProblematicRoutes(range: Range = '30d'): Promise<Proble
       WHERE source IN ('painel', 'cargas')
         AND origin IS NOT NULL AND trim(origin) <> ''
         AND destination IS NOT NULL AND trim(destination) <> ''
-        AND window_end >= NOW() - (${days}::int * INTERVAL '1 day')
+        AND (${prazoRangeSql(sql`window_end`, inicio, fim)})
       GROUP BY origin, destination
     ), alertas AS (
       SELECT
@@ -222,7 +218,7 @@ export async function getProblematicRoutes(range: Range = '30d'): Promise<Proble
         COUNT(al.id) AS alert_count
       FROM alerts al
       JOIN trips tr ON tr.id = al.trip_id
-      WHERE al.occurred_at >= NOW() - (${days}::int * INTERVAL '1 day')
+      WHERE (${prazoRangeSql(sql`al.occurred_at`, inicio, fim)})
         AND tr.source IN ('painel', 'cargas')
         AND tr.origin IS NOT NULL AND tr.destination IS NOT NULL
       GROUP BY tr.origin, tr.destination
@@ -273,21 +269,19 @@ export type AlertsDistributionRow = {
   count: number
 }
 
-export async function getAlertsDistribution(range: Range = '30d'): Promise<AlertsDistributionRow[]> {
-  const key = cacheKey('alerts-distribution', range)
+export async function getAlertsDistribution({ inicio, fim }: PrazoRange = {}): Promise<AlertsDistributionRow[]> {
+  const key = cacheKey('alerts-distribution', { inicio, fim })
   const cached = await redis.get(key)
   if (cached) {
     try { return JSON.parse(cached) as AlertsDistributionRow[] } catch { /* fall through */ }
   }
-
-  const days = rangeDays(range)
 
   const rows = await db.execute(sql`
     SELECT
       type,
       COUNT(*) AS count
     FROM alerts
-    WHERE occurred_at >= NOW() - (${days}::int * INTERVAL '1 day')
+    WHERE (${prazoRangeSql(sql`occurred_at`, inicio, fim)})
     GROUP BY type
     ORDER BY COUNT(*) DESC
   `) as unknown as Array<{ type: string; count: number | string }>

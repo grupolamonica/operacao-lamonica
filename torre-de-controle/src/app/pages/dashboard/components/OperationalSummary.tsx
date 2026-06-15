@@ -1,11 +1,9 @@
 import { useDashboardKPIs } from '@/hooks/useDashboardKPIs'
-import type { PeriodoSla } from '@/data/types'
+import { type PrazoRange, rangeLabel } from '@/components/domain/PrazoFinalFilter'
 
-const PERIODO_LABEL: Record<PeriodoSla, string> = { hoje: 'hoje', '7d': '7 dias', '30d': '30 dias', '90d': '90 dias', tudo: 'tudo' }
-
-// Phase 13 — Resumo operacional fiel ao filtro de SLA (mesmo agregado dos cards).
-export function OperationalSummary({ periodo = '30d' }: { periodo?: PeriodoSla }) {
-  const { data: k } = useDashboardKPIs(periodo)
+// Phase 13 — Resumo operacional fiel ao filtro de Prazo Final (mesmo agregado dos cards).
+export function OperationalSummary({ range }: { range: PrazoRange }) {
+  const { data: k } = useDashboardKPIs(range)
 
   const rows = [
     { label: 'Total de viagens',    value: k.total,             accent: '' },
@@ -21,7 +19,7 @@ export function OperationalSummary({ periodo = '30d' }: { periodo?: PeriodoSla }
     <div className="bg-card border border-border rounded-lg p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-foreground">Resumo operacional</h3>
-        <span className="text-[10px] text-muted-foreground uppercase tracking-wide">{PERIODO_LABEL[periodo]}</span>
+        <span className="text-[10px] text-muted-foreground uppercase tracking-wide">{rangeLabel(range)}</span>
       </div>
       <ul className="space-y-2.5">
         {rows.map(r => (

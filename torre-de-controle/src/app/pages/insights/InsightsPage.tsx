@@ -6,23 +6,18 @@ import {
   useDriversRanking,
   useProblematicRoutes,
   useAlertsDistribution,
-  type Range,
 } from '@/hooks/useInsights'
-import { PeriodFilter } from '@/components/domain/PeriodFilter'
+import { PrazoFinalFilter, type PrazoRange, defaultPrazoRange } from '@/components/domain/PrazoFinalFilter'
 import { SlaHistoricoChart } from './components/SlaHistoricoChart'
 import { MotoristasRankingChart } from './components/MotoristasRankingChart'
 import { RotasProblematicasTable } from './components/RotasProblematicasTable'
 import { AlertasDistribuicaoChart } from './components/AlertasDistribuicaoChart'
 
-function isValidRange(s: string | null): s is Range {
-  return s === '7d' || s === '30d' || s === '90d'
-}
-
 /**
  * Página /insights — 4 cards Chart.js + cross-filter visual (CONTEXT D-01..D-05).
  *
  * Layout:
- * - Header: title + DateRangePicker (preset 7d/30d/90d)
+ * - Header: title + PrazoFinalFilter (intervalo de datas por Prazo Final; default 30 dias)
  * - Banner cross-filter (quando dateFilter ativo): "Filtrado por: YYYY-MM-DD [×]"
  * - Grid Argon ponderado lg:grid-cols-10 (mirror do Dashboard):
  *   - Row 1: SlaHistoricoChart (col-span-7, line) + AlertasDistribuicaoChart (col-span-3, doughnut)
@@ -37,8 +32,11 @@ function isValidRange(s: string | null): s is Range {
  */
 export function InsightsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const rawRange = searchParams.get('range')
-  const range: Range = isValidRange(rawRange) ? rawRange : '30d'
+  const def = defaultPrazoRange('analytics')   // janela maior p/ os gráficos não ficarem vazios
+  const range: PrazoRange = {
+    inicio: searchParams.get('inicio') ?? def.inicio,
+    fim:    searchParams.get('fim') ?? def.fim,
+  }
   const [dateFilter, setDateFilter] = useState<string | null>(null)
 
   const sla     = useSlaHistory(range)
@@ -46,9 +44,12 @@ export function InsightsPage() {
   const routes  = useProblematicRoutes(range)
   const dist    = useAlertsDistribution(range)
 
-  function setRange(r: Range) {
-    setSearchParams({ range: r })
-    setDateFilter(null) // reset cross-filter when changing range
+  function setRange(r: PrazoRange) {
+    const next: Record<string, string> = {}
+    if (r.inicio) next.inicio = r.inicio
+    if (r.fim) next.fim = r.fim
+    setSearchParams(next)             // URL shareable (D-02)
+    setDateFilter(null)               // reset cross-filter ao mudar o intervalo
   }
 
   return (
@@ -59,11 +60,7 @@ export function InsightsPage() {
           <p className="text-sm text-white/70">Analytics, tendências de SLA e ranking operacional</p>
         </div>
         <div className="ml-auto">
-          <PeriodFilter<Range>
-            value={range}
-            onChange={setRange}
-            options={[{ id: '7d', label: '7 dias' }, { id: '30d', label: '30 dias' }, { id: '90d', label: '90 dias' }]}
-          />
+          <PrazoFinalFilter value={range} onChange={setRange} />
         </div>
       </header>
 

@@ -1,4 +1,4 @@
-import { sql, and, gte, inArray } from 'drizzle-orm'
+import { sql, and, gte, lte, inArray } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { trips } from '../../db/schema/trips'
 import { clients } from '../../db/schema/clients'
@@ -63,18 +63,26 @@ function densifyDaily(start: string, end: string, byDay: Map<string, number>): S
 export type Dimension = 'total' | 'client' | 'region'
 
 export async function forecastDemand(opts: {
-  lookbackDays?: number
-  horizonDays?:  number
-  dimension?:    Dimension
+  inicio?:      string | null
+  fim?:         string | null
+  horizonDays?: number
+  dimension?:   Dimension
 }): Promise<DemandForecast> {
-  const lookback = opts.lookbackDays ?? 30
-  const horizon  = opts.horizonDays  ?? 7
+  const horizon = opts.horizonDays ?? 7
 
-  const cutoff = new Date()
-  cutoff.setDate(cutoff.getDate() - lookback)
-  cutoff.setHours(0, 0, 0, 0)
+  // Início do histórico = `inicio` (Prazo Final); sem ele, mantém o default de 30 dias atrás.
+  let cutoff: Date
+  if (opts.inicio) {
+    cutoff = new Date(opts.inicio + 'T00:00:00')
+  } else {
+    cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - 30)
+    cutoff.setHours(0, 0, 0, 0)
+  }
+  // Projeção sempre pra frente a partir de hoje; `fim` (se informado) só limita o histórico.
+  const histEnd   = opts.fim ? new Date(opts.fim + 'T23:59:59') : new Date()
   const cutoffIso = toDay(cutoff)
-  const todayIso  = toDay(new Date())
+  const todayIso  = toDay(histEnd)
 
   // Use departedAt when available (real demand); fall back to windowStart for plan-only trips.
   // Universo operacional = painel + cargas (igual Viagens/Dashboard) — exclui seed/histórico (source nulo).
@@ -86,6 +94,7 @@ export async function forecastDemand(opts: {
     origin:       trips.origin,
   }).from(trips).where(and(
     gte(trips.windowStart, cutoff),
+    opts.fim ? lte(trips.windowStart, histEnd) : undefined,
     sql`${trips.source} IN ('painel', 'cargas')`,
   ))
 
@@ -228,7 +237,7 @@ export async function forecastDelayRisk(): Promise<DelayRiskForecast> {
   const breachPct  = total > 0 ? Math.round((breaches / total) * 100) : 0
 
   // Forecast next-24h demand using demand engine
-  const dem = await forecastDemand({ lookbackDays: 30, horizonDays: 1, dimension: 'total' })
+  const dem = await forecastDemand({ inicio: null, horizonDays: 1, dimension: 'total' })
   const expectedTrips = dem.forecast[0]?.value ?? 0
   const expectedBreaches = Math.round(expectedTrips * (breachPct / 100))
 

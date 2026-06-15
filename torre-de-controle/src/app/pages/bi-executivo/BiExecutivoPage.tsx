@@ -4,17 +4,10 @@ import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement
 import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { KPICard } from '@/components/domain/KPICard'
-import { PeriodFilter } from '@/components/domain/PeriodFilter'
-import { useBiKpis, useBiBreakdown, useBiTrend, type BiPeriod, type BiDimension, type BiMetric } from '@/hooks/useBi'
+import { PrazoFinalFilter, type PrazoRange, defaultPrazoRange, rangeLabel } from '@/components/domain/PrazoFinalFilter'
+import { useBiKpis, useBiBreakdown, useBiTrend, type BiDimension, type BiMetric } from '@/hooks/useBi'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip, Legend)
-
-const PERIODS: Array<{ id: BiPeriod; label: string }> = [
-  { id: 'today', label: 'Hoje' },
-  { id: '7d',    label: '7 dias' },
-  { id: '30d',   label: '30 dias' },
-  { id: '90d',   label: '90 dias' },
-]
 
 const DIMENSIONS: Array<{ id: BiDimension; label: string }> = [
   { id: 'client', label: 'Por cliente' },
@@ -31,13 +24,13 @@ const METRICS: Array<{ id: BiMetric; label: string; suffix?: string; color: stri
 ]
 
 export function BiExecutivoPage() {
-  const [period, setPeriod] = useState<BiPeriod>('30d')
+  const [range, setRange] = useState<PrazoRange>(() => defaultPrazoRange('analytics'))
   const [dimension, setDimension] = useState<BiDimension>('client')
   const [metric, setMetric] = useState<BiMetric>('deliveries')
 
-  const { data: kpis } = useBiKpis({ period })
-  const { data: breakdown, isLoading: breakdownLoading } = useBiBreakdown({ period, dimension })
-  const { data: trend,     isLoading: trendLoading     } = useBiTrend({ period, metric })
+  const { data: kpis } = useBiKpis({ range })
+  const { data: breakdown, isLoading: breakdownLoading } = useBiBreakdown({ range, dimension })
+  const { data: trend,     isLoading: trendLoading     } = useBiTrend({ range, metric })
 
   const trendActive = METRICS.find((m) => m.id === metric)!
 
@@ -48,7 +41,7 @@ export function BiExecutivoPage() {
           <h1 className="text-2xl font-bold text-white">BI Executivo</h1>
           <p className="text-sm text-white/70">Visão estratégica — entregas, SLA, ocorrências e ritmo da operação</p>
         </div>
-        <PeriodFilter<BiPeriod> value={period} onChange={setPeriod} options={PERIODS} />
+        <PrazoFinalFilter value={range} onChange={setRange} />
       </header>
 
       {/* KPI cards */}
@@ -56,7 +49,7 @@ export function BiExecutivoPage() {
         <KPICard title="Entregas" value={kpis?.deliveries.total ?? 0} subtitle={kpis ? `${kpis.deliveries.completed} concluídas` : '—'} color="blue" />
         <KPICard title="SLA"      value={`${kpis?.sla.pct ?? 0}%`}    subtitle={kpis ? `${kpis.sla.onTime}/${kpis.sla.closed} no prazo` : '—'} color="green" />
         <KPICard title="Ocorrências abertas" value={kpis?.alerts.open ?? 0} subtitle={kpis ? `${kpis.alerts.critical} críticas` : '—'} color="red" />
-        <KPICard title="Atraso médio"        value={`${kpis?.delayAvg.minutes ?? 0} min`} subtitle={kpis ? `na janela ${period}` : '—'} color="orange" />
+        <KPICard title="Atraso médio"        value={`${kpis?.delayAvg.minutes ?? 0} min`} subtitle={kpis ? `na janela ${rangeLabel(range)}` : '—'} color="orange" />
       </div>
 
       {/* Risk distribution mini bar */}
@@ -83,7 +76,7 @@ export function BiExecutivoPage() {
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <div>
             <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Tendência</p>
-            <p className="text-sm text-foreground mt-0.5">{trendActive.label} · {PERIODS.find(p => p.id === period)?.label}</p>
+            <p className="text-sm text-foreground mt-0.5">{trendActive.label} · {rangeLabel(range)}</p>
           </div>
           <div className="flex bg-muted rounded-md overflow-hidden">
             {METRICS.map((m) => (

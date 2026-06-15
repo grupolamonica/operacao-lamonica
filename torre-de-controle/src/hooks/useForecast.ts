@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { type PrazoRange, rangeQuery } from '@/components/domain/PrazoFinalFilter'
 
 export interface SeriesPoint { date: string; value: number }
 export interface ForecastPoint extends SeriesPoint { forecast: true; lower: number; upper: number }
@@ -25,11 +26,11 @@ export interface DelayRiskForecast {
   historical: { breachPctLastWeek: number }
 }
 
-export function useForecastDemand(horizon = 7, dimension: 'total' | 'client' | 'region' = 'total', lookback = 30) {
+export function useForecastDemand(horizon = 7, dimension: 'total' | 'client' | 'region' = 'total', range: PrazoRange = { inicio: null, fim: null }) {
   return useQuery({
-    queryKey: ['forecast-demand', horizon, dimension, lookback],
+    queryKey: ['forecast-demand', horizon, dimension, range.inicio, range.fim],
     queryFn: async (): Promise<DemandForecast> => {
-      const { data, error } = await (api.api.forecast as any).demand.get({ query: { horizon, dimension, lookback } })
+      const { data, error } = await (api.api.forecast as any).demand.get({ query: { horizon, dimension, ...rangeQuery(range) } })
       if (error) throw new Error('Failed to load demand forecast')
       return data as DemandForecast
     },

@@ -1,9 +1,9 @@
 import { KPICard } from '@/components/domain/KPICard'
 import { useTorreKPIs } from '@/hooks/useDashboardKPIs'
-import type { PeriodoSla } from '@/data/types'
+import type { PrazoRange } from '@/components/domain/PrazoFinalFilter'
 
-export function TorreKPIRow({ periodo = 'tudo' }: { periodo?: PeriodoSla }) {
-  const { data: k } = useTorreKPIs(periodo)
+export function TorreKPIRow({ range }: { range: PrazoRange }) {
+  const { data: k } = useTorreKPIs(range)
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
       <KPICard

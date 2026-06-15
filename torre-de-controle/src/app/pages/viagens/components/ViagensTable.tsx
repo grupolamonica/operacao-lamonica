@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useTrips, useTrip, useRouteOptions } from '@/hooks/useTrips'
 import { useUIStore } from '@/stores/useUIStore'
-import { type Period, periodStart } from '@/components/domain/PeriodFilter'
+import { type PrazoRange, prazoInRange } from '@/components/domain/PrazoFinalFilter'
 import { formatDate } from '@/lib/formatters'
 
 const fmtDT = (d?: Date | string | null) => (d ? formatDate(d, 'dd/MM/yyyy HH:mm:ss') : '—')
@@ -101,23 +101,16 @@ const tabToStatus: Record<string, TripStatus> = {
   atrasadas:    'delayed',
 }
 
-export function ViagensTable({ period = 'tudo' }: { period?: Period }) {
+export function ViagensTable({ range }: { range: PrazoRange }) {
   const { activeTripsTab, setActiveTripsTab, selectedTripId, setSelectedTripId } = useUIStore()
   const [filters, setFilters] = useState<TripFilters>({})
   // Phase 12 — busca a base COMPLETA uma vez; filtra/pagina client-side.
   // Lista grande → refetch mais lento (30s); os detalhes/KPIs ao vivo ficam no dashboard (5s).
   const { data: allRaw } = useTrips({ limit: 20000 } as TripFilters & { limit: number }, { refetchMs: 30_000 })
 
-  // Escopo por DATA DE DESCARGA (decisão do usuário): real (chegada) p/ concluídas,
-  // prevista (eta/prazo) p/ as ativas. 'tudo' = sem corte. Afeta tabela + contadores das abas.
-  const all = useMemo(() => {
-    const start = periodStart(period)
-    if (!start) return allRaw
-    return allRaw.filter((t) => {
-      const a = t.arrivedAt ?? t.eta ?? t.windowEnd
-      return a ? new Date(a).getTime() >= start.getTime() : false
-    })
-  }, [allRaw, period])
+  // Escopo por PRAZO FINAL (window_end), intervalo do filtro — réplica do checkVisibilityDate
+  // do painel. Sem datas = tudo. Afeta a tabela + os contadores das abas.
+  const all = useMemo(() => allRaw.filter((t) => prazoInRange(t.windowEnd, range)), [allRaw, range])
 
   // Deep-link do dashboard: /viagens?trip=<id> abre o detalhe da viagem direto.
   // Deep-link do Insights (D-05): /viagens?route=<valor> pré-seleciona o filtro de rota.

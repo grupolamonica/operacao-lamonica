@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { type PrazoRange, rangeQuery } from '@/components/domain/PrazoFinalFilter'
 
 /**
  * Insights composite hook — 4 sub-hooks feeding the InsightsPage (Phase 6
@@ -13,8 +14,6 @@ import { api } from '@/lib/api'
  * @see api/src/modules/insights/insights.plugin.ts — endpoint contracts
  * @see api/src/modules/insights/insights.service.ts — return types
  */
-
-export type Range = '7d' | '30d' | '90d'
 
 export type SlaPoint = {
   date:   string
@@ -47,11 +46,11 @@ export type AlertDist = {
   count: number
 }
 
-export function useSlaHistory(range: Range = '30d') {
+export function useSlaHistory(range: PrazoRange) {
   const q = useQuery({
-    queryKey: ['insights', 'sla-history', range],
+    queryKey: ['insights', 'sla-history', range.inicio, range.fim],
     queryFn: async (): Promise<SlaPoint[]> => {
-      const { data, error } = await (api.api.insights as any)['sla-history'].get({ query: { range } })
+      const { data, error } = await (api.api.insights as any)['sla-history'].get({ query: rangeQuery(range) })
       if (error) throw new Error('Failed to fetch SLA history')
       return (data ?? []) as SlaPoint[]
     },
@@ -66,11 +65,11 @@ export function useSlaHistory(range: Range = '30d') {
   }
 }
 
-export function useDriversRanking(range: Range = '30d', limit: number = 10) {
+export function useDriversRanking(range: PrazoRange, limit: number = 10) {
   const q = useQuery({
-    queryKey: ['insights', 'drivers-ranking', range, limit],
+    queryKey: ['insights', 'drivers-ranking', range.inicio, range.fim, limit],
     queryFn: async (): Promise<DriverRank[]> => {
-      const { data, error } = await (api.api.insights as any)['drivers-ranking'].get({ query: { range, limit } })
+      const { data, error } = await (api.api.insights as any)['drivers-ranking'].get({ query: { ...rangeQuery(range), limit } })
       if (error) throw new Error('Failed to fetch drivers ranking')
       return (data ?? []) as DriverRank[]
     },
@@ -85,11 +84,11 @@ export function useDriversRanking(range: Range = '30d', limit: number = 10) {
   }
 }
 
-export function useProblematicRoutes(range: Range = '30d') {
+export function useProblematicRoutes(range: PrazoRange) {
   const q = useQuery({
-    queryKey: ['insights', 'problematic-routes', range],
+    queryKey: ['insights', 'problematic-routes', range.inicio, range.fim],
     queryFn: async (): Promise<ProblematicRoute[]> => {
-      const { data, error } = await (api.api.insights as any)['problematic-routes'].get({ query: { range } })
+      const { data, error } = await (api.api.insights as any)['problematic-routes'].get({ query: rangeQuery(range) })
       if (error) throw new Error('Failed to fetch problematic routes')
       return (data ?? []) as ProblematicRoute[]
     },
@@ -104,11 +103,11 @@ export function useProblematicRoutes(range: Range = '30d') {
   }
 }
 
-export function useAlertsDistribution(range: Range = '30d') {
+export function useAlertsDistribution(range: PrazoRange) {
   const q = useQuery({
-    queryKey: ['insights', 'alerts-distribution', range],
+    queryKey: ['insights', 'alerts-distribution', range.inicio, range.fim],
     queryFn: async (): Promise<AlertDist[]> => {
-      const { data, error } = await (api.api.insights as any)['alerts-distribution'].get({ query: { range } })
+      const { data, error } = await (api.api.insights as any)['alerts-distribution'].get({ query: rangeQuery(range) })
       if (error) throw new Error('Failed to fetch alerts distribution')
       return (data ?? []) as AlertDist[]
     },

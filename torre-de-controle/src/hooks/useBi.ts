@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { type PrazoRange, rangeQuery } from '@/components/domain/PrazoFinalFilter'
 
-export type BiPeriod    = 'today' | '7d' | '30d' | '90d'
 export type BiDimension = 'client' | 'driver' | 'region' | 'route'
 export type BiMetric    = 'deliveries' | 'sla_pct' | 'alerts' | 'delay_avg'
 
 export interface BiKpis {
-  period: BiPeriod
+  period: string   // eco do intervalo Prazo Final ("inicio..fim")
   deliveries: { total: number; completed: number; onTimePct: number }
   sla:        { pct: number; onTime: number; closed: number }
   alerts:     { open: number; critical: number; createdInWindow: number }
@@ -27,13 +27,13 @@ export interface BiBreakdownRow {
 
 export interface BiTrendPoint { date: string; value: number }
 
-interface Filters { period: BiPeriod; clientId?: string | null }
+interface Filters { range: PrazoRange; clientId?: string | null }
 
 export function useBiKpis(filters: Filters) {
   return useQuery({
-    queryKey: ['bi-kpis', filters.period, filters.clientId ?? null],
+    queryKey: ['bi-kpis', filters.range.inicio, filters.range.fim, filters.clientId ?? null],
     queryFn: async (): Promise<BiKpis> => {
-      const query: Record<string, string> = { period: filters.period }
+      const query: Record<string, string> = { ...rangeQuery(filters.range) }
       if (filters.clientId) query.clientId = filters.clientId
       const { data, error } = await (api.api.bi as any).kpis.get({ query })
       if (error) throw new Error('Failed to load BI KPIs')
@@ -46,9 +46,9 @@ export function useBiKpis(filters: Filters) {
 
 export function useBiBreakdown(filters: Filters & { dimension: BiDimension }) {
   return useQuery({
-    queryKey: ['bi-breakdown', filters.dimension, filters.period, filters.clientId ?? null],
+    queryKey: ['bi-breakdown', filters.dimension, filters.range.inicio, filters.range.fim, filters.clientId ?? null],
     queryFn: async (): Promise<BiBreakdownRow[]> => {
-      const query: Record<string, string> = { dimension: filters.dimension, period: filters.period }
+      const query: Record<string, string> = { dimension: filters.dimension, ...rangeQuery(filters.range) }
       if (filters.clientId) query.clientId = filters.clientId
       const { data, error } = await (api.api.bi as any).breakdown.get({ query })
       if (error) throw new Error('Failed to load BI breakdown')
@@ -60,9 +60,9 @@ export function useBiBreakdown(filters: Filters & { dimension: BiDimension }) {
 
 export function useBiTrend(filters: Filters & { metric: BiMetric }) {
   return useQuery({
-    queryKey: ['bi-trend', filters.metric, filters.period, filters.clientId ?? null],
+    queryKey: ['bi-trend', filters.metric, filters.range.inicio, filters.range.fim, filters.clientId ?? null],
     queryFn: async (): Promise<BiTrendPoint[]> => {
-      const query: Record<string, string> = { metric: filters.metric, period: filters.period }
+      const query: Record<string, string> = { metric: filters.metric, ...rangeQuery(filters.range) }
       if (filters.clientId) query.clientId = filters.clientId
       const { data, error } = await (api.api.bi as any).trend.get({ query })
       if (error) throw new Error('Failed to load BI trend')

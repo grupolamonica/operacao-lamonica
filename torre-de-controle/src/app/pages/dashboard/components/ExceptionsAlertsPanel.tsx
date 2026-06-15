@@ -5,14 +5,14 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useAlerts } from '@/hooks/useAlerts'
 import { useDashboardKPIs } from '@/hooks/useDashboardKPIs'
-import type { PeriodoSla } from '@/data/types'
+import type { PrazoRange } from '@/components/domain/PrazoFinalFilter'
 
 // Phase 13 — contagem no padrão do painel (exceções abertas de viagens ATIVAS = kpis.alertas);
 // clicar num ticket leva à tela de Ocorrências já com ele aberto (deep-link).
-export function ExceptionsAlertsPanel({ periodo = '30d' }: { periodo?: PeriodoSla }) {
+export function ExceptionsAlertsPanel({ range }: { range: PrazoRange }) {
   const navigate = useNavigate()
-  const { data: alerts } = useAlerts({ status: 'aberto' })
-  const { data: k } = useDashboardKPIs(periodo)
+  const { data: alerts } = useAlerts({ status: 'aberto', inicio: range.inicio, fim: range.fim })
+  const { data: k } = useDashboardKPIs(range)
 
   const top = [...alerts]
     .sort((a, b) => {

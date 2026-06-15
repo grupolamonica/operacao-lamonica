@@ -3,7 +3,7 @@ import { Line } from 'react-chartjs-2'
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip, Legend } from 'chart.js'
 import { TrendingUp, TrendingDown, Minus, AlertTriangle, Loader2, MapPin } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { PeriodFilter } from '@/components/domain/PeriodFilter'
+import { PrazoFinalFilter, type PrazoRange, defaultPrazoRange } from '@/components/domain/PrazoFinalFilter'
 import { useForecastDemand, useForecastRegions, useForecastDelayRisk } from '@/hooks/useForecast'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip, Legend)
@@ -12,20 +12,11 @@ const TREND_ICON  = { up: TrendingUp, down: TrendingDown, flat: Minus } as const
 const TREND_TONE  = { up: 'text-success', down: 'text-danger', flat: 'text-muted-foreground' } as const
 const TREND_LABEL = { up: 'em alta',  down: 'em queda',  flat: 'estável' } as const
 
-// Período da Previsão = base histórica que alimenta o modelo (lookback em dias).
-// Forecast precisa de janela de dados → 7/30/90 dias (hoje/tudo não fazem sentido aqui).
-type Base = '7d' | '30d' | '90d'
-const BASE_DAYS: Record<Base, number> = { '7d': 7, '30d': 30, '90d': 90 }
-const BASE_OPTIONS = [
-  { id: '7d' as Base,  label: '7 dias' },
-  { id: '30d' as Base, label: '30 dias' },
-  { id: '90d' as Base, label: '90 dias' },
-]
-
 export function PrevisaoPage() {
   const [dimension, setDimension] = useState<'total' | 'client' | 'region'>('total')
-  const [base, setBase] = useState<Base>('30d')
-  const { data: demand,  isLoading: demandLoading }  = useForecastDemand(7, dimension, BASE_DAYS[base])
+  // Previsão: o intervalo define a BASE HISTÓRICA do modelo (inicio = começo do histórico).
+  const [range, setRange] = useState<PrazoRange>(() => defaultPrazoRange('analytics'))
+  const { data: demand,  isLoading: demandLoading }  = useForecastDemand(7, dimension, range)
   const { data: regions, isLoading: regionsLoading } = useForecastRegions()
   const { data: risk,    isLoading: riskLoading }    = useForecastDelayRisk()
 
@@ -39,7 +30,7 @@ export function PrevisaoPage() {
           <h1 className="text-2xl font-bold text-white">Previsão</h1>
           <p className="text-sm text-white/70">Projeção operacional para os próximos 7 dias — engine estatística local</p>
         </div>
-        <PeriodFilter<Base> label="Base histórica" value={base} onChange={setBase} options={BASE_OPTIONS} />
+        <PrazoFinalFilter label="Base histórica" value={range} onChange={setRange} />
       </header>
 
       {/* 3 forecast cards */}

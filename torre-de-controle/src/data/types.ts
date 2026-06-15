@@ -199,9 +199,8 @@ export interface TimelineEvent {
 
 // ===== KPIs =====
 // Phase 13 — Dashboard com paridade ao painel GAS (agregação SQL real)
-export type PeriodoSla = 'hoje' | '7d' | '30d' | '90d' | 'tudo'
 export interface KPIDashboard {
-  filtroSla:          PeriodoSla
+  filtroSla:          string   // eco do intervalo Prazo Final selecionado ("inicio..fim")
   total:              number   // viagens no período
   concluidas:         number
   noPrazo:            number   // ativas no prazo
@@ -274,6 +273,7 @@ export interface AlertFilters {
   clientName?: string
   routeCode?: string
   assignedTo?: string
-  period?: 'today' | '7d' | '30d' | '90d' | 'tudo'
+  inicio?: string | null   // Prazo Final de (YYYY-MM-DD) — filtra pela viagem do ticket
+  fim?: string | null      // Prazo Final até (YYYY-MM-DD)
   search?: string
 }

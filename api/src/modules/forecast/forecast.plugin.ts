@@ -9,12 +9,14 @@ export const forecastPlugin = new Elysia({ name: 'forecast' })
   .group('/api/forecast', (app) =>
     app
       .get('/demand', ({ query }) => forecastDemand({
-        lookbackDays: query.lookback,
-        horizonDays:  query.horizon,
-        dimension:    query.dimension,
+        inicio:      query.inicio,
+        fim:         query.fim,
+        horizonDays: query.horizon,
+        dimension:   query.dimension,
       }), {
         query: t.Object({
-          lookback:  t.Optional(t.Numeric({ minimum: 7, maximum: 180 })),
+          inicio:    t.Optional(t.String()),
+          fim:       t.Optional(t.String()),
           horizon:   t.Optional(t.Numeric({ minimum: 1, maximum: 30 })),
           dimension: t.Optional(dimension),
         }),

@@ -9,8 +9,9 @@ import {
 
 /**
  * Insights API plugin — 4 read-only endpoints under /api/insights/* protected
- * by authGuard (any authenticated role). Each endpoint returns aggregated
- * analytics for a configurable range (7d / 30d / 90d).
+ * by authGuard (any authenticated role). Cada endpoint aceita um intervalo de
+ * datas "Prazo Final" (inicio/fim, 'YYYY-MM-DD', ambos opcionais) que corta por
+ * trips.window_end (e occurred_at nos alertas). Sem datas = sem corte (tudo).
  *
  * The plugin is registered in api/src/index.ts during Wave 1 plan 06-04 wiring.
  *
@@ -18,18 +19,17 @@ import {
  * @see RESEARCH lines 180-194 (endpoint contracts)
  */
 
-const range = t.Union([t.Literal('7d'), t.Literal('30d'), t.Literal('90d')])
-
 export const insightsPlugin = new Elysia({ name: 'insights' })
   .use(authGuard)
   .group('/api/insights', (app) =>
     app
       .get(
         '/sla-history',
-        ({ query }) => getSlaHistory(query.range ?? '30d'),
+        ({ query }) => getSlaHistory({ inicio: query.inicio, fim: query.fim }),
         {
           query: t.Object({
-            range: t.Optional(range),
+            inicio: t.Optional(t.String()),
+            fim: t.Optional(t.String()),
           }),
           detail: {
             tags: ['insights'],
@@ -39,10 +39,11 @@ export const insightsPlugin = new Elysia({ name: 'insights' })
       )
       .get(
         '/drivers-ranking',
-        ({ query }) => getDriversRanking(query.range ?? '30d', query.limit ?? 10),
+        ({ query }) => getDriversRanking({ inicio: query.inicio, fim: query.fim }, query.limit ?? 10),
         {
           query: t.Object({
-            range: t.Optional(range),
+            inicio: t.Optional(t.String()),
+            fim: t.Optional(t.String()),
             limit: t.Optional(t.Numeric({ minimum: 1, maximum: 50 })),
           }),
           detail: {
@@ -53,10 +54,11 @@ export const insightsPlugin = new Elysia({ name: 'insights' })
       )
       .get(
         '/problematic-routes',
-        ({ query }) => getProblematicRoutes(query.range ?? '30d'),
+        ({ query }) => getProblematicRoutes({ inicio: query.inicio, fim: query.fim }),
         {
           query: t.Object({
-            range: t.Optional(range),
+            inicio: t.Optional(t.String()),
+            fim: t.Optional(t.String()),
           }),
           detail: {
             tags: ['insights'],
@@ -66,10 +68,11 @@ export const insightsPlugin = new Elysia({ name: 'insights' })
       )
       .get(
         '/alerts-distribution',
-        ({ query }) => getAlertsDistribution(query.range ?? '30d'),
+        ({ query }) => getAlertsDistribution({ inicio: query.inicio, fim: query.fim }),
         {
           query: t.Object({
-            range: t.Optional(range),
+            inicio: t.Optional(t.String()),
+            fim: t.Optional(t.String()),
           }),
           detail: {
             tags: ['insights'],

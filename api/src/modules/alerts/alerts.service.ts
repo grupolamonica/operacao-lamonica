@@ -1,10 +1,11 @@
-import { and, eq, gte, ilike, or, sql, inArray } from 'drizzle-orm'
+import { and, eq, ilike, or, sql, inArray } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { alerts } from '../../db/schema/alerts'
 import { treatments } from '../../db/schema/treatments'
 import { trips } from '../../db/schema/trips'
 import { clients } from '../../db/schema/clients'
 import { routes } from '../../db/schema/routes'
+import { prazoRangeSql } from '../../lib/prazoRange'
 
 // Pares from/to do translate() p/ strip de acentos no Postgres (mesma normalização do normalizeMotorista).
 const ACC = "'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇç','AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCc'"
@@ -16,19 +17,9 @@ export type AlertFilters = {
   clientName?: string
   routeCode?:  string
   assignedTo?: string
-  period?:     'today'|'7d'|'30d'|'90d'|'tudo'
+  inicio?:     string | null
+  fim?:        string | null
   search?:     string
-}
-
-function periodCutoff(p?: string): Date | null {
-  if (!p) return null
-  const d = new Date()
-  if (p === 'today') { d.setHours(0, 0, 0, 0); return d }
-  if (p === '7d')    { d.setDate(d.getDate() - 7);  return d }
-  if (p === '30d')   { d.setDate(d.getDate() - 30); return d }
-  if (p === '90d')   { d.setDate(d.getDate() - 90); return d }
-  // 'tudo' (ou qualquer outro) → sem corte; inclui o histórico de tickets importado do GAS
-  return null
 }
 
 export async function listAlerts(f: AlertFilters) {
@@ -37,8 +28,10 @@ export async function listAlerts(f: AlertFilters) {
   if (f.status)     conditions.push(eq(alerts.status, f.status))
   if (f.type)       conditions.push(eq(alerts.type, f.type))
   if (f.assignedTo) conditions.push(eq(alerts.assignedTo, f.assignedTo))
-  const cutoff = periodCutoff(f.period)
-  if (cutoff) conditions.push(gte(alerts.occurredAt, cutoff))
+  // Prazo Final da viagem do alerta — réplica do checkVisibilityDate do painel (trips.window_end).
+  if (f.inicio || f.fim) {
+    conditions.push(sql`EXISTS (SELECT 1 FROM trips t WHERE t.id = ${alerts.tripId} AND (${prazoRangeSql(sql`t.window_end`, f.inicio, f.fim)}))`)
+  }
 
   if (f.clientName || f.routeCode) {
     const tripConditions = []

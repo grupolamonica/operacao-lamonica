@@ -5,12 +5,11 @@ import { OperationalQueue } from './components/OperationalQueue'
 import { OperatorsQueue } from './components/OperatorsQueue'
 import { VehicleQuickPanel } from './components/VehicleQuickPanel'
 import { LiveMap } from '@/components/domain/LiveMap'
-import { PeriodFilter } from '@/components/domain/PeriodFilter'
-import type { PeriodoSla } from '@/data/types'
+import { PrazoFinalFilter, type PrazoRange, defaultPrazoRange } from '@/components/domain/PrazoFinalFilter'
 
 export function TorreDeControlePage() {
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null)
-  const [periodo, setPeriodo] = useState<PeriodoSla>('tudo')
+  const [range, setRange] = useState<PrazoRange>(() => defaultPrazoRange('op')) // hoje (igual ao painel)
 
   return (
     <div className="space-y-5">
@@ -19,10 +18,10 @@ export function TorreDeControlePage() {
           <h1 className="text-2xl font-bold text-white">Torre de Controle</h1>
           <p className="text-sm text-white/70">Fila priorizada de incidentes e operação ativa</p>
         </div>
-        <PeriodFilter<PeriodoSla> label="Período" value={periodo} onChange={setPeriodo} />
+        <PrazoFinalFilter value={range} onChange={setRange} />
       </header>
 
-      <TorreKPIRow periodo={periodo} />
+      <TorreKPIRow range={range} />
 
       <div className="grid grid-cols-1 lg:grid-cols-10 gap-5">
         {/* Map shrinks when the quick panel is open to give it room */}
@@ -45,10 +44,10 @@ export function TorreDeControlePage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-10 gap-5 items-stretch">
         <div className="lg:col-span-7 min-w-0">
-          <AtRiskTripsTable period={periodo} />
+          <AtRiskTripsTable range={range} />
         </div>
         <div className="lg:col-span-3 min-w-0">
-          <OperationalQueue className="max-h-[650px]" period={periodo} />
+          <OperationalQueue className="max-h-[650px]" range={range} />
         </div>
       </div>
     </div>
