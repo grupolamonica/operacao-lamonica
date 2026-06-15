@@ -13,6 +13,9 @@ const TorreDeControlePage = lazy(() =>
 const ViagensPage = lazy(() =>
   import('./pages/viagens/ViagensPage').then(m => ({ default: m.ViagensPage })),
 )
+const ControleOperacionalPage = lazy(() =>
+  import('./pages/controle-operacional/ControleOperacionalPage').then(m => ({ default: m.ControleOperacionalPage })),
+)
 const MotoristasPage = lazy(() =>
   import('./pages/motoristas/MotoristasPage').then(m => ({ default: m.MotoristasPage })),
 )
@@ -63,6 +66,7 @@ export const router = createBrowserRouter([
           { path: 'dashboard',         element: <DashboardPage /> },
           { path: 'torre-de-controle', element: <L><TorreDeControlePage /></L> },
           { path: 'viagens',           element: <L><ViagensPage /></L> },
+          { path: 'controle-operacional', element: <L><ControleOperacionalPage /></L> },
           { path: 'motoristas',        element: <L><MotoristasPage /></L> },
           { path: 'geofences',         element: <L><GeofencesPage /></L> },
           { path: 'alertas',           element: <L><AlertasPage /></L> },
