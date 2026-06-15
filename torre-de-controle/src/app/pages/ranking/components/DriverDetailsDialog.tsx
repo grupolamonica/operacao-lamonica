@@ -60,12 +60,11 @@ interface DriverDetailsDialogProps {
 }
 
 // Enum canônico de vínculo (mesmos valores da planilha de cargas).
+// Só 1 tipo de terceiro (sem DEDICADO/SEVERO). Sem vínculo = TERCEIRO.
 const VINCULO_OPTIONS = [
   'AGREGADO DEDICADO',
   'AGREGADO',
   'TERCEIRO',
-  'TERCEIRO DEDICADO',
-  'TERCEIRO (SEVERO)',
   'PME',
   'FROTA',
   'PX',
@@ -192,7 +191,8 @@ export function DriverDetailsDialog({ driver, open, onOpenChange }: DriverDetail
 
   useEffect(() => {
     const raw = (driver?.vinculo ?? '').trim()
-    const clean = ['', '—', '-', 'â€”', 'Terceiros'].includes(raw) ? '' : raw
+    // Sem vínculo OU qualquer variante de terceiro → TERCEIRO (único tipo).
+    const clean = (!raw || ['—', '-', 'â€”', 'Terceiros'].includes(raw) || raw.toUpperCase().startsWith('TERCEIRO')) ? 'TERCEIRO' : raw
     setCurrentVinculo(clean)
     setEditVinculo(clean)
   }, [driver?.id, driver?.vinculo])
@@ -384,13 +384,9 @@ export function DriverDetailsDialog({ driver, open, onOpenChange }: DriverDetail
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                     <div className="space-y-1.5 sm:w-64">
                       <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Vínculo</div>
-                      <Select
-                        value={editVinculo || '__none'}
-                        onValueChange={(v) => setEditVinculo(v === '__none' ? '' : v)}
-                      >
+                      <Select value={editVinculo || 'TERCEIRO'} onValueChange={setEditVinculo}>
                         <SelectTrigger><SelectValue placeholder="TERCEIRO" /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="__none">TERCEIRO (sem vínculo definido)</SelectItem>
                           {VINCULO_OPTIONS.map((o) => (
                             <SelectItem key={o} value={o}>{o}</SelectItem>
                           ))}

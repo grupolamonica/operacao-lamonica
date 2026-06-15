@@ -266,6 +266,8 @@ export function formatTripDelta(deltaMinutes?: number | null): string {
 export function getDriverVinculoLabel(vinculo?: string | null): string {
   const v = (vinculo || '').trim()
   if (!v || v === '-' || v === '—' || v === 'â€”') return 'TERCEIRO'
+  // Só 1 tipo de terceiro — colapsa TERCEIRO DEDICADO / TERCEIRO (SEVERO) → TERCEIRO.
+  if (v.toUpperCase().startsWith('TERCEIRO')) return 'TERCEIRO'
   return v
 }
 
