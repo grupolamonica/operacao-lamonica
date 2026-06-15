@@ -56,6 +56,7 @@ import { cargasPlugin } from './modules/cargas/cargas.plugin'
 import { spxPlugin } from './modules/spx/spx.plugin'
 
 import { operacionalPlugin } from './modules/operacional/operacional.plugin'
+import { auditPlugin } from './modules/audit/audit.plugin'
 // Phase 12 — jobs Angellira (posições ao vivo + detectores de ocorrência)
 import { startAngelliraJobs } from './jobs/angellira-cron'
 import { processAlertDetection } from './jobs/alert-inline'
@@ -189,6 +190,7 @@ export const app = new Elysia()
   .use(tripsPlugin)
   // Controle Operacional — painel SPX + override de status (no cluster autenticado)
   .use(operacionalPlugin)
+  .use(auditPlugin)
   .use(driversPlugin)
   .use(alertsPlugin)
   .use(vehiclesPlugin)

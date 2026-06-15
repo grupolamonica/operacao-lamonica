@@ -1,11 +1,15 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Radio, Truck, Users, MapPin,
-  AlertTriangle, BarChart3, Trophy, Settings, Antenna, LineChart, TrendingUp, ClipboardList,
+  AlertTriangle, BarChart3, Trophy, Settings, Antenna, LineChart, TrendingUp, ClipboardList, ScrollText,
+  type LucideIcon,
 } from 'lucide-react'
 import { usePositionsStore } from '@/hooks/useVehiclePositions'
+import { useAuthStore } from '@/stores/useAuthStore'
 
-const navItems = [
+type NavItem = { to: string; label: string; icon: LucideIcon; adminOnly?: boolean }
+
+const navItems: NavItem[] = [
   { to: '/dashboard',         label: 'Dashboard',          icon: LayoutDashboard },
   { to: '/torre-de-controle', label: 'Torre de Controle',  icon: Radio },
   { to: '/viagens',           label: 'Viagens',            icon: Truck },
@@ -18,11 +22,15 @@ const navItems = [
   { to: '/previsao',          label: 'Previsão',           icon: TrendingUp },
   { to: '/ranking',           label: 'Ranking',            icon: Trophy },
   { to: '/configuracoes',     label: 'Configurações',      icon: Settings },
-] as const
+  { to: '/auditoria',         label: 'Auditoria',          icon: ScrollText, adminOnly: true },
+]
 
 export function AppSidebar() {
   const newAlertCount = usePositionsStore(s => s.newAlertCount)
   const clearAlerts   = usePositionsStore(s => s.clearAlerts)
+  const isAdmin       = useAuthStore(s => s.user?.role === 'admin')
+  // Itens admin-only (ex.: Auditoria) só aparecem para administradores.
+  const visibleItems  = navItems.filter(i => !i.adminOnly || isAdmin)
 
   return (
     <nav
@@ -105,7 +113,7 @@ export function AppSidebar() {
           Menu
         </p>
 
-        {navItems.map(({ to, label, icon: Icon }) => {
+        {visibleItems.map(({ to, label, icon: Icon }) => {
           // Real-time alert badge — clear on click
           const badge = to === '/alertas' && newAlertCount > 0 ? newAlertCount : undefined
           return (
