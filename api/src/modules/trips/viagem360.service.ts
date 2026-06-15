@@ -17,7 +17,7 @@
 import { getTripById } from './trips.service'
 import { getTripDossie } from './dossie.service'
 import { getTripTimeline } from './timeline.service'
-import { getTripRisk } from '../risk/risk.service'
+import { getTripRisk, recalcTripRisk } from '../risk/risk.service'
 import { getDriverLastPosition } from '../positions/positions.service'
 
 const CACHE_TTL_S = 20
@@ -42,7 +42,8 @@ export async function getViagem360(tripId: string): Promise<Record<string, unkno
   const [dossie, timeline, risco] = await Promise.all([
     getTripDossie(tripId).catch(() => null),
     getTripTimeline(tripId).catch(() => []),
-    getTripRisk(tripId).catch(() => null),
+    // paridade com GET /:id/risk: snapshot persistido, senão recalcula ao vivo.
+    getTripRisk(tripId).then((r) => r ?? recalcTripRisk(tripId)).catch(() => null),
   ])
 
   const motNome =
