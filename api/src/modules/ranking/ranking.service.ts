@@ -135,6 +135,11 @@ function tripInRange(trip: Trip, from: Date | null, to: Date | null): boolean {
  * Pure composition of the ranking — no I/O. Replicates the ride-rank
  * `DataContext` useMemo in the exact order documented above.
  */
+// Nome normalizado p/ casar vínculo entre `drivers` e o ranking (uppercase, sem
+// acento, espaços colapsados) — mesmo critério do dossiê e do seed.
+const nrmName = (s: string) =>
+  (s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
+
 export function composeRanking(input: ComposeRankingInput): ComposeRankingResult {
   const {
     sheetTrips,
@@ -189,17 +194,27 @@ export function composeRanking(input: ComposeRankingInput): ComposeRankingResult
   //    drivers.vinculo (canônico por driver_id, editável pelo operador).
   const derived = deriveDrivers(trips);
 
-  // 6b. drivers.vinculo (editado pelo operador na Torre, canônico por driver_id)
-  //     tem precedência sobre o casamento por nome da planilha.
-  const vinculoById = new Map(
-    driverRecords
-      .filter((d) => (d.vinculo ?? '').trim())
-      .map((d) => [normalizeDriverId(d.driver_id), (d.vinculo as string).trim()]),
-  );
+  // 6b. Vínculo (drivers.vinculo, editado pelo operador) casado por NOME normalizado —
+  //     NÃO por driver_id: o id do registro `drivers` (ex.: '262.559') está em outra
+  //     numeração que não bate com o id Shopee das trips (ex.: '2625590'), então o
+  //     join por id perdia ~78/124 vínculos. Nome que mapeia p/ vínculos DIVERGENTES
+  //     = ambíguo → não aplica (decisão do operador: nunca casar errado).
+  const vinculoByName = new Map<string, string | null>(); // null = ambíguo
+  for (const d of driverRecords) {
+    const v = (d.vinculo ?? '').trim();
+    if (!v) continue;
+    const k = nrmName(d.driver_name);
+    if (!k) continue;
+    if (vinculoByName.has(k)) {
+      if (vinculoByName.get(k) !== v) vinculoByName.set(k, null); // conflito → ambíguo
+    } else {
+      vinculoByName.set(k, v);
+    }
+  }
   const derivedDrivers =
-    vinculoById.size > 0
+    vinculoByName.size > 0
       ? derived.map((d) => {
-          const v = vinculoById.get(normalizeDriverId(d.id));
+          const v = vinculoByName.get(nrmName(d.nome.replace(/\s*\(\d+\)\s*$/, '')));
           return v ? { ...d, vinculo: v } : d;
         })
       : derived;
