@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { UserCheck, Clock } from 'lucide-react'
 import { DriverAvatar } from '@/components/domain/DriverAvatar'
-import { formatRelative } from '@/lib/formatters'
+import { formatRelativeWall } from '@/lib/formatters'
 import { useUIStore } from '@/stores/useUIStore'
 import { cn } from '@/lib/utils'
 import type { Alert, AlertSeverity, AlertType } from '@/data/types'
@@ -73,7 +73,7 @@ export function AlertSimpleList({ alerts }: { alerts: Alert[] }) {
                     <span className={cn('h-2 w-2 rounded-full shrink-0', sevDot[a.severity])} />
                     <span className="text-sm font-semibold text-foreground truncate flex-1">{fmtTipo(a.type)}</span>
                     <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground shrink-0">
-                      <Clock className="h-3 w-3" /> {formatRelative(a.occurredAt)}
+                      <Clock className="h-3 w-3" /> {formatRelativeWall(a.occurredAt)}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 min-w-0">

@@ -66,10 +66,10 @@ export async function getExecutiveKpis({ inicio, fim, clientId }: BiDateRange): 
   }
   const alertRows = await db.select().from(alerts).where(and(...alertConditions)) // createdInWindow (período)
 
-  // Ocorrências ABERTAS = não-terminais, escopadas pelo Prazo Final da viagem do ticket
-  // (igual Torre) p/ a tela inteira honrar o intervalo. Sem datas = todas as abertas.
+  // Ocorrências ABERTAS = não-terminais, escopadas pela DATA DE ABERTURA (occurred_at) no intervalo
+  // (igual Torre/Ocorrências) p/ a tela honrar o filtro e não derrubar tickets sem viagem.
   const openConds = [sql`${alerts.status} NOT IN ('resolvido','encerrado')`]
-  if (inicio || fim) openConds.push(sql`EXISTS (SELECT 1 FROM trips t WHERE t.id = ${alerts.tripId} AND (${prazoRangeSql(sql`t.window_end`, inicio, fim)}))`)
+  if (inicio || fim) openConds.push(prazoRangeSql(sql`${alerts.occurredAt}`, inicio, fim))
   if (clientId) {
     if (tripIds.length > 0) openConds.push(inArray(alerts.tripId, tripIds))
     else openConds.push(sql`false`)

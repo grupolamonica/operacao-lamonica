@@ -54,6 +54,7 @@ export function AlertasPage() {
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
           <PrazoFinalFilter
+            label="Abertura"
             value={{ inicio: filters.inicio ?? null, fim: filters.fim ?? null }}
             onChange={(r) => setFilters((f) => ({ ...f, inicio: r.inicio, fim: r.fim }))}
           />

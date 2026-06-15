@@ -8,7 +8,7 @@ import { CommunicationsLog } from '@/components/domain/CommunicationsLog'
 import { LogCallDialog } from '@/components/domain/LogCallDialog'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import { formatDate, formatRelative } from '@/lib/formatters'
+import { formatDate, formatDateUTC, formatRelative, formatRelativeWall } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 import type { Alert, AlertStatus, Priority } from '@/data/types'
 import { AlertStatusStepper } from './AlertStatusStepper'
@@ -154,8 +154,8 @@ export function AlertDetailPanel({ alert, onClose }: Props) {
         )}
 
         <div className="grid grid-cols-2 gap-3 text-xs">
-          <Field label="Abertura" value={formatDate(alert.occurredAt, 'dd/MM HH:mm')} />
-          <Field label="Em andamento há" value={formatRelative(alert.occurredAt)} />
+          <Field label="Abertura" value={formatDateUTC(alert.occurredAt, 'dd/MM HH:mm')} />
+          <Field label="Em andamento há" value={formatRelativeWall(alert.occurredAt)} />
         </div>
 
         <Separator />

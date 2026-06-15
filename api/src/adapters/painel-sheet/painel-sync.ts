@@ -18,6 +18,7 @@ import { db } from '../../db/client'
 import { redis } from '../../redis/client'
 import { logger } from '../../lib/logger'
 import { calcularHorasViagemComRegulamentacao, calcularAdiantamentoHoras, PARAMS_PADRAO } from '../../lib/regulamentacao'
+import { brWallNow } from '../../lib/time'
 
 const SHEET_ID = process.env.PAINEL_SHEET_ID || '1_SAEL3Dd2y-dJyNdckvC53qS1F0Lezgk7MAFs0BEsPs'
 const KM_CHEGOU = PARAMS_PADRAO.kmParaConsiderarChegou
@@ -273,7 +274,7 @@ export async function syncPainel(): Promise<PainelSyncResult> {
         title: `${e.tipo} · ${e.mot || 'motorista'}`.slice(0, 150),
         description: desc.slice(0, 1000),
         source: 'Painel',
-        occurredAt: e.ab ?? agora.toISOString(),
+        occurredAt: e.ab ?? brWallNow().toISOString(),  // e.ab = wall-clock (Timestamp Abertura); fallback no mesmo convênio
         resolvedAt: e.stt === 'FECHADO' ? (e.trat ?? e.ab) : null,
         painelMeta: JSON.stringify(painelMeta),
       }

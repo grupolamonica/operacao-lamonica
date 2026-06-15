@@ -9,8 +9,8 @@ const KPI_CACHE_TTL = 30
  * KPIs da Torre de Controle (D-12-34).
  * Conjunto: viagens ativas, em risco, atrasos críticos, sem sinal, ocorrências.
  * Agregação SQL direta (9k+ trips) — não carrega tudo em memória como o dashboard legado.
- * Cache Redis 30s. Filtro (decisão do usuário: "filtra tudo da tela"): intervalo de datas
- * pelo PRAZO FINAL = trips.window_end; tickets cruzam pela viagem (alerts.trip_id).
+ * Cache Redis 30s. Filtro (decisão do usuário: "filtra tudo da tela"): viagens pelo PRAZO FINAL
+ * (trips.window_end); tickets pela DATA DE ABERTURA (occurred_at) — pega todos, inclusive sem viagem.
  */
 export async function getTorreKpis({ inicio, fim }: { inicio?: string | null; fim?: string | null } = {}) {
   const cacheKey = `kpi:torre:${inicio ?? ''}..${fim ?? ''}`
@@ -20,9 +20,7 @@ export async function getTorreKpis({ inicio, fim }: { inicio?: string | null; fi
   }
 
   const tripCut  = prazoRangeSql(sql`window_end`, inicio, fim)
-  const alertCut = (inicio || fim)
-    ? sql`EXISTS (SELECT 1 FROM trips t WHERE t.id = alerts.trip_id AND (${prazoRangeSql(sql`t.window_end`, inicio, fim)}))`
-    : sql`TRUE`
+  const alertCut = prazoRangeSql(sql`occurred_at`, inicio, fim)
 
   // Tipos de ticket abertos no padrão do painel (D-14, 14-CONTEXT):
   //  Viagem Atrasada = ATRASO · Veículo Parado = PARADA · Viagem no Prazo = OK (in_progress no_prazo)

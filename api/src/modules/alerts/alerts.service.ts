@@ -6,6 +6,7 @@ import { trips } from '../../db/schema/trips'
 import { clients } from '../../db/schema/clients'
 import { routes } from '../../db/schema/routes'
 import { prazoRangeSql } from '../../lib/prazoRange'
+import { brWallNow } from '../../lib/time'
 
 // Pares from/to do translate() p/ strip de acentos no Postgres (mesma normalização do normalizeMotorista).
 const ACC = "'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇç','AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCc'"
@@ -28,9 +29,11 @@ export async function listAlerts(f: AlertFilters) {
   if (f.status)     conditions.push(eq(alerts.status, f.status))
   if (f.type)       conditions.push(eq(alerts.type, f.type))
   if (f.assignedTo) conditions.push(eq(alerts.assignedTo, f.assignedTo))
-  // Prazo Final da viagem do alerta — réplica do checkVisibilityDate do painel (trips.window_end).
+  // Período por DATA DE ABERTURA do ticket (occurred_at) — filtra TODOS os tickets, inclusive os
+  // sem viagem vinculada (~52% não têm trip_id; o EXISTS no window_end da viagem os derrubava → era
+  // o motivo do filtro "não funcionar"). occurred_at é wall-clock de Brasília como UTC → bounds UTC.
   if (f.inicio || f.fim) {
-    conditions.push(sql`EXISTS (SELECT 1 FROM trips t WHERE t.id = ${alerts.tripId} AND (${prazoRangeSql(sql`t.window_end`, f.inicio, f.fim)}))`)
+    conditions.push(prazoRangeSql(sql`${alerts.occurredAt}`, f.inicio, f.fim))
   }
 
   if (f.clientName || f.routeCode) {
@@ -294,7 +297,8 @@ export async function createAlert(input: {
     driverId:    input.driverId ?? null,
     source:      'Manual',
     priority:    input.priority ?? 'media',
-    occurredAt:  new Date(),
+    // mesmo convênio dos tickets do painel (wall-clock de Brasília rotulado UTC) p/ exibir certo
+    occurredAt:  brWallNow(),
   }).returning()
   return row
 }

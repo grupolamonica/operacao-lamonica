@@ -2,7 +2,7 @@ import { Phone, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SeverityBadge, type AlertSeverity } from './SeverityBadge'
 import { DriverAvatar } from './DriverAvatar'
-import { formatTime, formatRelative } from '@/lib/formatters'
+import { formatTimeUTC, formatRelativeWall } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 
 export interface AlertItemData {
@@ -48,9 +48,9 @@ export function AlertItem({ alert, onAssume, onCall, onClick, selected, variant 
               LH {alert.lh}
             </span>
           )}
-          <span>{formatTime(alert.occurredAt)}</span>
+          <span>{formatTimeUTC(alert.occurredAt)}</span>
           <span>·</span>
-          <span>{formatRelative(alert.occurredAt)}</span>
+          <span>{formatRelativeWall(alert.occurredAt)}</span>
         </div>
         <p className="text-sm font-semibold text-foreground truncate">{alert.title}</p>
         {alert.subtitle && <p className="text-xs text-muted-foreground truncate">{alert.subtitle}</p>}
