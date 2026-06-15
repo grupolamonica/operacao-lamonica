@@ -199,7 +199,7 @@ export interface TimelineEvent {
 
 // ===== KPIs =====
 // Phase 13 — Dashboard com paridade ao painel GAS (agregação SQL real)
-export type PeriodoSla = 'hoje' | '7d' | '30d' | 'tudo'
+export type PeriodoSla = 'hoje' | '7d' | '30d' | '90d' | 'tudo'
 export interface KPIDashboard {
   filtroSla:          PeriodoSla
   total:              number   // viagens no período

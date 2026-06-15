@@ -25,11 +25,11 @@ export interface DelayRiskForecast {
   historical: { breachPctLastWeek: number }
 }
 
-export function useForecastDemand(horizon = 7, dimension: 'total' | 'client' | 'region' = 'total') {
+export function useForecastDemand(horizon = 7, dimension: 'total' | 'client' | 'region' = 'total', lookback = 30) {
   return useQuery({
-    queryKey: ['forecast-demand', horizon, dimension],
+    queryKey: ['forecast-demand', horizon, dimension, lookback],
     queryFn: async (): Promise<DemandForecast> => {
-      const { data, error } = await (api.api.forecast as any).demand.get({ query: { horizon, dimension } })
+      const { data, error } = await (api.api.forecast as any).demand.get({ query: { horizon, dimension, lookback } })
       if (error) throw new Error('Failed to load demand forecast')
       return data as DemandForecast
     },

@@ -8,8 +8,7 @@ import {
   useAlertsDistribution,
   type Range,
 } from '@/hooks/useInsights'
-import { FilterBar } from '@/components/domain/FilterBar'
-import { DateRangePicker } from './components/DateRangePicker'
+import { PeriodFilter } from '@/components/domain/PeriodFilter'
 import { SlaHistoricoChart } from './components/SlaHistoricoChart'
 import { MotoristasRankingChart } from './components/MotoristasRankingChart'
 import { RotasProblematicasTable } from './components/RotasProblematicasTable'
@@ -60,9 +59,11 @@ export function InsightsPage() {
           <p className="text-sm text-white/70">Analytics, tendências de SLA e ranking operacional</p>
         </div>
         <div className="ml-auto">
-          <FilterBar>
-            <DateRangePicker value={range} onChange={setRange} />
-          </FilterBar>
+          <PeriodFilter<Range>
+            value={range}
+            onChange={setRange}
+            options={[{ id: '7d', label: '7 dias' }, { id: '30d', label: '30 dias' }, { id: '90d', label: '90 dias' }]}
+          />
         </div>
       </header>
 

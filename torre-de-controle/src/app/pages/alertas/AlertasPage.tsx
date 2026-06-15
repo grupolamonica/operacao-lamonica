@@ -9,6 +9,7 @@ import { AlertDetailPanel } from './components/AlertDetailPanel'
 import { AlertasStatusBreakdown } from './components/AlertasStatusBreakdown'
 import { ExportButton } from '@/components/common/ExportButton'
 import { FixedPanel } from '@/components/domain/FixedPanel'
+import { PeriodFilter } from '@/components/domain/PeriodFilter'
 import { useAlerts, useAlert } from '@/hooks/useAlerts'
 import { useUIStore } from '@/stores/useUIStore'
 import { cn } from '@/lib/utils'
@@ -51,7 +52,18 @@ export function AlertasPage() {
             {simples ? 'Tickets e alertas — visão do operador' : 'Centro operacional — funil, tratativas e SLA'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <PeriodFilter<NonNullable<AlertFilters['period']>>
+            value={filters.period ?? 'today'}
+            onChange={(p) => setFilters((f) => ({ ...f, period: p }))}
+            options={[
+              { id: 'today', label: 'Hoje' },
+              { id: '7d', label: '7 dias' },
+              { id: '30d', label: '30 dias' },
+              { id: '90d', label: '90 dias' },
+              { id: 'tudo', label: 'Tudo' },
+            ]}
+          />
           {/* Toggle Visão simples / detalhada */}
           <div className="inline-flex rounded-md border border-white/20 overflow-hidden">
             <button

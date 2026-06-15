@@ -7,7 +7,20 @@ import { redis } from '../../redis/client'
  * Total/Concluídas/No Prazo/Atrasadas: contagem estática do snapshot. Tickets/Alertas: do painel-sync (Redis).
  */
 const TTL = 5
-export type PeriodoSla = 'hoje' | '7d' | '30d' | 'tudo'
+export type PeriodoSla = 'hoje' | '7d' | '30d' | '90d' | 'tudo'
+
+// Filtro de período por DATA DE DESCARGA (decisão do usuário): real (chegada/conclusão)
+// p/ concluídas, prevista (eta/prazo) p/ as ativas → assim a viagem aparece na janela em
+// que (vai) descarregar. 'tudo' = sem corte. 'hoje' usa o dia-calendário de Brasília.
+function descargaCutoff(periodo: PeriodoSla) {
+  if (periodo === 'tudo') return sql`TRUE`
+  const anchor = sql`COALESCE(arrived_at, eta, window_end)`
+  if (periodo === 'hoje') {
+    return sql`${anchor} >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'`
+  }
+  const days = periodo === '7d' ? 7 : periodo === '30d' ? 30 : 90
+  return sql`${anchor} >= now() - make_interval(days => ${days})`
+}
 
 export interface DashboardKpis {
   filtroSla: PeriodoSla
@@ -19,13 +32,14 @@ export async function getDashboardKpis(periodo: PeriodoSla = 'tudo'): Promise<Da
   const key = `kpi:dashboard:${periodo}`
   try { const c = await redis.get(key); if (c) return JSON.parse(c) } catch { /* fall through */ }
 
+  const cut = descargaCutoff(periodo)
   const [tot] = (await db.execute(sql`
     SELECT
       count(*)::int                                      AS total,
       count(*) FILTER (WHERE status='completed')::int    AS concluidas,
       count(*) FILTER (WHERE sla_status='no_prazo')::int AS no_prazo,
       count(*) FILTER (WHERE sla_status='atrasado')::int AS atrasadas
-    FROM trips WHERE source='painel'
+    FROM trips WHERE source='painel' AND (${cut})
   `)) as unknown as Array<{ total: number; concluidas: number; no_prazo: number; atrasadas: number }>
 
   const n = (v: unknown) => Number(v ?? 0)

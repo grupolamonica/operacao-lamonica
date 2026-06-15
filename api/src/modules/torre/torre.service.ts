@@ -2,20 +2,36 @@ import { sql } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { redis } from '../../redis/client'
 
-const KPI_CACHE_KEY = 'kpi:torre'
 const KPI_CACHE_TTL = 30
+
+export type PeriodoTorre = 'hoje' | '7d' | '30d' | '90d' | 'tudo'
+
+// Corte por período sobre uma coluna de data. 'tudo' = sem corte; 'hoje' = dia-calendário Brasília.
+function cutoff(col: ReturnType<typeof sql>, periodo: PeriodoTorre) {
+  if (periodo === 'tudo') return sql`TRUE`
+  if (periodo === 'hoje') {
+    return sql`${col} >= date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'`
+  }
+  const days = periodo === '7d' ? 7 : periodo === '30d' ? 30 : 90
+  return sql`${col} >= now() - make_interval(days => ${days})`
+}
 
 /**
  * KPIs da Torre de Controle (D-12-34).
  * Conjunto: viagens ativas, em risco, atrasos críticos, sem sinal, ocorrências.
  * Agregação SQL direta (9k+ trips) — não carrega tudo em memória como o dashboard legado.
- * Cache Redis 30s.
+ * Cache Redis 30s. Período (decisão do usuário: "filtra tudo da tela"): viagens pela DATA DE
+ * DESCARGA (real p/ concluídas, prevista p/ ativas), tickets pela data de abertura (occurred_at).
  */
-export async function getTorreKpis() {
-  const cached = await redis.get(KPI_CACHE_KEY)
+export async function getTorreKpis(periodo: PeriodoTorre = 'tudo') {
+  const cacheKey = `kpi:torre:${periodo}`
+  const cached = await redis.get(cacheKey)
   if (cached) {
     try { return JSON.parse(cached) } catch { /* fall through */ }
   }
+
+  const tripCut  = cutoff(sql`COALESCE(arrived_at, eta, window_end)`, periodo)
+  const alertCut = cutoff(sql`occurred_at`, periodo)
 
   // Tipos de ticket abertos no padrão do painel (D-14, 14-CONTEXT):
   //  Viagem Atrasada = ATRASO · Veículo Parado = PARADA · Viagem no Prazo = OK (in_progress no_prazo)
@@ -25,7 +41,7 @@ export async function getTorreKpis() {
       count(*) FILTER (WHERE status = 'in_progress')                                      AS ativas,
       count(*)                                                                            AS total,
       count(*) FILTER (WHERE status = 'in_progress' AND sla_status = 'no_prazo')          AS no_prazo
-    FROM trips
+    FROM trips WHERE (${tripCut})
   `) as unknown as Array<{ ativas: number; total: number; no_prazo: number }>
 
   const [alertRow] = await db.execute(sql`
@@ -33,7 +49,7 @@ export async function getTorreKpis() {
       count(*) FILTER (WHERE lower(type) = 'atraso' AND status NOT IN ('resolvido','encerrado')) AS atrasadas,
       count(*) FILTER (WHERE lower(type) = 'parada' AND status NOT IN ('resolvido','encerrado')) AS paradas,
       count(*) FILTER (WHERE status NOT IN ('resolvido','encerrado'))                            AS abertas
-    FROM alerts
+    FROM alerts WHERE (${alertCut})
   `) as unknown as Array<{ atrasadas: number; paradas: number; abertas: number }>
 
   const n = (v: unknown) => Number(v ?? 0)
@@ -48,6 +64,6 @@ export async function getTorreKpis() {
     ocorrenciasAbertas: { count: n(a.abertas) },
   }
 
-  await redis.set(KPI_CACHE_KEY, JSON.stringify(kpis), 'EX', KPI_CACHE_TTL)
+  await redis.set(cacheKey, JSON.stringify(kpis), 'EX', KPI_CACHE_TTL)
   return kpis
 }

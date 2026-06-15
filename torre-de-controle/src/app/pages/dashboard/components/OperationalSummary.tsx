@@ -1,7 +1,7 @@
 import { useDashboardKPIs } from '@/hooks/useDashboardKPIs'
 import type { PeriodoSla } from '@/data/types'
 
-const PERIODO_LABEL: Record<PeriodoSla, string> = { hoje: 'hoje', '7d': '7 dias', '30d': '30 dias', tudo: 'tudo' }
+const PERIODO_LABEL: Record<PeriodoSla, string> = { hoje: 'hoje', '7d': '7 dias', '30d': '30 dias', '90d': '90 dias', tudo: 'tudo' }
 
 // Phase 13 — Resumo operacional fiel ao filtro de SLA (mesmo agregado dos cards).
 export function OperationalSummary({ periodo = '30d' }: { periodo?: PeriodoSla }) {

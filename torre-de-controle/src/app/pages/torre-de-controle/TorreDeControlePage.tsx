@@ -5,18 +5,24 @@ import { OperationalQueue } from './components/OperationalQueue'
 import { OperatorsQueue } from './components/OperatorsQueue'
 import { VehicleQuickPanel } from './components/VehicleQuickPanel'
 import { LiveMap } from '@/components/domain/LiveMap'
+import { PeriodFilter } from '@/components/domain/PeriodFilter'
+import type { PeriodoSla } from '@/data/types'
 
 export function TorreDeControlePage() {
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null)
+  const [periodo, setPeriodo] = useState<PeriodoSla>('tudo')
 
   return (
     <div className="space-y-5">
-      <header className="pb-4">
-        <h1 className="text-2xl font-bold text-white">Torre de Controle</h1>
-        <p className="text-sm text-white/70">Fila priorizada de incidentes e operação ativa</p>
+      <header className="pb-4 flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Torre de Controle</h1>
+          <p className="text-sm text-white/70">Fila priorizada de incidentes e operação ativa</p>
+        </div>
+        <PeriodFilter<PeriodoSla> label="Período" value={periodo} onChange={setPeriodo} />
       </header>
 
-      <TorreKPIRow />
+      <TorreKPIRow periodo={periodo} />
 
       <div className="grid grid-cols-1 lg:grid-cols-10 gap-5">
         {/* Map shrinks when the quick panel is open to give it room */}
@@ -39,10 +45,10 @@ export function TorreDeControlePage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-10 gap-5 items-stretch">
         <div className="lg:col-span-7 min-w-0">
-          <AtRiskTripsTable />
+          <AtRiskTripsTable period={periodo} />
         </div>
         <div className="lg:col-span-3 min-w-0">
-          <OperationalQueue className="max-h-[650px]" />
+          <OperationalQueue className="max-h-[650px]" period={periodo} />
         </div>
       </div>
     </div>

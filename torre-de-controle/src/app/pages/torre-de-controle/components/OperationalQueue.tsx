@@ -6,9 +6,13 @@ import { LogCallDialog } from '@/components/domain/LogCallDialog'
 import { useAlerts } from '@/hooks/useAlerts'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import type { Period } from '@/components/domain/PeriodFilter'
+import type { AlertFilters } from '@/data/types'
 
-export function OperationalQueue({ className }: { className?: string }) {
-  const { data: openAlerts } = useAlerts({ status: 'aberto' })
+export function OperationalQueue({ className, period = 'tudo' }: { className?: string; period?: Period }) {
+  // Período "filtra tudo" da Torre → escopo dos tickets abertos por data de abertura (occurred_at).
+  const alertPeriod = (period === 'hoje' ? 'today' : period) as AlertFilters['period']
+  const { data: openAlerts } = useAlerts({ status: 'aberto', period: alertPeriod })
   const qc = useQueryClient()
   const navigate = useNavigate()
   const [callAlertId, setCallAlertId] = useState<string | null>(null)

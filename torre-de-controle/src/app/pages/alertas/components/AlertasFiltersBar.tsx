@@ -38,7 +38,7 @@ export function AlertasFiltersBar({ filters, onChange }: Props) {
     onChange({ ...filters, [key]: value })
 
   return (
-    <div className="bg-card border border-border rounded-lg p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+    <div className="bg-card border border-border rounded-lg p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
       <Filter label="Tipo de alerta">
         <Select value={filters.type ?? '__all'} onValueChange={(v) => set('type', v === '__all' ? undefined : v as AlertType)}>
           <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
@@ -80,18 +80,6 @@ export function AlertasFiltersBar({ filters, onChange }: Props) {
         </Select>
       </Filter>
 
-      <Filter label="Período">
-        <Select value={filters.period ?? 'today'} onValueChange={(v) => set('period', v as AlertFilters['period'])}>
-          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="today">Hoje</SelectItem>
-            <SelectItem value="7d">Últimos 7 dias</SelectItem>
-            <SelectItem value="30d">Últimos 30 dias</SelectItem>
-            <SelectItem value="90d">Últimos 90 dias</SelectItem>
-            <SelectItem value="tudo">Tudo (histórico)</SelectItem>
-          </SelectContent>
-        </Select>
-      </Filter>
     </div>
   )
 }

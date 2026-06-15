@@ -4,6 +4,7 @@ import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement
 import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { KPICard } from '@/components/domain/KPICard'
+import { PeriodFilter } from '@/components/domain/PeriodFilter'
 import { useBiKpis, useBiBreakdown, useBiTrend, type BiPeriod, type BiDimension, type BiMetric } from '@/hooks/useBi'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip, Legend)
@@ -47,18 +48,7 @@ export function BiExecutivoPage() {
           <h1 className="text-2xl font-bold text-white">BI Executivo</h1>
           <p className="text-sm text-white/70">Visão estratégica — entregas, SLA, ocorrências e ritmo da operação</p>
         </div>
-        <div className="flex bg-card border border-border rounded-md overflow-hidden shadow-sm">
-          {PERIODS.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => setPeriod(p.id)}
-              className={cn(
-                'px-3 py-1.5 text-xs font-medium transition-colors',
-                period === p.id ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-accent',
-              )}
-            >{p.label}</button>
-          ))}
-        </div>
+        <PeriodFilter<BiPeriod> value={period} onChange={setPeriod} options={PERIODS} />
       </header>
 
       {/* KPI cards */}

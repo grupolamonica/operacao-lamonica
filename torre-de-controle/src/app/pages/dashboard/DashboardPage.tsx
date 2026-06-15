@@ -4,7 +4,7 @@ import { TripsInProgressTable } from './components/TripsInProgressTable'
 import { ExceptionsAlertsPanel } from './components/ExceptionsAlertsPanel'
 import { OperationalSummary } from './components/OperationalSummary'
 import { LiveMap } from '@/components/domain/LiveMap'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { PeriodFilter } from '@/components/domain/PeriodFilter'
 import type { PeriodoSla } from '@/data/types'
 
 export function DashboardPage() {
@@ -17,18 +17,7 @@ export function DashboardPage() {
           <h1 className="text-2xl font-bold text-white">Dashboard Operacional</h1>
           <p className="text-sm text-white/70">Visão geral em tempo real da operação</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs text-white/70">Período (SLA)</span>
-          <Select value={periodo} onValueChange={(v) => setPeriodo(v as PeriodoSla)}>
-            <SelectTrigger className="h-9 w-[130px] text-xs"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="hoje">Hoje</SelectItem>
-              <SelectItem value="7d">7 dias</SelectItem>
-              <SelectItem value="30d">30 dias</SelectItem>
-              <SelectItem value="tudo">Tudo</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        <PeriodFilter<PeriodoSla> label="Período (descarga)" value={periodo} onChange={setPeriodo} />
       </header>
 
       <DashboardKPIRow periodo={periodo} />

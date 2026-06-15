@@ -40,12 +40,12 @@ export function useDashboardKPIs(periodo: PeriodoSla = '30d') {
   return { data: q.data ?? EMPTY_DASHBOARD, isLoading: q.isLoading, isError: q.isError, error: q.error, refetch: q.refetch }
 }
 
-// Torre KPIs — Phase 12: backend real /api/torre/kpis (D-12-34).
-export function useTorreKPIs() {
+// Torre KPIs — Phase 12: backend real /api/torre/kpis (D-12-34). Período "filtra tudo".
+export function useTorreKPIs(periodo: PeriodoSla = 'tudo') {
   const q = useQuery({
-    queryKey: ['torre-kpis'],
+    queryKey: ['torre-kpis', periodo],
     queryFn: async () => {
-      const { data, error } = await api.api.torre.kpis.get()
+      const { data, error } = await api.api.torre.kpis.get({ query: { periodo } })
       if (error) throw error
       return (data ?? EMPTY_TORRE) as KPITorre
     },
