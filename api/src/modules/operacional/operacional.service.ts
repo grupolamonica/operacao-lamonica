@@ -156,3 +156,33 @@ export async function getLhLog(lh: string): Promise<OpEvent[]> {
     LIMIT 50
   `)) as unknown as OpEvent[]
 }
+
+/**
+ * Rastreador de transições — roda em background (job a cada 2min). Compara o status
+ * operacional EFETIVO de cada viagem (override ?? derivado da SPX) com o último
+ * conhecido (último op_status_event da viagem) e grava um evento 'SISTEMA' só pras
+ * que mudaram. Assim o Log e as "Últimas movimentações" refletem as mudanças reais
+ * da operação ao vivo, não só as edições manuais do operador.
+ *
+ * Leve: 1 leitura SPX (cache Redis 60s) + 1 SELECT + 1 INSERT em lote só do delta.
+ * Na 1ª execução semeia o estado atual de todas (operador='SISTEMA' = "Início").
+ */
+export async function trackOpStatusTransitions(): Promise<{ checked: number; changed: number }> {
+  const viagens = await getOperacionalViagens()
+  const lastRows = (await db.execute(sql`
+    SELECT DISTINCT ON (lh) lh, status_operacional
+    FROM op_status_event
+    ORDER BY lh, created_at DESC
+  `)) as unknown as Array<{ lh: string; status_operacional: string }>
+  const last = new Map(lastRows.map((r) => [r.lh, r.status_operacional]))
+
+  const changed = viagens.filter((v) => v.statusOperacional && last.get(v.lh) !== v.statusOperacional)
+  if (changed.length) {
+    const values = changed.map((v) => sql`(${v.lh}, ${v.statusOperacional}, 'SISTEMA')`)
+    await db.execute(sql`
+      INSERT INTO op_status_event (lh, status_operacional, operador)
+      VALUES ${sql.join(values, sql`, `)}
+    `)
+  }
+  return { checked: viagens.length, changed: changed.length }
+}

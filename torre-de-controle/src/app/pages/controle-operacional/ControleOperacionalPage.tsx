@@ -34,21 +34,37 @@ function statusTone(s?: string | null): { bg: string; fg: string } {
   return { bg: 'var(--status-em-risco-bg)', fg: 'var(--status-em-risco-fg)' } // aguardando / descarregando
 }
 
+// AudioContext único e reaproveitado. Navegadores bloqueiam áudio até um gesto do
+// usuário (autoplay policy) — por isso unlockAudio() é chamado no 1º clique da página
+// e ao ligar o som; beep() faz resume() antes de tocar caso esteja suspenso.
+let sharedCtx: AudioContext | null = null
+function getCtx(): AudioContext | null {
+  const AC = (window as any).AudioContext || (window as any).webkitAudioContext
+  if (!AC) return null
+  if (!sharedCtx) {
+    try { sharedCtx = new AC() } catch { return null }
+  }
+  return sharedCtx
+}
+function unlockAudio() {
+  const ctx = getCtx()
+  if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {})
+}
 function beep() {
+  const ctx = getCtx()
+  if (!ctx) return
+  if (ctx.state === 'suspended') ctx.resume().catch(() => {})
   try {
-    const AC = (window as any).AudioContext || (window as any).webkitAudioContext
-    if (!AC) return
-    const ctx = new AC()
     const o = ctx.createOscillator()
     const g = ctx.createGain()
     o.connect(g); g.connect(ctx.destination)
     o.type = 'sine'; o.frequency.value = 880
-    g.gain.setValueAtTime(0.0001, ctx.currentTime)
-    g.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.02)
-    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35)
-    o.start(); o.stop(ctx.currentTime + 0.36)
-    o.onended = () => ctx.close()
-  } catch { /* autoplay bloqueado até interação — o toggle resolve */ }
+    const t = ctx.currentTime
+    g.gain.setValueAtTime(0.0001, t)
+    g.gain.exponentialRampToValueAtTime(0.22, t + 0.02)
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35)
+    o.start(t); o.stop(t + 0.36)
+  } catch { /* contexto ainda suspenso — próximo gesto desbloqueia */ }
 }
 
 const KPIS: Array<{ label: string; match: (u: string) => boolean; color: string }> = [
@@ -59,6 +75,19 @@ const KPIS: Array<{ label: string; match: (u: string) => boolean; color: string 
   { label: 'AGUARDANDO CARREG.', match: (u) => u === 'AGUARDANDO CARREGAMENTO', color: '#fb6340' },
   { label: 'CANCELADO', match: (u) => u === 'CANCELADO', color: '#f5365c' },
 ]
+
+function fmtDateTime(iso: string): string {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return '—'
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+function fmtDur(min: number): string {
+  const m = Math.max(0, min)
+  const h = Math.floor(m / 60)
+  return h > 0 ? `${h}h ${m % 60}min` : `${m % 60}min`
+}
 
 function agoLabel(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime()
@@ -81,6 +110,13 @@ export function ControleOperacionalPage() {
   const [logLh, setLogLh] = useState<string | null>(null)
   const [savingLh, setSavingLh] = useState<string | null>(null)
   const lastTopEvent = useRef<string | null>(null)
+
+  // Desbloqueia o áudio no 1º gesto do usuário (autoplay policy do navegador).
+  useEffect(() => {
+    const unlock = () => { unlockAudio(); window.removeEventListener('pointerdown', unlock) }
+    window.addEventListener('pointerdown', unlock)
+    return () => window.removeEventListener('pointerdown', unlock)
+  }, [])
 
   // Áudio quando chega uma movimentação nova (compara a chave do evento mais recente).
   useEffect(() => {
@@ -132,7 +168,19 @@ export function ControleOperacionalPage() {
         </div>
         <div className="flex items-center gap-3">
           <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"><ShoppingBag className="h-4 w-4" style={{ color: '#ee4d2d' }} /> Shopee</span>
-          <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={() => setSoundOn((v) => !v)}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5 text-xs"
+            onClick={() => {
+              unlockAudio()
+              setSoundOn((v) => {
+                const next = !v
+                if (next) beep() // confirma que o áudio está funcionando
+                return next
+              })
+            }}
+          >
             {soundOn ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
             {soundOn ? 'Som ligado' : 'Som mudo'}
           </Button>
@@ -160,7 +208,7 @@ export function ControleOperacionalPage() {
           <ul className="space-y-1.5">
             {movs.map((m, i) => (
               <li key={`${m.lh}-${m.created_at}-${i}`} className="flex items-center justify-between gap-2 text-xs">
-                <span><strong className="font-mono">{m.lh}</strong>{m.operador ? ` (${m.operador})` : ''} — <span className="font-semibold text-foreground">{m.status_operacional}</span></span>
+                <span><strong className="font-mono">{m.lh}</strong>{m.operador && m.operador !== 'SISTEMA' ? ` (${m.operador})` : ''} — <span className="font-semibold text-foreground">{m.status_operacional}</span></span>
                 <span className="shrink-0 text-muted-foreground">{agoLabel(m.created_at)}</span>
               </li>
             ))}
@@ -251,27 +299,43 @@ function LogDialog({ lh, onClose }: { lh: string; onClose: () => void }) {
   const { data: log, isLoading } = useLhLog(lh)
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-xl bg-card p-5 shadow-xl" style={{ border: '1px solid var(--border)' }} onClick={(e) => e.stopPropagation()}>
+      <div className="w-full max-w-2xl rounded-xl bg-card p-5 shadow-xl" style={{ border: '1px solid var(--border)' }} onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="flex items-center gap-2 text-sm font-bold text-primary"><History className="h-4 w-4" /> Log — LH <span className="font-mono">{lh}</span></h2>
+          <h2 className="flex items-center gap-2 text-sm font-bold text-primary"><History className="h-4 w-4" /> Histórico da Viagem: <span className="font-mono">{lh}</span></h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
         </div>
         {isLoading ? (
           <p className="text-xs text-muted-foreground">Carregando…</p>
         ) : log.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Sem alterações de status registradas para esta viagem.</p>
+          <p className="text-xs text-muted-foreground">Sem alterações de status registradas para esta viagem ainda.</p>
         ) : (
-          <ol className="space-y-2">
-            {log.map((e, i) => (
-              <li key={`${e.created_at}-${i}`} className="flex items-start gap-2 text-xs">
-                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: statusTone(e.status_operacional).fg }} />
-                <div>
-                  <div className="font-semibold text-foreground">{e.status_operacional}</div>
-                  <div className="text-[11px] text-muted-foreground">{e.operador ?? '—'} · {agoLabel(e.created_at)}</div>
-                </div>
-              </li>
-            ))}
-          </ol>
+          <div className="max-h-[60vh] overflow-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b text-left text-[10px] uppercase tracking-wider text-muted-foreground" style={{ borderColor: 'var(--border)' }}>
+                  <th className="py-2 pr-3 font-medium">De status</th>
+                  <th className="py-2 pr-3 font-medium">Para status</th>
+                  <th className="py-2 pr-3 font-medium">Duração</th>
+                  <th className="py-2 font-medium">Data da mudança</th>
+                </tr>
+              </thead>
+              <tbody>
+                {log.map((e, i) => {
+                  const prev = log[i + 1] // cronologicamente anterior (log vem desc)
+                  const de = prev ? prev.status_operacional : 'Início'
+                  const durMin = prev ? Math.round((new Date(e.created_at).getTime() - new Date(prev.created_at).getTime()) / 60000) : null
+                  return (
+                    <tr key={`${e.created_at}-${i}`} className="border-b" style={{ borderColor: 'var(--border)' }}>
+                      <td className="py-2 pr-3 text-muted-foreground">{de}</td>
+                      <td className="py-2 pr-3 font-semibold" style={{ color: statusTone(e.status_operacional).fg }}>{e.status_operacional}</td>
+                      <td className="py-2 pr-3 text-muted-foreground">{durMin != null ? fmtDur(durMin) : '—'}</td>
+                      <td className="whitespace-nowrap py-2 text-muted-foreground">{fmtDateTime(e.created_at)}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

@@ -14,6 +14,7 @@ import { syncPainel } from '../adapters/painel-sheet/painel-sync'
 import { runDetectors } from '../modules/alerts/detectors.service'
 import { syncCargas } from '../modules/cargas/cargas.sync'
 import { syncRankTrips } from '../adapters/spx-portal/rank-trips-sync.adapter'
+import { trackOpStatusTransitions } from '../modules/operacional/operacional.service'
 
 const QUEUE_NAME = 'angellira-cron'
 
@@ -47,6 +48,7 @@ export function startAngelliraJobs(): void {
     if (job.name === 'detectors') return runDetectors()
     if (job.name === 'cargas') return syncCargas()
     if (job.name === 'rank-sync') return syncRankTrips()
+    if (job.name === 'op-tracker') return trackOpStatusTransitions()
   }, { connection })
 
   worker.on('completed', (job, result) => logger.info({ job: job.name, result }, '[angellira] job ok'))
@@ -62,6 +64,8 @@ export function startAngelliraJobs(): void {
   void queue.add('cargas', {}, { repeat: { pattern: '*/15 * * * *' }, jobId: 'cargas-sync' })
   // Phase 15 — sync das viagens Shopee (SPX/asp) → tabela `trips` do ranking a cada 10min.
   void queue.add('rank-sync', {}, { repeat: { pattern: '*/10 * * * *' }, jobId: 'rank-trips-sync' })
+  // Controle Operacional — rastreia transições de status (SPX) a cada 2min → Log + movimentações ao vivo.
+  void queue.add('op-tracker', {}, { repeat: { pattern: '*/2 * * * *' }, jobId: 'op-status-tracker' })
 
-  logger.info('[angellira] jobs agendados — positions */3min, monitoring */5min, painel */10min, cargas */15min, rank-sync */10min, detectors hora cheia')
+  logger.info('[angellira] jobs agendados — positions */3min, monitoring */5min, painel */10min, cargas */15min, rank-sync */10min, op-tracker */2min, detectors hora cheia')
 }
