@@ -3,6 +3,7 @@ import { authGuard } from '../../lib/rbac'
 import { listTrips, getTripById, getTripStats, getTripRouteOptions, addTripNote } from './trips.service'
 import { getTripTimeline } from './timeline.service'
 import { getTripDossie } from './dossie.service'
+import { getViagem360 } from './viagem360.service'
 import { getTripRisk, recalcTripRisk } from '../risk/risk.service'
 
 const tripStatus = t.Union([t.Literal('planned'), t.Literal('in_progress'), t.Literal('completed'), t.Literal('delayed'), t.Literal('cancelled')])
@@ -67,6 +68,16 @@ export const tripsPlugin = new Elysia({ name: 'trips' })
       }, {
         params: t.Object({ id: t.String({ format: 'uuid' }) }),
         detail: { tags: ['trips'], summary: 'Dossiê cruzado da viagem (motorista + cavalo + carreta, vigências Angellira)' },
+      })
+      // Visão 360 — UM envelope com tudo cruzado (viagem + motorista[ranking/pessoal/vínculo]
+      // + carga + cavalo/carreta + risco + GPS + timeline). Cacheado 20s (low-load).
+      .get('/:id/360', async ({ params, set }) => {
+        const v = await getViagem360(params.id)
+        if (!v) { set.status = 404; return { error: 'Trip not found' } }
+        return v
+      }, {
+        params: t.Object({ id: t.String({ format: 'uuid' }) }),
+        detail: { tags: ['trips'], summary: 'Visão 360 da viagem (tudo cruzado, cache 20s)' },
       })
       .get('/:id/risk', async ({ params, set }) => {
         // Try persisted snapshot first; fall back to live recompute when missing
