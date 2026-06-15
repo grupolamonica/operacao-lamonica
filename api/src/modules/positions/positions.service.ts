@@ -71,21 +71,56 @@ interface PositionRow {
  * getRankingDrivers chamado UMA vez e indexado em Map antes do loop.
  */
 /**
- * Trajeto histórico de UM motorista (Phase 14, D-14-08) — todos os pontos
- * geocodados ordenados por data_posicao ASC, para traçar a rota no mapa.
+ * Trajeto histórico de UM motorista (Phase 14, D-14-08) — pontos geocodados
+ * ordenados por data_posicao ASC, para traçar a rota no mapa.
  * `motorista` pode vir com sufixo " (id)" do ranking — strip antes de normalizar.
+ *
+ * `from`/`to` (ISO, opcionais): restringem o trajeto à janela de UMA viagem.
+ * Sem eles, driver_positions traz TODOS os pontos do motorista (várias viagens),
+ * fazendo a polyline ligar trajetos distintos. A tela de Viagens passa a janela
+ * da viagem selecionada (partida → chegada/agora) para isolar só aquela rota.
  */
-export async function getDriverTrack(motorista: string): Promise<TrackPoint[]> {
+export async function getDriverTrack(
+  motorista: string,
+  from?: string,
+  to?: string,
+): Promise<TrackPoint[]> {
   const norm = normalizeMotorista((motorista ?? '').replace(/\s*\(\d+\)\s*$/, ''))
   if (!norm) return []
+  // Bounds só aplicadas quando parseáveis — entrada inválida não vira filtro silencioso.
+  const fromTs = from ? new Date(from) : null
+  const toTs   = to   ? new Date(to)   : null
+  const fromOk = fromTs && !isNaN(fromTs.getTime())
+  const toOk   = toTs   && !isNaN(toTs.getTime())
   const rows = await db.execute(sql`
     SELECT lat, lng, data_posicao
     FROM driver_positions
     WHERE motorista_norm = ${norm} AND lat IS NOT NULL AND lng IS NOT NULL
+      ${fromOk ? sql`AND data_posicao >= ${fromTs!.toISOString()}` : sql``}
+      ${toOk   ? sql`AND data_posicao <= ${toTs!.toISOString()}`   : sql``}
     ORDER BY data_posicao ASC
     LIMIT 1000
   `) as unknown as Array<{ lat: string; lng: string; data_posicao: Date | string }>
   return rows.map((r) => ({ lat: Number(r.lat), lng: Number(r.lng), ts: new Date(r.data_posicao).toISOString() }))
+}
+
+/** Última posição geocodada de UM motorista (para a visão 360 da viagem).
+ *  Mesmo strip de sufixo " (id)" + normalização usados no resto do módulo. */
+export async function getDriverLastPosition(
+  motorista: string,
+): Promise<{ lat: number; lng: number; cidade: string | null; uf: string | null; veiculo: string | null; at: string } | null> {
+  const norm = normalizeMotorista((motorista ?? '').replace(/\s*\(\d+\)\s*$/, ''))
+  if (!norm) return null
+  const rows = (await db.execute(sql`
+    SELECT lat, lng, cidade, uf, veiculo, data_posicao
+    FROM driver_positions
+    WHERE motorista_norm = ${norm} AND lat IS NOT NULL AND lng IS NOT NULL
+    ORDER BY data_posicao DESC
+    LIMIT 1
+  `)) as unknown as Array<{ lat: string; lng: string; cidade: string | null; uf: string | null; veiculo: string | null; data_posicao: Date | string }>
+  const r = rows[0]
+  if (!r) return null
+  return { lat: Number(r.lat), lng: Number(r.lng), cidade: r.cidade ?? null, uf: r.uf ?? null, veiculo: r.veiculo ?? null, at: new Date(r.data_posicao).toISOString() }
 }
 
 export async function getFleetPositions(): Promise<FleetPosition[]> {

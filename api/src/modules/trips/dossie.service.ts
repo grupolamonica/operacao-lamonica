@@ -42,6 +42,8 @@ export interface TripDossie {
   carga: Record<string, unknown> | null
   motorista: {
     nome: string
+    /** nome casa com 2+ motoristas no cadastro → não atribui (pendente). */
+    ambiguo?: boolean
     cpf: string | null
     rg: string | null
     cnh: string | null
@@ -142,26 +144,35 @@ export async function getTripDossie(tripId: string): Promise<TripDossie | null> 
   // --- MOTORISTA (torre drivers + ranking + cadastro Cargas por nome) ---
   let motorista: TripDossie['motorista'] = null
   if (motN) {
-    const [drv] = (await db.execute(sql`
+    // Decisão do operador: nome que casa com 2+ motoristas = AMBÍGUO → não atribui
+    // (fica pendente). Busca até 2; se vier mais de 1, não casa nenhum.
+    const drvs = (await db.execute(sql`
       SELECT name, cpf, rg, cnh, cnh_categoria, cnh_validade, nascimento, driver_kind, cidade, estado,
              phone, email, operational_score, operational_blocked, angellira_status, angellira_valid_until
-      FROM drivers WHERE upper(translate(trim(name), ${sql.raw(ACC)})) = ${motN} LIMIT 1
+      FROM drivers WHERE upper(translate(trim(name), ${sql.raw(ACC)})) = ${motN} LIMIT 2
     `)) as unknown as any[]
+    const ambiguo = drvs.length > 1
+    const drv = ambiguo ? null : (drvs[0] ?? null)
     let rk: any = null
-    try {
-      const ranking = await getRankingDrivers()
-      rk = ranking.find((r: any) => nrm(String(r.nome).replace(/\s*\(\d+\)\s*$/, '')) === motN)
-    } catch { /* ranking indisponível */ }
+    if (!ambiguo) {
+      try {
+        const ranking = await getRankingDrivers()
+        rk = ranking.find((r: any) => nrm(String(r.nome).replace(/\s*\(\d+\)\s*$/, '')) === motN)
+      } catch { /* ranking indisponível */ }
+    }
     // cadastro Cargas (motoristas_historico) por nome normalizado — pode não casar (CPFs divergem)
     let cargasMot: Record<string, unknown> | null = null
-    try {
-      const { data } = await sb.from('motoristas_historico')
-        .select('cpf, nome, cnh, cnh_validade, cnh_categoria, cnh_security, rg, telefone, nascimento, driver_kind, cidade, estado, angellira_sent_date, angellira_limit_date, aspx_found, aspx_display_name')
-        .ilike('nome', `%${t.sheet_motorista}%`).limit(1)
-      cargasMot = data?.[0] ?? null
-    } catch { /* tabela ausente */ }
+    if (!ambiguo) {
+      try {
+        const { data } = await sb.from('motoristas_historico')
+          .select('cpf, nome, cnh, cnh_validade, cnh_categoria, cnh_security, rg, telefone, nascimento, driver_kind, cidade, estado, angellira_sent_date, angellira_limit_date, aspx_found, aspx_display_name')
+          .ilike('nome', `%${t.sheet_motorista}%`).limit(1)
+        cargasMot = data?.[0] ?? null
+      } catch { /* tabela ausente */ }
+    }
     motorista = {
       nome: (t.sheet_motorista ?? drv?.name ?? '').trim(),
+      ambiguo,
       cpf: drv?.cpf ?? null,
       rg: drv?.rg ?? null,
       cnh: drv?.cnh ?? null,
