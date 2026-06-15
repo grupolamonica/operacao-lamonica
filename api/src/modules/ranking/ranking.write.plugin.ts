@@ -42,15 +42,14 @@ import {
   updateDriverVinculoLogged,
 } from './ranking.write.service';
 
+// Só 1 tipo de terceiro (sem DEDICADO/SEVERO). Sem vínculo = TERCEIRO.
 const vinculoSchema = t.Union([
   t.Literal('TERCEIRO'),
   t.Literal('AGREGADO DEDICADO'),
-  t.Literal('TERCEIRO DEDICADO'),
+  t.Literal('AGREGADO'),
   t.Literal('PME'),
   t.Literal('FROTA'),
   t.Literal('PX'),
-  t.Literal('AGREGADO'),
-  t.Literal('TERCEIRO (SEVERO)'),
   t.Null(),
 ]);
 
