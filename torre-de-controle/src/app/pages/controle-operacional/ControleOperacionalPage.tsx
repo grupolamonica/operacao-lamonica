@@ -24,14 +24,14 @@ import {
 } from '@/hooks/useOperacional'
 
 /**
- * Controle Operacional — réplica do painel da Cargas na Torre, com a UI do Argon.
- * Os dados vêm da MESMA planilha do sistema de cargas (CSV), com o STATUS de lá e o
- * GR (vigência) das colunas CheckList. Operação corrente (janela ±3 dias, sem os
- * concluídos).
- *   • 6 KPIs por status
- *   • Status EDITÁVEL pelo operador (override persistido na Torre, vence sobre a planilha)
- *   • "Últimas movimentações" — mudanças de status (planilha + manuais) + áudio
- *   • Tabela LH/Carregamento/Descarga/Motorista/Origem/Destino/Status(editável)/GR/Log
+ * Controle Operacional — réplica do painel da Shopee na Torre, com a UI do Argon.
+ * SEM planilha: a lógica do script (ASP→SHOPEE) é replicada no backend — a fonte é a
+ * SPX e o status é RECONCILIADO (locks NO SHOW/CTE EM EMISSÃO, anti-regressão, etc.).
+ *   • KPIs por status
+ *   • UM status editável pelo operador (merge): persistido na Torre, com o status cru
+ *     da SPX exibido como referência (⚠ quando diverge)
+ *   • "Últimas movimentações" — mudanças de status (SPX reconciliada + manuais) + áudio
+ *   • Tabela LH/Carregamento/Descarga/Motorista/Origem/Destino/Status(editável)/Log
  *   • Log = Histórico da Viagem (DE→PARA) · auto-atualização (10s)
  */
 
@@ -41,18 +41,9 @@ const norm = (s?: string | null) => (s ?? '').trim().toUpperCase()
 function statusTone(s?: string | null): { bg: string; fg: string } {
   const u = norm(s)
   if (u === 'CARREGADO' || u === 'DESCARREGADO') return { bg: 'var(--status-no-prazo-bg)', fg: 'var(--status-no-prazo-fg)' }
-  if (u === 'CANCELADO' || u === 'NO SHOW') return { bg: 'var(--status-atrasado-bg)', fg: 'var(--status-atrasado-fg)' }
+  if (u === 'CANCELADO' || u === 'NO SHOW' || u === 'DEVOLVIDO') return { bg: 'var(--status-atrasado-bg)', fg: 'var(--status-atrasado-fg)' }
   if (u.startsWith('CTE')) return { bg: 'rgba(45,118,232,0.15)', fg: '#2d76e8' }
   return { bg: 'var(--status-em-risco-bg)', fg: 'var(--status-em-risco-fg)' } // aguardando / descarregando
-}
-
-// GR / vigência (CheckList Cavalo|Carreta): Aprovado=verde, Vencido/Reprovado=vermelho, resto=cinza.
-function grTone(v?: string | null): { fg: string; label: string } {
-  const u = norm(v)
-  if (u === 'APROVADO') return { fg: '#2dce89', label: 'Aprovado' }
-  if (u === 'VENCIDO' || u === 'REPROVADO') return { fg: '#f5365c', label: (v || '').trim() }
-  if (!u || u === '#REF!' || u.includes('ENCONTRAD')) return { fg: 'var(--muted-foreground)', label: (v || '').trim() || '—' }
-  return { fg: 'var(--muted-foreground)', label: (v || '').trim() }
 }
 
 // AudioContext único e reaproveitado. Navegadores bloqueiam áudio até um gesto do
@@ -195,7 +186,7 @@ export function ControleOperacionalPage() {
           </div>
           <div>
             <h1 className="text-lg font-bold text-primary">Controle Operacional</h1>
-            <p className="text-xs text-muted-foreground">Da planilha de operação (Cargas) · atualiza a cada 10s</p>
+            <p className="text-xs text-muted-foreground">SPX + lógica do painel (status reconciliado) · atualiza a cada 10s</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -303,9 +294,7 @@ export function ControleOperacionalPage() {
                 <th className="px-3 py-2.5 font-medium">Motorista</th>
                 <th className="px-3 py-2.5 font-medium">Origem</th>
                 <th className="px-3 py-2.5 font-medium">Destino</th>
-                <th className="px-3 py-2.5 font-medium">Status (Operacional)</th>
-                <th className="px-3 py-2.5 font-medium">Status (Shopee)</th>
-                <th className="px-3 py-2.5 font-medium">GR (Cav/Car)</th>
+                <th className="px-3 py-2.5 font-medium">Status operacional <span className="font-normal normal-case opacity-70">(+ Shopee)</span></th>
                 <th className="px-3 py-2.5 text-center font-medium">Log</th>
               </tr>
             </thead>
@@ -315,10 +304,7 @@ export function ControleOperacionalPage() {
                 const saving = savingLh === t.lh
                 return (
                   <tr key={t.lh} className="border-b hover:bg-muted/30" style={{ borderColor: 'var(--border)' }}>
-                    <td className="px-3 py-2 font-mono">
-                      {t.lh}
-                      {t.tipo && <span className="ml-1.5 rounded px-1 py-0.5 text-[9px] font-semibold uppercase" style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}>{t.tipo}</span>}
-                    </td>
+                    <td className="px-3 py-2 font-mono">{t.lh}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{t.carregamento || '—'}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{t.descarga || '—'}</td>
                     <td className="px-3 py-2 font-medium">{t.motorista || '—'}</td>
@@ -340,26 +326,12 @@ export function ControleOperacionalPage() {
                         {saving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
                         {t.overridden && !saving && <span title="Status editado pelo operador" className="text-[9px] text-muted-foreground">✎</span>}
                       </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      {t.statusShopee ? (
-                        <span className="inline-flex items-center gap-1">
-                          <span className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: statusTone(t.statusShopee).bg, color: statusTone(t.statusShopee).fg }}>
-                            {t.statusShopee}
-                          </span>
-                          {norm(t.statusShopee) !== norm(t.statusOperacional) && (
-                            <span title="Diverge do status operacional (planilha)" className="text-[11px]" style={{ color: '#fb6340' }}>⚠</span>
-                          )}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
+                      {t.statusShopee && norm(t.statusShopee) !== norm(t.statusOperacional) && (
+                        <div className="mt-1 flex items-center gap-1 text-[10px]" style={{ color: '#fb6340' }} title="A SPX (Shopee) está num status diferente do operacional">
+                          <span>⚠</span>
+                          <span>Shopee: <strong>{t.statusShopee}</strong></span>
+                        </div>
                       )}
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex flex-col gap-0.5 text-[10px] leading-tight">
-                        <span style={{ color: grTone(t.grCavalo).fg }}>Cav: {grTone(t.grCavalo).label}</span>
-                        <span style={{ color: grTone(t.grCarreta).fg }}>Car: {grTone(t.grCarreta).label}</span>
-                      </div>
                     </td>
                     <td className="px-3 py-2 text-center">
                       <button className="text-muted-foreground hover:text-primary" title="Histórico de status" onClick={() => setLogLh(t.lh)}>
@@ -370,7 +342,7 @@ export function ControleOperacionalPage() {
                 )
               })}
               {rows.length === 0 && (
-                <tr><td colSpan={10} className="px-3 py-8 text-center text-muted-foreground">{isLoading ? 'Carregando viagens…' : 'Nenhuma viagem na operação corrente.'}</td></tr>
+                <tr><td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">{isLoading ? 'Carregando viagens…' : 'Nenhuma viagem na operação corrente.'}</td></tr>
               )}
             </tbody>
           </table>

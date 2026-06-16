@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 
-// Controle Operacional — dados vêm SÓ da API SPX (asp). Polling ao vivo + override
-// de status editável pelo operador.
+// Controle Operacional — fonte SPX (asp); status reconciliado (lógica do script) +
+// editável pelo operador, com o status cru da SPX como referência.
 
 export const OP_STATUSES = [
   'AGUARDANDO CHEGAR NO CLIENTE',
@@ -10,16 +10,17 @@ export const OP_STATUSES = [
   'CARREGADO',
   'CTE EM EMISSÃO',
   'CTE ENVIADO',
+  'AGUARDANDO DESCARGA',
   'DESCARREGANDO',
   'DESCARREGADO',
   'NO SHOW',
   'CANCELADO',
+  'DEVOLVIDO',
 ] as const
 export type OpStatus = (typeof OP_STATUSES)[number]
 
 export interface OpViagem {
   lh: string
-  tipo: string
   carregamento: string
   descarga: string
   motorista: string
@@ -27,9 +28,6 @@ export interface OpViagem {
   destino: string
   cavalo: string
   carreta: string
-  vinculo: string
-  grCavalo: string
-  grCarreta: string
   statusBase: string
   statusOperacional: string
   statusShopee: string

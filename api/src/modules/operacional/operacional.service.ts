@@ -1,61 +1,134 @@
 /**
- * Controle Operacional — réplica do painel da Shopee/Cargas na Torre.
+ * Controle Operacional — réplica do painel da Shopee na Torre, SEM a planilha.
  *
- * FONTE = a MESMA planilha do sistema de cargas (CSV público). O STATUS exibido é
- * o da coluna STATUS de lá (não derivamos da SPX), e o GR vem das colunas CheckList
- * Cavalo/Carreta. A planilha é cacheada no Redis (60s) pra o polling do painel não
- * baixar o CSV a cada chamada. Mostramos a operação CORRENTE: janela ±3 dias em DATA
- * CARREGAMENTO, excluindo DESCARREGADO (concluído) e linhas sem status.
+ * A lógica do script da planilha (ASP→SHOPEE) é replicada aqui: a fonte é a SPX
+ * (`fetchAspRows` = a aba "ASP"), e o STATUS operacional é RECONCILIADO a partir do
+ * status SPX com as MESMAS regras do script:
+ *   - NO SHOW / CTE EM EMISSÃO são intocáveis (a SPX não sobrescreve);
+ *   - CANCELADO / DEVOLVIDO sempre propagam;
+ *   - status de descarga só entram se já passou do CTE ENVIADO;
+ *   - anti-regressão: não volta de CTE ENVIADO / descarga p/ estados anteriores.
  *
- * STATUS EDITÁVEL: o operador pode sobrescrever o status no painel (override em
- * op_status_override, que vence sobre o da planilha). Cada alteração grava um evento
- * (op_status_event) que alimenta "Últimas movimentações" + "Log". O rastreador também
- * grava transições automáticas quando o status da planilha muda.
+ * O status reconciliado fica PERSISTIDO por LH em op_status_override — e o operador
+ * pode EDITAR pelo painel (é o "merge" dos dois status: um só, editável, com o status
+ * cru da SPX exibido como referência). Cada mudança grava op_status_event (Log +
+ * Últimas movimentações). A reconciliação automática roda no job a cada 2 min.
  */
 import { sql } from 'drizzle-orm'
 import { db } from '../../db/client'
-import { fetchCargasSheet, parseBrDate, type SheetRow } from './cargas-sheet.adapter'
 import { fetchAspRows } from '../../adapters/spx-portal/asp.adapter'
 
-const CACHE_KEY = 'operacional:sheet:v1'
-const SPX_KEY = 'operacional:spxmap:v1'
-const CACHE_TTL = 60 // s — CSV/SPX batidos no máx. 1x/60s independente do polling do painel
+const SPX_KEY = 'operacional:spx:v2'
+const CACHE_TTL = 60 // s — SPX batida no máx. 1x/60s independente do polling do painel
 const DAYS_BACK = 3
-const DAYS_FWD = 3
+const DAYS_FWD = 7
 
-// Status editáveis (os da planilha). DESCARREGADO/CANCELADO existem mas a operação
-// corrente normalmente não fica neles; ainda assim o operador pode setar.
+// Status editáveis (os mesmos do painel/script).
 export const OP_STATUSES = [
   'AGUARDANDO CHEGAR NO CLIENTE',
   'AGUARDANDO CARREGAMENTO',
   'CARREGADO',
   'CTE EM EMISSÃO',
   'CTE ENVIADO',
+  'AGUARDANDO DESCARGA',
   'DESCARREGANDO',
   'DESCARREGADO',
   'NO SHOW',
   'CANCELADO',
+  'DEVOLVIDO',
 ] as const
 export type OpStatus = (typeof OP_STATUSES)[number]
 
+const DESCARGA = ['AGUARDANDO DESCARGA', 'DESCARREGANDO', 'DESCARREGADO']
+const PERMITEM_DESCARGA = ['CTE ENVIADO', 'AGUARDANDO DESCARGA', 'DESCARREGANDO']
+const EXCECAO = ['CANCELADO', 'DEVOLVIDO']
+
+/**
+ * Reconciliação de status (réplica das regras do script da planilha). Decide o status
+ * efetivo a partir do atual (persistido) e do novo (SPX). Estável: mesma entrada → mesma saída.
+ */
+export function reconcileStatus(atual: string, spx: string): string {
+  const a = (atual || '').trim().toUpperCase()
+  const n = (spx || '').trim().toUpperCase()
+  if (!n) return atual // sem SPX → mantém
+  if (!a) return spx // primeira vez → adota o status da SPX
+  if (a === n) return atual
+  if (a === 'NO SHOW' || a === 'CTE EM EMISSÃO') return atual // intocáveis
+  if (EXCECAO.includes(n)) return spx // exceção sempre propaga
+  if (DESCARGA.includes(n)) return PERMITEM_DESCARGA.includes(a) ? spx : atual // descarga só depois do CTE
+  if (a !== 'CTE ENVIADO' && !DESCARGA.includes(a)) return spx // anti-regressão
+  return atual
+}
+
+interface SpxTrip {
+  lh: string
+  spxStatus: string
+  motorista: string
+  cavalo: string
+  carreta: string
+  origem: string
+  destino: string
+  carregamento: string
+  descarga: string
+}
+
+const stripBr = (s: string) => (s || '').replace(/\[.*?\]\s*/g, '').trim()
+const driverName = (s: string) => (s || '').replace(/\[.*?\]\s*/, '').trim()
+
+async function getSpxTrips(): Promise<SpxTrip[]> {
+  const { redis } = await import('../../redis/client')
+  try {
+    const c = await redis.get(SPX_KEY)
+    if (c) return JSON.parse(c) as SpxTrip[]
+  } catch {
+    /* segue p/ buscar */
+  }
+  const trips: SpxTrip[] = []
+  try {
+    const { rows } = await fetchAspRows({ queryTypes: [1, 2, 3], daysBack: DAYS_BACK, daysFwd: DAYS_FWD })
+    const seen = new Set<string>()
+    for (const r of rows) {
+      const lh = (r['LH Trip Number'] || '').trim()
+      if (!lh || seen.has(lh)) continue
+      seen.add(lh)
+      let spxStatus = r['Status Operacional'] || ''
+      // 'Arrived' ambíguo: chegou na ORIGEM (sem saída real) = aguardando carregar
+      if (r['Status'] === 'Arrived' && !(r['CPT ORIGEM REAL'] || '').trim()) spxStatus = 'AGUARDANDO CARREGAMENTO'
+      const plates = (r['Vehicle Plate Number'] || '').split(',')
+      const cavalo = (plates.shift() || '').trim()
+      trips.push({
+        lh,
+        spxStatus,
+        motorista: driverName(r['Driver ID']),
+        cavalo,
+        carreta: plates.join('/').trim(),
+        origem: stripBr(r['Station_Origem']),
+        destino: stripBr(r['Station_Destino']),
+        carregamento: r['ETA ORIGEM PROGRAMADO'] || '',
+        descarga: r['ETA DESTINO PROGRAMADO'] || '',
+      })
+    }
+    try { await redis.set(SPX_KEY, JSON.stringify(trips), 'EX', CACHE_TTL) } catch { /* noop */ }
+  } catch {
+    /* SPX fora do ar → lista vazia (painel mostra vazio, não derruba) */
+  }
+  return trips
+}
+
 export interface OpViagem {
   lh: string
-  tipo: string // ForeCast / Spot / Tendência
-  carregamento: string // DATA CARREGAMENTO (br)
-  descarga: string // DATA DESCARGA (br)
+  carregamento: string
+  descarga: string
   motorista: string
   origem: string
   destino: string
   cavalo: string
   carreta: string
-  vinculo: string
-  grCavalo: string // CheckList Cavalo (Aprovado/Vencido/...)
-  grCarreta: string // CheckList Carreta1 (ou Carreta2)
-  statusBase: string // STATUS da planilha (operacional)
-  statusOperacional: string // override do operador ?? statusBase
-  statusShopee: string // status da SPX (Shopee) p/ a mesma LH — read-only, p/ comparar
-  overridden: boolean
-  atualizadoEm: string | null // updated_at do override
+  statusBase: string // status reconciliado persistido (= operacional)
+  statusOperacional: string // = statusBase, editável (merge dos dois num só)
+  statusShopee: string // status cru da SPX (referência, p/ ver divergência)
+  overridden: boolean // editado manualmente pelo operador
+  atualizadoEm: string | null
 }
 
 export interface OpEvent {
@@ -65,95 +138,37 @@ export interface OpEvent {
   created_at: string
 }
 
-async function getSheetCached(): Promise<SheetRow[]> {
-  const { redis } = await import('../../redis/client')
-  try {
-    const cached = await redis.get(CACHE_KEY)
-    if (cached) return JSON.parse(cached) as SheetRow[]
-  } catch {
-    /* cache miss / redis hiccup → busca direto */
-  }
-  const rows = await fetchCargasSheet()
-  try {
-    await redis.set(CACHE_KEY, JSON.stringify(rows), 'EX', CACHE_TTL)
-  } catch {
-    /* sem cache não é fatal */
-  }
-  return rows
-}
+type Persisted = Map<string, { status: string; by: string | null; at: string }>
 
-/**
- * Status da SPX (Shopee) por LH — só p/ exibir ao lado do operacional (comparação).
- * Read-only, resiliente: se a SPX estiver indisponível, devolve mapa vazio (coluna
- * Shopee fica em branco) sem derrubar o painel. Cacheado 60s.
- */
-async function getSpxStatusByLh(): Promise<Map<string, string>> {
-  const { redis } = await import('../../redis/client')
-  try {
-    const cached = await redis.get(SPX_KEY)
-    if (cached) return new Map(JSON.parse(cached) as [string, string][])
-  } catch {
-    /* segue p/ buscar */
-  }
-  try {
-    const { rows } = await fetchAspRows({ queryTypes: [1, 2, 3], daysBack: 5, daysFwd: 5 })
-    const m = new Map<string, string>()
-    for (const r of rows) {
-      const lh = (r['LH Trip Number'] || '').trim()
-      if (!lh) continue
-      let s = r['Status Operacional'] || ''
-      // mesmo ajuste do 'Arrived' ambíguo (chegou na origem = aguardando carregar)
-      if (r['Status'] === 'Arrived' && !(r['CPT ORIGEM REAL'] || '').trim()) s = 'AGUARDANDO CARREGAMENTO'
-      m.set(lh, s)
-    }
-    try { await redis.set(SPX_KEY, JSON.stringify([...m]), 'EX', CACHE_TTL) } catch { /* noop */ }
-    return m
-  } catch {
-    return new Map() // SPX fora do ar → coluna Shopee vazia, painel segue pela planilha
-  }
+async function getPersisted(): Promise<Persisted> {
+  const rows = (await db.execute(sql`
+    SELECT lh, status_operacional, updated_by, updated_at FROM op_status_override
+  `)) as unknown as Array<{ lh: string; status_operacional: string; updated_by: string | null; updated_at: string }>
+  return new Map(rows.map((r) => [r.lh, { status: r.status_operacional, by: r.updated_by, at: r.updated_at }]))
 }
 
 export async function getOperacionalViagens(): Promise<OpViagem[]> {
-  const [rows, spxByLh] = await Promise.all([getSheetCached(), getSpxStatusByLh()])
-  const overrides = (await db.execute(sql`
-    SELECT lh, status_operacional, updated_at FROM op_status_override
-  `)) as unknown as Array<{ lh: string; status_operacional: string; updated_at: string }>
-  const ovMap = new Map(overrides.map((o) => [o.lh, o]))
-
-  const day = 86_400_000
-  const now = Date.now()
-  const lo = now - DAYS_BACK * day
-  const hi = now + DAYS_FWD * day
-
-  const seen = new Set<string>()
+  const [trips, persisted] = await Promise.all([getSpxTrips(), getPersisted()])
   const out: OpViagem[] = []
-  for (const r of rows) {
-    if (seen.has(r.lh)) continue
-    const st = r.status.toUpperCase()
-    // operação corrente: fora os concluídos e sem status
-    if (!st || st === 'DESCARREGADO') continue
-    const dt = parseBrDate(r.dataCarregamento)
-    if (!dt || dt.getTime() < lo || dt.getTime() > hi) continue
-    seen.add(r.lh)
-    const ov = ovMap.get(r.lh)
+  for (const t of trips) {
+    if (!t.motorista) continue // operação = viagens com motorista designado
+    const p = persisted.get(t.lh)
+    const eff = p?.status ?? t.spxStatus // persistido ?? inicial (SPX)
+    if ((eff || '').toUpperCase() === 'DESCARREGADO') continue // concluído sai da lista
     out.push({
-      lh: r.lh,
-      tipo: r.tipo,
-      carregamento: r.dataCarregamento,
-      descarga: r.dataDescarga,
-      motorista: r.motorista,
-      origem: r.origem,
-      destino: r.destino,
-      cavalo: r.cavalo,
-      carreta: r.carreta,
-      vinculo: r.vinculo,
-      grCavalo: r.checklistCavalo,
-      grCarreta: r.checklistCarreta1 || r.checklistCarreta2,
-      statusBase: r.status,
-      statusOperacional: ov?.status_operacional ?? r.status,
-      statusShopee: spxByLh.get(r.lh) ?? '',
-      overridden: ov != null,
-      atualizadoEm: ov?.updated_at ?? null,
+      lh: t.lh,
+      carregamento: t.carregamento,
+      descarga: t.descarga,
+      motorista: t.motorista,
+      origem: t.origem,
+      destino: t.destino,
+      cavalo: t.cavalo,
+      carreta: t.carreta,
+      statusBase: eff,
+      statusOperacional: eff,
+      statusShopee: t.spxStatus,
+      overridden: !!(p && p.by && p.by !== 'SISTEMA'),
+      atualizadoEm: p?.at ?? null,
     })
   }
   return out
@@ -192,31 +207,35 @@ export async function getLhLog(lh: string): Promise<OpEvent[]> {
 }
 
 /**
- * Rastreador de transições — roda em background (job a cada 2min). Compara o status
- * operacional EFETIVO de cada viagem (override ?? derivado da SPX) com o último
- * conhecido (último op_status_event da viagem) e grava um evento 'SISTEMA' só pras
- * que mudaram. Assim o Log e as "Últimas movimentações" refletem as mudanças reais
- * da operação ao vivo, não só as edições manuais do operador.
- *
- * Leve: 1 leitura SPX (cache Redis 60s) + 1 SELECT + 1 INSERT em lote só do delta.
- * Na 1ª execução semeia o estado atual de todas (operador='SISTEMA' = "Início").
+ * Reconciliação automática (job a cada 2 min) — replica o loop do script: para cada viagem
+ * com motorista, aplica reconcileStatus(persistido, SPX) e, quando muda, grava o novo
+ * status persistido (op_status_override, 'SISTEMA') + um evento (op_status_event).
+ * Edições manuais do operador (setOpStatus) são respeitadas pelas regras (locks/anti-regressão).
+ * Leve: 1 leitura SPX (cache 60s) + 1 SELECT + upserts só do delta.
  */
 export async function trackOpStatusTransitions(): Promise<{ checked: number; changed: number }> {
-  const viagens = await getOperacionalViagens()
-  const lastRows = (await db.execute(sql`
-    SELECT DISTINCT ON (lh) lh, status_operacional
-    FROM op_status_event
-    ORDER BY lh, created_at DESC
-  `)) as unknown as Array<{ lh: string; status_operacional: string }>
-  const last = new Map(lastRows.map((r) => [r.lh, r.status_operacional]))
-
-  const changed = viagens.filter((v) => v.statusOperacional && last.get(v.lh) !== v.statusOperacional)
-  if (changed.length) {
-    const values = changed.map((v) => sql`(${v.lh}, ${v.statusOperacional}, 'SISTEMA')`)
+  const [trips, persisted] = await Promise.all([getSpxTrips(), getPersisted()])
+  const changes: { lh: string; status: string }[] = []
+  for (const t of trips) {
+    if (!t.motorista) continue
+    const cur = persisted.get(t.lh)?.status ?? ''
+    const next = reconcileStatus(cur, t.spxStatus)
+    if (next && next !== cur) changes.push({ lh: t.lh, status: next })
+  }
+  for (const c of changes) {
+    await db.execute(sql`
+      INSERT INTO op_status_override (lh, status_operacional, updated_by, updated_at)
+      VALUES (${c.lh}, ${c.status}, 'SISTEMA', now())
+      ON CONFLICT (lh) DO UPDATE
+        SET status_operacional = ${c.status}, updated_by = 'SISTEMA', updated_at = now()
+    `)
+  }
+  if (changes.length) {
+    const values = changes.map((c) => sql`(${c.lh}, ${c.status}, 'SISTEMA')`)
     await db.execute(sql`
       INSERT INTO op_status_event (lh, status_operacional, operador)
       VALUES ${sql.join(values, sql`, `)}
     `)
   }
-  return { checked: viagens.length, changed: changed.length }
+  return { checked: trips.length, changed: changes.length }
 }
