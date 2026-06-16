@@ -1,9 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Truck, Volume2, VolumeX, History, ShoppingBag, X, Loader2 } from 'lucide-react'
+import { Truck, Volume2, VolumeX, History, ShoppingBag, X, Loader2, ListFilter, ChevronDown } from 'lucide-react'
 import { PanelCard } from '@/components/domain/PanelCard'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuItem,
+  DropdownMenuCheckboxItem,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu'
 import {
   useOperacionalViagens,
   useMovimentacoes,
@@ -117,7 +126,7 @@ export function ControleOperacionalPage() {
   const { data: movs } = useMovimentacoes({ refetchMs: 10_000 })
   const setStatus = useSetOpStatus()
 
-  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [statusFilter, setStatusFilter] = useState<string[]>([]) // vazio = todos
   const [soundOn, setSoundOn] = useState(true)
   const [logLh, setLogLh] = useState<string | null>(null)
   const [savingLh, setSavingLh] = useState<string | null>(null)
@@ -159,9 +168,12 @@ export function ControleOperacionalPage() {
   }, [viagens])
 
   const rows = useMemo(
-    () => (statusFilter === 'all' ? viagens : viagens.filter((t) => t.statusOperacional === statusFilter)),
+    () => (statusFilter.length === 0 ? viagens : viagens.filter((t) => statusFilter.includes(t.statusOperacional))),
     [viagens, statusFilter],
   )
+
+  const toggleStatus = (s: string) =>
+    setStatusFilter((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]))
 
   async function changeStatus(t: OpViagem, status: OpStatus) {
     if (status === t.statusOperacional) return
@@ -240,13 +252,44 @@ export function ControleOperacionalPage() {
         title={<span className="flex items-center gap-2 text-sm"><Truck className="h-4 w-4 text-primary" /> Detalhes das Viagens</span>}
         subtitle={`${rows.length} viagem(ns)`}
         action={
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="h-8 w-56 text-xs"><SelectValue placeholder="Filtrar status" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos os status</SelectItem>
-              {statusOptions.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="h-8 w-60 justify-between gap-1.5 text-xs font-normal">
+                <span className="flex items-center gap-1.5 truncate">
+                  <ListFilter className="h-3.5 w-3.5 shrink-0" />
+                  {statusFilter.length === 0
+                    ? 'Todos os status'
+                    : statusFilter.length === 1
+                      ? statusFilter[0]
+                      : `${statusFilter.length} status selecionados`}
+                </span>
+                <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="max-h-80 w-60 overflow-auto">
+              <DropdownMenuLabel className="text-xs">Filtrar por status</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {statusOptions.map((s) => (
+                <DropdownMenuCheckboxItem
+                  key={s}
+                  checked={statusFilter.includes(s)}
+                  onCheckedChange={() => toggleStatus(s)}
+                  onSelect={(e) => e.preventDefault()} // mantém aberto p/ marcar vários
+                  className="text-xs"
+                >
+                  {s}
+                </DropdownMenuCheckboxItem>
+              ))}
+              {statusFilter.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => setStatusFilter([])} className="text-xs">
+                    Limpar filtro
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         }
         noPadding
       >
