@@ -2,7 +2,8 @@
  * Detectores automáticos de ocorrência (D-12-28 / D-12-14) — porte do
  * verificarECriarTickets() do painel Lamonica, adaptado aos dados do Torre.
  *
- * Roda de hora em hora (cron 0 * * * *) — mesma cadência do verificarECriarTickets do GAS.
+ * Roda a cada 30 min — RE-TICKA enquanto o problema persiste (≈2/h), igual ao painel
+ * (verificarECriarTickets do GAS com permitirDuplicata). Cada ciclo re-abre o ticket do problema.
  *   - ATRASO          : in_progress e janela (window_end) já passou
  *   - PRAZO_PROXIMO   : window_end nas próximas 2h e ainda longe (>100km ou km desconhecido)
  *   - PROXIMO_ENTREGA : km restante < 100 e no prazo/adiantada  (b — usa distance_total/done)
@@ -13,15 +14,19 @@
  * PARADA/PROXIMO_ENTREGA disparam quando há km (distance_*) e/ou posições recentes;
  * sem esses dados ao vivo, ficam silenciosos (gating), sem falso-positivo.
  *
- * Idempotência: não duplica alert do mesmo tipo+trip em estado aberto/análise.
- * Auto-close preserva em_analise/em_tratativa (operador já cuidando).
+ * Re-ticket: NÃO duplica o mesmo tipo+trip se já houve um ticket nos últimos ~25min (janela);
+ * passado isso, abre de novo (timeline do problema). Auto-close (viagem OK) só fecha 'aberto'
+ * — preserva em_analise/em_tratativa (operador já cuidando).
  */
 import { sql } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { createAlert } from './alerts.service'
 
 const AUTO_TYPES = ['atraso', 'prazo_proximo', 'sem_sinal', 'parada', 'proximo_entrega']
-const OPEN_STATES = ['aberto', 'em_analise', 'em_tratativa']
+// Re-tickar enquanto o problema persiste (≈2/h, igual ao painel): em vez de "não duplicar
+// enquanto houver um aberto", só evita duplicar se JÁ criou um ticket do mesmo trip+tipo nos
+// últimos RETICKET_WINDOW_MIN. Janela < cron (*/30) p/ cada run re-abrir de forma confiável.
+const RETICKET_WINDOW_MIN = 25
 
 export interface DetectorResult { scanned: number; created: number; closed: number; byType: Record<string, number> }
 
@@ -57,13 +62,14 @@ export async function runDetectors(): Promise<DetectorResult> {
     lat_span: number | null; lng_span: number | null
   }>
 
-  // Alerts automáticos atualmente abertos, por trip+tipo
-  const openRows = (await db.execute(sql`
+  // Alerts automáticos criados nos últimos RETICKET_WINDOW_MIN, por trip+tipo (janela de
+  // re-ticket). Usa created_at (UTC real, defaultNow) — NÃO occurred_at (wall-clock BR rotulado UTC).
+  const recentRows = (await db.execute(sql`
     SELECT trip_id, type FROM alerts
     WHERE trip_id IS NOT NULL AND type = ANY(${sql.raw(`ARRAY[${AUTO_TYPES.map((t) => `'${t}'`).join(',')}]`)})
-      AND status = ANY(${sql.raw(`ARRAY[${OPEN_STATES.map((s) => `'${s}'`).join(',')}]`)})
+      AND created_at > now() - (${RETICKET_WINDOW_MIN} * interval '1 minute')
   `)) as unknown as Array<{ trip_id: string; type: string }>
-  const openSet = new Set(openRows.map((r) => `${r.trip_id}:${r.type}`))
+  const recentSet = new Set(recentRows.map((r) => `${r.trip_id}:${r.type}`))
 
   const now = Date.now()
   const byType: Record<string, number> = {}
@@ -109,7 +115,7 @@ export async function runDetectors(): Promise<DetectorResult> {
     if (detected.length === 0) { okTripIds.push(t.id); continue }
 
     for (const d of detected) {
-      if (openSet.has(`${t.id}:${d.type}`)) continue // idempotência
+      if (recentSet.has(`${t.id}:${d.type}`)) continue // já tickado nos últimos ~25min → espera o próximo ciclo
       await createAlert({ type: d.type, severity: d.severity, title: d.title, tripId: t.id, driverId: t.driver_id ?? undefined })
       created++; byType[d.type] = (byType[d.type] ?? 0) + 1
     }

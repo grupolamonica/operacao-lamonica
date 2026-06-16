@@ -59,7 +59,16 @@ export function startAngelliraJobs(): void {
   void queue.add('monitoring', {}, { repeat: { pattern: '*/5 * * * *' }, jobId: 'angellira-monitoring' })
   // Painel-sheet: reconciliação INCREMENTAL a cada 10min (upsert só do que falta/mudou; tickets pesados gated 30min).
   void queue.add('painel', {}, { repeat: { pattern: '*/10 * * * *' }, jobId: 'painel-sheet-sync' })
-  void queue.add('detectors', {}, { repeat: { pattern: '0 * * * *' },   jobId: 'angellira-detectors' })
+  // Detectores de ocorrência a CADA 30min — re-tickam enquanto o problema persiste (~2/h, igual ao painel).
+  // A cadência mudou (era '0 * * * *'); o repeatable antigo persiste no Redis entre deploys e rodaria em
+  // paralelo (duplo disparo às :00). Remove qualquer repeatable 'detectors' antes de reagendar.
+  void (async () => {
+    try {
+      const reps = await queue.getRepeatableJobs()
+      for (const r of reps) if (r.name === 'detectors') await queue.removeRepeatableByKey(r.key)
+    } catch { /* best-effort */ }
+    await queue.add('detectors', {}, { repeat: { pattern: '*/30 * * * *' }, jobId: 'angellira-detectors' })
+  })()
   // Phase 14 — sync do Cargas a cada 15min: open-loads + candidatos + cargas→trips + enrich por LH.
   void queue.add('cargas', {}, { repeat: { pattern: '*/15 * * * *' }, jobId: 'cargas-sync' })
   // Phase 15 — sync das viagens Shopee (SPX/asp) → tabela `trips` do ranking a cada 10min.

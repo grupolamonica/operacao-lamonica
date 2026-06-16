@@ -136,6 +136,16 @@
 
 * { border-color: var(--border); }
 
+/* Alerta visual: ocorrência gerada por alerta ainda não assumida pisca em vermelho
+   (réplica do "piscar vermelho" do painel). Pulsa um anel/sombra vermelha — não briga
+   com o bg/hover do card e fica vermelho independente da severidade. */
+@keyframes blinkRed {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 54, 92, 0); }
+  50%      { box-shadow: 0 0 0 3px rgba(245, 54, 92, 0.5); }
+}
+.blink-red { animation: blinkRed 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .blink-red { animation: none; box-shadow: 0 0 0 2px rgba(245, 54, 92, 0.55); } }
+
 html, body, #root { height: 100%; }
 
 body {

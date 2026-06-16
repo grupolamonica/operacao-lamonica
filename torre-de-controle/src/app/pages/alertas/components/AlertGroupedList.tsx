@@ -185,6 +185,7 @@ export function AlertGroupedList({ alerts }: Props) {
                     variant="list"
                     onClick={(id) => setSelectedAlertId(id)}
                     selected={selectedAlertId === a.id}
+                    blink={a.type !== 'manual' && a.status === 'aberto'}
                     alert={{
                       id: a.id, severity: a.severity,
                       title: `${fmtTipo(a.type)} · ${a.title}`,

@@ -24,6 +24,10 @@ const sevDot: Record<AlertSeverity, string> = {
   critico: 'bg-danger', medio: 'bg-warning', baixo: 'bg-success',
 }
 
+// Ticket gerado por alerta (automático), não manual. Pisca em vermelho enquanto
+// está 'aberto' (ninguém assumiu) p/ chamar atenção do operador. Para ao assumir.
+const blinkAlerta = (a: Alert) => a.type !== 'manual' && a.status === 'aberto'
+
 const SECTIONS: { key: string; label: string; tone: string; match: (a: Alert) => boolean }[] = [
   { key: 'tratar',   label: 'A tratar',     tone: 'text-danger',  match: (a) => a.status === 'aberto' || a.status === 'em_analise' },
   { key: 'tratando', label: 'Em tratativa', tone: 'text-warning', match: (a) => a.status === 'em_tratativa' },
@@ -66,6 +70,7 @@ export function AlertSimpleList({ alerts }: { alerts: Alert[] }) {
                   className={cn(
                     'text-left bg-card border border-border border-l-[3px] rounded-lg p-3 hover:bg-accent transition-colors',
                     sevBorder[a.severity],
+                    blinkAlerta(a) && 'blink-red',
                     selectedAlertId === a.id && 'ring-2 ring-primary/40',
                   )}
                 >
