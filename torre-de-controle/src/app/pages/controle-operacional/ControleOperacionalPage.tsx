@@ -152,16 +152,9 @@ export function ControleOperacionalPage() {
     [viagens],
   )
 
-  // Opções do filtro = TODOS os status visíveis nas viagens — das duas colunas
-  // (operacional + Shopee). Assim nenhum status que aparece numa linha fica de fora.
-  const statusOptions = useMemo(() => {
-    const set = new Set<string>()
-    for (const t of viagens) {
-      if (t.statusOperacional) set.add(t.statusOperacional)
-      if (t.statusShopee) set.add(t.statusShopee)
-    }
-    return [...set].sort()
-  }, [viagens])
+  // Opções do filtro = a lista canônica COMPLETA de status (mesma do editor por linha,
+  // na ordem do fluxo) — não só os presentes no momento.
+  const statusOptions = OP_STATUSES
 
   // Filtra por status operacional OU Shopee (casa qualquer um dos selecionados).
   const rows = useMemo(
