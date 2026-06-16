@@ -12,6 +12,7 @@ import { brWallNow } from '../../lib/time'
 const ACC = "'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇç','AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCc'"
 
 export type AlertFilters = {
+  id?:         string   // busca uma ocorrência específica (deep-link) — ignora o teto de 500
   severity?:   'critico'|'medio'|'baixo'
   status?:     'aberto'|'em_analise'|'em_tratativa'|'resolvido'|'encerrado'
   type?:       string
@@ -25,6 +26,7 @@ export type AlertFilters = {
 
 export async function listAlerts(f: AlertFilters) {
   const conditions = []
+  if (f.id)         conditions.push(eq(alerts.id, f.id))
   if (f.severity)   conditions.push(eq(alerts.severity, f.severity))
   if (f.status)     conditions.push(eq(alerts.status, f.status))
   if (f.type)       conditions.push(eq(alerts.type, f.type))
@@ -198,6 +200,16 @@ export async function listAlerts(f: AlertFilters) {
       } : undefined,
     }
   })
+}
+
+/**
+ * Uma ocorrência por id, com o MESMO enriquecimento do listAlerts (reusa a função
+ * filtrando por id → zero duplicação e não esbarra no teto de 500). Para deep-link
+ * (ex.: clicar num log de auditoria que aponta p/ um ticket antigo/resolvido).
+ */
+export async function getAlertById(id: string) {
+  const rows = await listAlerts({ id })
+  return rows[0] ?? null
 }
 
 export async function assignAlert(alertId: string, userId: string) {
