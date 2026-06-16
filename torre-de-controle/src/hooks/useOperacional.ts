@@ -10,24 +10,26 @@ export const OP_STATUSES = [
   'CARREGADO',
   'CTE EM EMISSÃO',
   'CTE ENVIADO',
-  'AGUARDANDO DESCARGA',
   'DESCARREGANDO',
   'DESCARREGADO',
+  'NO SHOW',
   'CANCELADO',
 ] as const
 export type OpStatus = (typeof OP_STATUSES)[number]
 
 export interface OpViagem {
   lh: string
+  tipo: string
   carregamento: string
   descarga: string
   motorista: string
-  motoristaId: string
   origem: string
   destino: string
-  placa: string
-  veiculo: string
-  statusSpx: string
+  cavalo: string
+  carreta: string
+  vinculo: string
+  grCavalo: string
+  grCarreta: string
   statusBase: string
   statusOperacional: string
   overridden: boolean
