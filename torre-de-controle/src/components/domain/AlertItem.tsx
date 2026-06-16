@@ -26,9 +26,10 @@ interface Props {
   onClick?: (id: string) => void
   selected?: boolean
   variant?: 'queue' | 'list'  // queue = botões Assumir/Ligar; list = chevron
+  blink?: boolean             // pisca em vermelho (ocorrência por alerta não assumida)
 }
 
-export function AlertItem({ alert, onAssume, onCall, onClick, selected, variant = 'queue' }: Props) {
+export function AlertItem({ alert, onAssume, onCall, onClick, selected, variant = 'queue', blink }: Props) {
   return (
     <div
       onClick={() => onClick?.(alert.id)}
@@ -37,6 +38,7 @@ export function AlertItem({ alert, onAssume, onCall, onClick, selected, variant 
         selected
           ? 'border-primary/40 bg-primary/10'
           : 'border-border bg-card hover:bg-accent',
+        blink && 'blink-red',
         onClick && 'cursor-pointer',
       )}
     >
