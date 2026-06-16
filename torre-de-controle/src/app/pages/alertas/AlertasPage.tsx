@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { LayoutGrid, List } from 'lucide-react'
 import { AlertasKPIRow } from './components/AlertasKPIRow'
@@ -6,7 +6,7 @@ import { AlertasFiltersBar } from './components/AlertasFiltersBar'
 import { AlertGroupedList } from './components/AlertGroupedList'
 import { AlertSimpleList } from './components/AlertSimpleList'
 import { AlertDetailPanel } from './components/AlertDetailPanel'
-import { AlertasStatusBreakdown } from './components/AlertasStatusBreakdown'
+import { AlertasStatusBreakdown, type AlertPhase } from './components/AlertasStatusBreakdown'
 import { ExportButton } from '@/components/common/ExportButton'
 import { FixedPanel } from '@/components/domain/FixedPanel'
 import { PrazoFinalFilter, defaultPrazoRange } from '@/components/domain/PrazoFinalFilter'
@@ -18,12 +18,26 @@ import type { AlertFilters, AlertStatus } from '@/data/types'
 // Visão preferida do operador persiste entre sessões.
 const VIEW_KEY = 'ocorrencias:view'
 
+// status do back → fase do funil (Novas/Em tratativa/Concluídas). Mesma agregação do funil.
+function phaseKeyOf(status: AlertStatus): AlertPhase {
+  if (status === 'em_tratativa') return 'tratativa'
+  if (status === 'resolvido' || status === 'encerrado') return 'concluida'
+  return 'nova'
+}
+
 export function AlertasPage() {
   const [filters, setFilters] = useState<AlertFilters>(() => defaultPrazoRange('op')) // Prazo Final = hoje
   const [view, setView] = useState<'simples' | 'detalhada'>(
     () => (localStorage.getItem(VIEW_KEY) as 'simples' | 'detalhada') || 'simples',
   )
   const { data: alerts } = useAlerts(filters)
+  // Filtro do funil por FASE (3 grupos) — client-side, pra incluir os 2 status de cada fase
+  // (ex.: Concluídas = resolvido + encerrado), já que o filtro do servidor é status único.
+  const [activePhase, setActivePhase] = useState<AlertPhase | null>(null)
+  const shown = useMemo(
+    () => (activePhase ? alerts.filter((a) => phaseKeyOf(a.status) === activePhase) : alerts),
+    [alerts, activePhase],
+  )
   const { selectedAlertId, setSelectedAlertId } = useUIStore()
   const { data: selected } = useAlert(selectedAlertId)
   const isOpen = selected !== null
@@ -38,10 +52,6 @@ export function AlertasPage() {
     if (a) setSelectedAlertId(a)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
-
-  function handleStatusSelect(s: AlertStatus | null) {
-    setFilters((f) => ({ ...f, status: s ?? undefined }))
-  }
 
   return (
     <div className="space-y-5">
@@ -86,8 +96,8 @@ export function AlertasPage() {
             <AlertasKPIRow />
           </div>
           <AlertasStatusBreakdown
-            activeStatus={(filters.status ?? null) as AlertStatus | null}
-            onSelect={handleStatusSelect}
+            activePhase={activePhase}
+            onSelect={setActivePhase}
           />
         </div>
       )}
@@ -96,7 +106,7 @@ export function AlertasPage() {
 
       <div className="flex gap-5 items-start">
         <div className="flex-1 min-w-0">
-          {simples ? <AlertSimpleList alerts={alerts} /> : <AlertGroupedList alerts={alerts} />}
+          {simples ? <AlertSimpleList alerts={shown} /> : <AlertGroupedList alerts={shown} />}
         </div>
 
         {isOpen && selected && (
