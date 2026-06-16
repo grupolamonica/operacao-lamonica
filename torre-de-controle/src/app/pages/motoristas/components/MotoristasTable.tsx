@@ -1,5 +1,6 @@
 import { type ColumnDef } from '@tanstack/react-table'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Search, Filter, ArrowUpDown, MoreVertical } from 'lucide-react'
 import { TableWithSidePanel } from '@/components/domain/TableWithSidePanel'
 import { DriverAvatar } from '@/components/domain/DriverAvatar'
@@ -69,6 +70,14 @@ export function MotoristasTable() {
   const { selectedDriverId, setSelectedDriverId } = useUIStore()
   const { data: selected } = useDriver(selectedDriverId)
   const bases = ['CD São Paulo', 'CD Guarulhos', 'CD Campinas']
+
+  // Deep-link (ex.: da Auditoria): /motoristas?driver=<id> abre o motorista direto.
+  const [searchParams] = useSearchParams()
+  useEffect(() => {
+    const d = searchParams.get('driver')
+    if (d) setSelectedDriverId(d)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   const toolbar = (
     <div className="flex items-center gap-3">
