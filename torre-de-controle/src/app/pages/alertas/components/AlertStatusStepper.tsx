@@ -2,67 +2,46 @@ import { Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { AlertStatus } from '@/data/types'
 
-interface Step { id: AlertStatus; label: string }
+// Visão simplificada do operador: 3 fases. Os 5 status do back colapsam aqui —
+// 'em_analise' some (vira parte de "Nova") e 'resolvido'/'encerrado' viram "Concluída".
+const PHASES = [
+  { key: 'nova',       label: 'Nova'         },
+  { key: 'tratativa',  label: 'Em tratativa' },
+  { key: 'concluida',  label: 'Concluída'    },
+] as const
 
-const STEPS: Step[] = [
-  { id: 'aberto',       label: 'Nova'        },
-  { id: 'em_analise',   label: 'Em análise'  },
-  { id: 'em_tratativa', label: 'Em tratativa' },
-  { id: 'resolvido',    label: 'Resolvida'   },
-  { id: 'encerrado',    label: 'Encerrada'   },
-]
-
-// Allowed transitions — mirrors api/src/modules/alerts/alerts.workflow.ts
-const TRANSITIONS: Record<AlertStatus, AlertStatus[]> = {
-  aberto:       ['em_analise', 'em_tratativa', 'resolvido', 'encerrado'],
-  em_analise:   ['em_tratativa', 'resolvido', 'encerrado'],
-  em_tratativa: ['resolvido', 'encerrado'],
-  resolvido:    ['encerrado', 'em_tratativa'],
-  encerrado:    [],
+/** status do back → índice da fase visual (0=Nova, 1=Em tratativa, 2=Concluída). */
+function phaseOf(status: AlertStatus): number {
+  if (status === 'em_tratativa') return 1
+  if (status === 'resolvido' || status === 'encerrado') return 2
+  return 0 // aberto, em_analise
 }
 
-interface Props {
-  current:     AlertStatus
-  onSelect?:   (to: AlertStatus) => void
-  isPending?:  boolean
-}
-
-export function AlertStatusStepper({ current, onSelect, isPending }: Props) {
-  const currentIdx = STEPS.findIndex((s) => s.id === current)
-  const allowed = new Set(TRANSITIONS[current])
+export function AlertStatusStepper({ status }: { status: AlertStatus }) {
+  const cur = phaseOf(status)
+  const concluded = cur === 2
 
   return (
-    <ol className="flex items-center gap-1 w-full">
-      {STEPS.map((step, idx) => {
-        const isPast    = idx <  currentIdx
-        const isCurrent = idx === currentIdx
-        const canPick   = !isPending && !!onSelect && allowed.has(step.id)
+    <ol className="flex items-start gap-1 w-full">
+      {PHASES.map((p, idx) => {
+        // verde = fase já passada OU a última fase quando concluída (corrige o bug
+        // do último tópico não ficar verde ao concluir).
+        const done    = idx < cur || (idx === cur && concluded)
+        const current = idx === cur && !concluded
         return (
-          <li key={step.id} className="flex-1 min-w-0">
-            <button
-              type="button"
-              disabled={!canPick}
-              onClick={() => canPick && onSelect?.(step.id)}
-              className={cn(
-                'group w-full flex flex-col items-center gap-1 px-1 py-1.5 rounded-md transition-colors',
-                canPick && 'hover:bg-accent cursor-pointer',
-                !canPick && 'cursor-default',
-              )}
-            >
-              <span className={cn(
-                'flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold',
-                isCurrent && 'bg-primary text-primary-foreground ring-2 ring-primary/30',
-                isPast    && 'bg-success text-white',
-                !isCurrent && !isPast && canPick    && 'bg-accent text-foreground group-hover:bg-primary group-hover:text-primary-foreground',
-                !isCurrent && !isPast && !canPick   && 'bg-muted text-muted-foreground',
-              )}>
-                {isPast ? <Check className="h-3 w-3" /> : idx + 1}
-              </span>
-              <span className={cn(
-                'text-[10px] text-center leading-tight truncate w-full',
-                isCurrent ? 'text-foreground font-medium' : 'text-muted-foreground',
-              )}>{step.label}</span>
-            </button>
+          <li key={p.key} className="flex-1 min-w-0 flex flex-col items-center gap-1">
+            <span className={cn(
+              'flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold transition-colors',
+              done    && 'bg-success text-white',
+              current && 'bg-primary text-primary-foreground ring-2 ring-primary/30',
+              !done && !current && 'bg-muted text-muted-foreground',
+            )}>
+              {done ? <Check className="h-3.5 w-3.5" /> : idx + 1}
+            </span>
+            <span className={cn(
+              'text-[10px] text-center leading-tight truncate w-full',
+              (done || current) ? 'text-foreground font-medium' : 'text-muted-foreground',
+            )}>{p.label}</span>
           </li>
         )
       })}

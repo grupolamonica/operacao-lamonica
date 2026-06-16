@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Phone, Loader2, AlertTriangle, UserCheck } from 'lucide-react'
+import { Phone, Loader2, AlertTriangle, UserCheck, CheckCircle2 } from 'lucide-react'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { SidePanelLayout } from '@/components/domain/SidePanelLayout'
 import { SeverityBadge } from '@/components/domain/SeverityBadge'
@@ -16,7 +16,6 @@ import { AlertCommentThread } from './AlertCommentThread'
 import {
   useAlertHistory, useTransitionAlert, useAddAlertComment, useSetAlertPriority,
 } from '@/hooks/useAlertWorkflow'
-import { useDriverDossie, useDriverDossieByName } from '@/hooks/useDrivers'
 
 interface Props {
   alert:   Alert
@@ -35,31 +34,17 @@ export function AlertDetailPanel({ alert, onClose }: Props) {
   const transition = useTransitionAlert(alert.id)
   const comment    = useAddAlertComment(alert.id)
   const setPrio    = useSetAlertPriority(alert.id)
-  const [confirmTo,      setConfirmTo]      = useState<AlertStatus | null>(null)
   const [callDialogOpen, setCallDialogOpen] = useState(false)
-  // Phase 14 — dossiê cruzado do motorista (vínculo, vigência, frota). Por id; senão por nome.
-  const dossieById   = useDriverDossie(alert.driverId || null)
-  const dossieByName = useDriverDossieByName(alert.driverId ? null : (alert.driverName || null))
-  const dossie: any  = dossieById.data ?? dossieByName.data
-  const cavalo  = dossie?.veiculos?.find((v: any) => v.plateRole === 'HORSE')
-  const carreta = dossie?.veiculos?.find((v: any) => v.plateRole === 'TRAILER_1' || v.plateRole === 'TRAILER')
 
   const isPending = transition.isPending || comment.isPending || setPrio.isPending
   const priority  = alert.priority ?? 'media'
 
-  function handleTransitionSelect(to: AlertStatus) {
-    // Direct path for benign moves; confirmation step for terminal-ish ones
-    if (to === 'resolvido' || to === 'encerrado') {
-      setConfirmTo(to)
-      return
-    }
-    transition.mutate({ to })
-  }
-
-  function confirmTransition() {
-    if (!confirmTo) return
-    transition.mutate({ to: confirmTo }, { onSettled: () => setConfirmTo(null) })
-  }
+  // Fluxo enxuto do operador: 3 fases (Nova → Em tratativa → Concluída).
+  // Sem etapa de análise nem confirmação; o back já permite os saltos diretos.
+  // 0=Nova (aberto/em_analise) · 1=Em tratativa · 2=Concluída (resolvido/encerrado)
+  const phase = alert.status === 'em_tratativa' ? 1
+    : (alert.status === 'resolvido' || alert.status === 'encerrado') ? 2 : 0
+  const go = (to: AlertStatus) => transition.mutate({ to })
 
   return (
     <SidePanelLayout
@@ -126,32 +111,35 @@ export function AlertDetailPanel({ alert, onClose }: Props) {
           </div>
         )}
 
-        {/* Status stepper */}
-        <div className="rounded-md border border-border p-2.5 bg-card">
-          <AlertStatusStepper
-            current={alert.status}
-            onSelect={handleTransitionSelect}
-            isPending={isPending}
-          />
-          {transition.isPending && (
-            <div className="flex items-center gap-1.5 mt-2 text-[11px] text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" /> Aplicando transição...
+        {/* Status — 3 fases + ação contextual (1 clique pra concluir) */}
+        <div className="rounded-md border border-border p-3 bg-card space-y-3">
+          <AlertStatusStepper status={alert.status} />
+          {transition.isPending ? (
+            <div className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" /> Atualizando…
+            </div>
+          ) : phase === 2 ? (
+            <div className="flex items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-success">
+                <CheckCircle2 className="h-4 w-4" /> Concluída{alert.resolvedAt ? ` · ${formatDate(alert.resolvedAt, 'dd/MM HH:mm')}` : ''}
+              </span>
+              <Button size="sm" variant="ghost" className="text-xs" onClick={() => go('em_tratativa')}>Reabrir</Button>
+            </div>
+          ) : phase === 1 ? (
+            <Button size="sm" variant="success" className="w-full text-xs gap-1.5" onClick={() => go('resolvido')}>
+              <CheckCircle2 className="h-3.5 w-3.5" /> Concluir ocorrência
+            </Button>
+          ) : (
+            <div className="flex gap-2">
+              <Button size="sm" className="flex-1 text-xs gap-1.5" onClick={() => go('em_tratativa')}>
+                <UserCheck className="h-3.5 w-3.5" /> Assumir e tratar
+              </Button>
+              <Button size="sm" variant="success" className="text-xs gap-1.5" onClick={() => go('resolvido')}>
+                <CheckCircle2 className="h-3.5 w-3.5" /> Concluir
+              </Button>
             </div>
           )}
         </div>
-
-        {/* Confirmation banner for terminal transitions */}
-        {confirmTo && (
-          <div className="rounded-md border border-warning/40 bg-warning/5 p-3 text-xs space-y-2">
-            <p className="text-foreground">
-              Confirmar transição para <strong className="capitalize">{confirmTo.replace('_', ' ')}</strong>?
-            </p>
-            <div className="flex gap-2">
-              <Button size="sm" onClick={confirmTransition} disabled={transition.isPending}>Confirmar</Button>
-              <Button size="sm" variant="outline" onClick={() => setConfirmTo(null)}>Cancelar</Button>
-            </div>
-          </div>
-        )}
 
         <div className="grid grid-cols-2 gap-3 text-xs">
           <Field label="Abertura" value={formatDateUTC(alert.occurredAt, 'dd/MM HH:mm')} />
@@ -208,25 +196,14 @@ export function AlertDetailPanel({ alert, onClose }: Props) {
 
         <div>
           <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Motorista</h4>
+          {/* Só o básico: nome + placa. (Para ligar, botão no rodapé.) */}
           <div className="flex items-center gap-3">
             <DriverAvatar name={alert.driverName} photoUrl={alert.driverPhoto} size="md" />
             <div className="min-w-0">
-              <p className="text-sm font-medium text-foreground">{alert.driverName}</p>
-              <p className="text-xs text-muted-foreground font-mono">{alert.plate}</p>
+              <p className="text-sm font-medium text-foreground truncate">{alert.driverName || '—'}</p>
+              <p className="text-xs text-muted-foreground font-mono">{alert.plate || '—'}</p>
             </div>
           </div>
-          {/* Phase 14 — dossiê cruzado: vínculo, vigência, frota (cavalo/carreta) */}
-          {dossie && (
-            <div className="mt-2 space-y-2 text-xs text-muted-foreground">
-              {dossie.identidade?.driverKind && <Row label="Vínculo" value={dossie.identidade.driverKind} />}
-              {dossie.identidade?.cpf && <Row label="CPF" value={dossie.identidade.cpf} mono />}
-              {dossie.identidade?.cnhValidade && <Row label="CNH validade" value={formatDate(dossie.identidade.cnhValidade, 'dd/MM/yyyy')} />}
-              {dossie.conformidade?.angelliraValidUntil && <Row label="Vigência Angellira" value={formatDate(dossie.conformidade.angelliraValidUntil, 'dd/MM/yyyy')} />}
-              {cavalo && <Row label="Cavalo" value={`${cavalo.plate}${cavalo.model ? ' · ' + cavalo.model : ''}`} mono />}
-              {carreta && <Row label="Carreta" value={`${carreta.plate}${carreta.model ? ' · ' + carreta.model : ''}`} mono />}
-              {dossie.viagens?.total != null && <Row label="Viagens" value={`${dossie.viagens.total} (no prazo ${dossie.viagens.pctNoPrazo ?? '—'}%)`} />}
-            </div>
-          )}
         </div>
 
         {alert.slaDeadline && (
