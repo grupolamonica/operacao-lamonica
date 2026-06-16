@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia'
 import { authGuard } from '../../lib/rbac'
-import { listAlerts, assignAlert, assignAlertsBulk, addTreatment, resolveAlert, getAlertStats, createAlert } from './alerts.service'
+import { listAlerts, getAlertById, assignAlert, assignAlertsBulk, addTreatment, resolveAlert, getAlertStats, createAlert } from './alerts.service'
 import {
   transitionAlert, addComment, setAlertPriority, assignAlertTo, listAlertHistory,
   WorkflowError, ALERT_STATUSES,
@@ -60,6 +60,16 @@ export const alertsPlugin = new Elysia({ name: 'alerts' })
       }, {
         params: t.Object({ id: t.String({ format: 'uuid' }) }),
         detail: { tags: ['alerts'], summary: 'Treatment/comment history for an alert' },
+      })
+      // Uma ocorrência por id — p/ deep-link (auditoria/sino/dashboard) abrir tickets
+      // fora do teto de 500 do list. Mesmo enriquecimento (getAlertById reusa listAlerts).
+      .get('/:id', async ({ params, set }) => {
+        const a = await getAlertById(params.id)
+        if (!a) { set.status = 404; return { error: 'Alert not found' } }
+        return a
+      }, {
+        params: t.Object({ id: t.String({ format: 'uuid' }) }),
+        detail: { tags: ['alerts'], summary: 'Get one alert by id' },
       })
       // Legacy assign — auto-attribuição ao usuário corrente. Continua existindo
       // para retrocompat com o frontend antigo que chama PATCH .../assign sem body.

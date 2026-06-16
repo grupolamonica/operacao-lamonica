@@ -26,8 +26,26 @@ export function useAlerts(filters?: AlertFilters) {
 
 export function useAlert(id: string | null) {
   const { data: all } = useAlerts()
-  const data = useMemo(() => id ? all.find(a => a.id === id) ?? null : null, [id, all])
-  return { data, isLoading: false as const, isError: false as const, error: null, refetch: () => {} }
+  // Caminho rápido: já está na lista (500 recentes) → abre na hora, sem rede.
+  const inList = useMemo(() => (id ? all.find(a => a.id === id) ?? null : null), [id, all])
+  // Fallback p/ deep-link (auditoria/sino/dashboard): ticket fora dos 500 recentes
+  // (antigo/resolvido) → busca a ocorrência por id no servidor (GET /api/alerts/:id).
+  const q = useQuery({
+    queryKey: ['alert', id],
+    enabled: !!id && !inList,
+    queryFn: async () => {
+      const { data, error } = await (api.api.alerts as any)[id!].get()
+      if (error) throw new Error((error.value as any)?.error ?? 'Failed to fetch alert')
+      return data as Alert
+    },
+  })
+  return {
+    data:      inList ?? q.data ?? null,
+    isLoading: !inList && q.isLoading,
+    isError:   q.isError,
+    error:     q.error,
+    refetch:   q.refetch,
+  }
 }
 
 export function useAlertsBySeverity() {
