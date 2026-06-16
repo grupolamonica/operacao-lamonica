@@ -260,7 +260,8 @@ export function ControleOperacionalPage() {
                 <th className="px-3 py-2.5 font-medium">Motorista</th>
                 <th className="px-3 py-2.5 font-medium">Origem</th>
                 <th className="px-3 py-2.5 font-medium">Destino</th>
-                <th className="px-3 py-2.5 font-medium">Status operacional</th>
+                <th className="px-3 py-2.5 font-medium">Status (Operacional)</th>
+                <th className="px-3 py-2.5 font-medium">Status (Shopee)</th>
                 <th className="px-3 py-2.5 font-medium">GR (Cav/Car)</th>
                 <th className="px-3 py-2.5 text-center font-medium">Log</th>
               </tr>
@@ -298,6 +299,20 @@ export function ControleOperacionalPage() {
                       </div>
                     </td>
                     <td className="px-3 py-2">
+                      {t.statusShopee ? (
+                        <span className="inline-flex items-center gap-1">
+                          <span className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: statusTone(t.statusShopee).bg, color: statusTone(t.statusShopee).fg }}>
+                            {t.statusShopee}
+                          </span>
+                          {norm(t.statusShopee) !== norm(t.statusOperacional) && (
+                            <span title="Diverge do status operacional (planilha)" className="text-[11px]" style={{ color: '#fb6340' }}>⚠</span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
                       <div className="flex flex-col gap-0.5 text-[10px] leading-tight">
                         <span style={{ color: grTone(t.grCavalo).fg }}>Cav: {grTone(t.grCavalo).label}</span>
                         <span style={{ color: grTone(t.grCarreta).fg }}>Car: {grTone(t.grCarreta).label}</span>
@@ -312,7 +327,7 @@ export function ControleOperacionalPage() {
                 )
               })}
               {rows.length === 0 && (
-                <tr><td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">{isLoading ? 'Carregando viagens…' : 'Nenhuma viagem na operação corrente.'}</td></tr>
+                <tr><td colSpan={10} className="px-3 py-8 text-center text-muted-foreground">{isLoading ? 'Carregando viagens…' : 'Nenhuma viagem na operação corrente.'}</td></tr>
               )}
             </tbody>
           </table>
