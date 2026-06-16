@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Truck, Volume2, VolumeX, History, ShoppingBag, X, Loader2 } from 'lucide-react'
 import { PanelCard } from '@/components/domain/PanelCard'
 import { Button } from '@/components/ui/button'
@@ -121,6 +122,14 @@ export function ControleOperacionalPage() {
   const [logLh, setLogLh] = useState<string | null>(null)
   const [savingLh, setSavingLh] = useState<string | null>(null)
   const lastTopEvent = useRef<string | null>(null)
+
+  // Deep-link (ex.: da Auditoria): /controle-operacional?lh=<lh> abre o histórico
+  // de status daquela viagem direto (onde o operador alterou).
+  const [searchParams] = useSearchParams()
+  useEffect(() => {
+    const lh = searchParams.get('lh')
+    if (lh) setLogLh(lh)
+  }, [searchParams])
 
   // Desbloqueia o áudio no 1º gesto do usuário (autoplay policy do navegador).
   useEffect(() => {

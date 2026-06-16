@@ -31,6 +31,11 @@ export interface AuditItem {
   detail:       string | null   // nota / conteúdo / → status
   occurredAt:   string          // ISO 8601
   severity:     string | null   // só tratativas (do alerta)
+  // Refs p/ o deep-link (clicar no log → abre a entidade na tela certa).
+  alertId:      string | null
+  tripId:       string | null
+  driverId:     string | null
+  lh:           string | null
 }
 
 export interface AuditFilters {
@@ -96,7 +101,8 @@ async function fromTripEvents(f: AuditFilters): Promise<AuditItem[]> {
   const opCond = f.operatorId ? sql`AND te.created_by = ${f.operatorId}::uuid` : sql``
   const rows = (await db.execute(sql`
     SELECT te.id::text AS id, te.event_type, te.notes, te.occurred_at,
-           te.created_by::text AS operator_id, u.name AS operator_name, t.code AS trip_code
+           te.created_by::text AS operator_id, u.name AS operator_name,
+           t.code AS trip_code, te.trip_id::text AS trip_id
     FROM trip_events te
     JOIN users u ON u.id = te.created_by
     LEFT JOIN trips t ON t.id = te.trip_id
@@ -119,6 +125,10 @@ async function fromTripEvents(f: AuditFilters): Promise<AuditItem[]> {
     detail:       clean(r.notes),
     occurredAt:   toIso(r.occurred_at),
     severity:     null,
+    alertId:      null,
+    tripId:       clean(r.trip_id),
+    driverId:     null,
+    lh:           null,
   }))
 }
 
@@ -127,7 +137,8 @@ async function fromTreatments(f: AuditFilters): Promise<AuditItem[]> {
   const rows = (await db.execute(sql`
     SELECT tr.id::text AS id, tr.action_type, tr.notes, tr.outcome, tr.created_at,
            tr.operator_id::text AS operator_id, COALESCE(u.name, tr.author_name) AS operator_name,
-           a.title AS alert_title, a.severity, t.code AS trip_code
+           a.title AS alert_title, a.severity, t.code AS trip_code,
+           tr.alert_id::text AS alert_id, tr.trip_id::text AS trip_id
     FROM treatments tr
     LEFT JOIN users u ON u.id = tr.operator_id
     LEFT JOIN alerts a ON a.id = tr.alert_id
@@ -150,6 +161,10 @@ async function fromTreatments(f: AuditFilters): Promise<AuditItem[]> {
     detail:       clean(r.notes),
     occurredAt:   toIso(r.created_at),
     severity:     clean(r.severity),
+    alertId:      clean(r.alert_id),
+    tripId:       clean(r.trip_id),
+    driverId:     null,
+    lh:           null,
   }))
 }
 
@@ -158,7 +173,8 @@ async function fromCommunications(f: AuditFilters): Promise<AuditItem[]> {
   const rows = (await db.execute(sql`
     SELECT c.id::text AS id, c.channel, c.direction, c.outcome, c.content, c.occurred_at,
            c.operator_id::text AS operator_id, u.name AS operator_name,
-           d.name AS driver_name, t.code AS trip_code
+           d.name AS driver_name, t.code AS trip_code,
+           c.alert_id::text AS alert_id, c.trip_id::text AS trip_id, c.driver_id::text AS driver_id
     FROM communications c
     JOIN users u ON u.id = c.operator_id
     LEFT JOIN drivers d ON d.id = c.driver_id
@@ -182,6 +198,10 @@ async function fromCommunications(f: AuditFilters): Promise<AuditItem[]> {
       detail:       [content, outcome ? `(${outcome})` : null].filter(Boolean).join(' ') || null,
       occurredAt:   toIso(r.occurred_at),
       severity:     null,
+      alertId:      clean(r.alert_id),
+      tripId:       clean(r.trip_id),
+      driverId:     clean(r.driver_id),
+      lh:           null,
     }
   })
 }
@@ -212,6 +232,10 @@ async function fromOpStatus(f: AuditFilters, operatorName: string | null): Promi
     detail:       clean(r.status_operacional) ? `→ ${r.status_operacional}` : null,
     occurredAt:   toIso(r.created_at),
     severity:     null,
+    alertId:      null,
+    tripId:       null,
+    driverId:     null,
+    lh:           clean(r.lh),
   }))
 }
 

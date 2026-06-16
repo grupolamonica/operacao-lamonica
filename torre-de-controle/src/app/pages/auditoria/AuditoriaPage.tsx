@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { StickyNote, ClipboardCheck, Phone, Activity, ShieldAlert, Users as UsersIcon } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { StickyNote, ClipboardCheck, Phone, Activity, ShieldAlert, Users as UsersIcon, ChevronRight } from 'lucide-react'
 import { DriverAvatar } from '@/components/domain/DriverAvatar'
 import { PrazoFinalFilter, defaultPrazoRange, rangeQuery, type PrazoRange } from '@/components/domain/PrazoFinalFilter'
 import { useUsers } from '@/hooks/useUsers'
@@ -176,11 +177,41 @@ function Header() {
   )
 }
 
+// Deep-link: clicar no log abre a entidade alterada na tela certa, já selecionada.
+//   tratativa/comunicação → ocorrência (/alertas?alert=) → viagem → motorista
+//   nota → viagem (/viagens?trip=)
+//   status operacional → painel (/controle-operacional?lh=)
+function linkFor(it: AuditItem): string | null {
+  switch (it.category) {
+    case 'tratativa':
+      return it.alertId ? `/alertas?alert=${it.alertId}` : it.tripId ? `/viagens?trip=${it.tripId}` : null
+    case 'comunicacao':
+      return it.alertId ? `/alertas?alert=${it.alertId}`
+        : it.tripId ? `/viagens?trip=${it.tripId}`
+        : it.driverId ? `/motoristas?driver=${it.driverId}` : null
+    case 'nota':
+      return it.tripId ? `/viagens?trip=${it.tripId}` : null
+    case 'status_operacional':
+      return it.lh ? `/controle-operacional?lh=${encodeURIComponent(it.lh)}` : null
+    default:
+      return null
+  }
+}
+
 function Row({ item }: { item: AuditItem }) {
+  const navigate = useNavigate()
   const meta = CATEGORY[item.category]
   const Icon = meta.icon
+  const link = linkFor(item)
   return (
-    <div className="flex items-start gap-3 p-3">
+    <div
+      onClick={link ? () => navigate(link) : undefined}
+      role={link ? 'button' : undefined}
+      tabIndex={link ? 0 : undefined}
+      onKeyDown={link ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(link) } } : undefined}
+      title={link ? 'Abrir na tela de origem' : undefined}
+      className={cn('flex items-start gap-3 p-3 transition-colors', link && 'cursor-pointer hover:bg-accent')}
+    >
       <DriverAvatar name={item.operatorName} size="sm" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
@@ -203,6 +234,7 @@ function Row({ item }: { item: AuditItem }) {
           <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2 break-words">{item.detail}</p>
         )}
       </div>
+      {link && <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />}
     </div>
   )
 }

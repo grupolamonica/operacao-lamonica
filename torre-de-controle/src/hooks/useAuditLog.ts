@@ -16,6 +16,11 @@ export interface AuditItem {
   detail:       string | null
   occurredAt:   string
   severity:     string | null
+  // refs p/ deep-link ao clicar no item
+  alertId:      string | null
+  tripId:       string | null
+  driverId:     string | null
+  lh:           string | null
 }
 
 export interface AuditFilters {
