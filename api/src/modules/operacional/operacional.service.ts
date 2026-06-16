@@ -1,50 +1,55 @@
 /**
- * Controle Operacional — réplica do painel Shopee (Apps Script) na Torre.
+ * Controle Operacional — réplica do painel da Shopee/Cargas na Torre.
  *
- * FONTE ÚNICA: a API SPX (aba "asp" via HTTP). As viagens exibidas vêm SÓ do
- * `fetchAspRows` (Planejado ∪ Aceito = operação corrente), nada do /api/trips.
- * O resultado do SPX é cacheado no Redis (60s) pra o polling do painel não
- * martelar a SPX.
+ * FONTE = a MESMA planilha do sistema de cargas (CSV público). O STATUS exibido é
+ * o da coluna STATUS de lá (não derivamos da SPX), e o GR vem das colunas CheckList
+ * Cavalo/Carreta. A planilha é cacheada no Redis (60s) pra o polling do painel não
+ * baixar o CSV a cada chamada. Mostramos a operação CORRENTE: janela ±3 dias em DATA
+ * CARREGAMENTO, excluindo DESCARREGADO (concluído) e linhas sem status.
  *
- * STATUS OPERACIONAL EDITÁVEL: o painel original deixa o operador alterar o
- * status. Aqui isso vira um OVERRIDE persistido (op_status_override) que vence
- * sobre o status derivado da SPX. Cada alteração grava um evento (op_status_event)
- * que alimenta as "Últimas movimentações" e o "Log" por viagem.
+ * STATUS EDITÁVEL: o operador pode sobrescrever o status no painel (override em
+ * op_status_override, que vence sobre o da planilha). Cada alteração grava um evento
+ * (op_status_event) que alimenta "Últimas movimentações" + "Log". O rastreador também
+ * grava transições automáticas quando o status da planilha muda.
  */
 import { sql } from 'drizzle-orm'
 import { db } from '../../db/client'
-import { fetchAspRows, type AspRow } from '../../adapters/spx-portal/asp.adapter'
+import { fetchCargasSheet, parseBrDate, type SheetRow } from './cargas-sheet.adapter'
 
-const CACHE_KEY = 'operacional:asp:v1'
-const CACHE_TTL = 60 // s — SPX é batido no máx. 1x/60s independente do polling do painel
+const CACHE_KEY = 'operacional:sheet:v1'
+const CACHE_TTL = 60 // s — CSV é baixado no máx. 1x/60s independente do polling do painel
+const DAYS_BACK = 3
+const DAYS_FWD = 3
 
-// Status operacional editáveis. Inclui os derivados da SPX (de-para da aba asp)
-// + os estados de CT-e que são geridos pelo operador (a SPX não os tem).
+// Status editáveis (os da planilha). DESCARREGADO/CANCELADO existem mas a operação
+// corrente normalmente não fica neles; ainda assim o operador pode setar.
 export const OP_STATUSES = [
   'AGUARDANDO CHEGAR NO CLIENTE',
   'AGUARDANDO CARREGAMENTO',
   'CARREGADO',
   'CTE EM EMISSÃO',
   'CTE ENVIADO',
-  'AGUARDANDO DESCARGA',
   'DESCARREGANDO',
   'DESCARREGADO',
+  'NO SHOW',
   'CANCELADO',
 ] as const
 export type OpStatus = (typeof OP_STATUSES)[number]
 
 export interface OpViagem {
   lh: string
-  carregamento: string // ETA ORIGEM PROGRAMADO (br)
-  descarga: string // ETA DESTINO PROGRAMADO (br)
+  tipo: string // ForeCast / Spot / Tendência
+  carregamento: string // DATA CARREGAMENTO (br)
+  descarga: string // DATA DESCARGA (br)
   motorista: string
-  motoristaId: string
   origem: string
   destino: string
-  placa: string
-  veiculo: string
-  statusSpx: string // Status bruto da SPX (Departed, Arrived, ...)
-  statusBase: string // Status Operacional derivado da SPX
+  cavalo: string
+  carreta: string
+  vinculo: string
+  grCavalo: string // CheckList Cavalo (Aprovado/Vencido/...)
+  grCarreta: string // CheckList Carreta1 (ou Carreta2)
+  statusBase: string // STATUS da planilha
   statusOperacional: string // override do operador ?? statusBase
   overridden: boolean
   atualizadoEm: string | null // updated_at do override
@@ -57,24 +62,15 @@ export interface OpEvent {
   created_at: string
 }
 
-const stripStation = (s: string) => (s || '').replace(/^\[\d+\]/, '').trim()
-function parseDriver(s: string): { id: string; nome: string } {
-  const m = (s || '').match(/^\[(\d+)\]\s*(.*)$/)
-  return m ? { id: m[1], nome: m[2].trim() } : { id: '', nome: (s || '').trim() }
-}
-
-async function getAspCached(): Promise<AspRow[]> {
+async function getSheetCached(): Promise<SheetRow[]> {
   const { redis } = await import('../../redis/client')
   try {
     const cached = await redis.get(CACHE_KEY)
-    if (cached) return JSON.parse(cached) as AspRow[]
+    if (cached) return JSON.parse(cached) as SheetRow[]
   } catch {
     /* cache miss / redis hiccup → busca direto */
   }
-  // Planejado(1) ∪ Aceito(2) = operação corrente (Concluído fica de fora, como no painel).
-  // Janela curta (±2 dias) p/ refletir a operação do dia; "Aceito" ignora a janela na
-  // SPX, então toda viagem em andamento entra independentemente da data.
-  const { rows } = await fetchAspRows({ queryTypes: [1, 2], daysBack: 2, daysFwd: 2 })
+  const rows = await fetchCargasSheet()
   try {
     await redis.set(CACHE_KEY, JSON.stringify(rows), 'EX', CACHE_TTL)
   } catch {
@@ -84,40 +80,43 @@ async function getAspCached(): Promise<AspRow[]> {
 }
 
 export async function getOperacionalViagens(): Promise<OpViagem[]> {
-  const asp = await getAspCached()
+  const rows = await getSheetCached()
   const overrides = (await db.execute(sql`
     SELECT lh, status_operacional, updated_at FROM op_status_override
   `)) as unknown as Array<{ lh: string; status_operacional: string; updated_at: string }>
   const ovMap = new Map(overrides.map((o) => [o.lh, o]))
 
+  const day = 86_400_000
+  const now = Date.now()
+  const lo = now - DAYS_BACK * day
+  const hi = now + DAYS_FWD * day
+
   const seen = new Set<string>()
   const out: OpViagem[] = []
-  for (const r of asp) {
-    const lh = (r['LH Trip Number'] || '').trim()
-    if (!lh || seen.has(lh)) continue
-    seen.add(lh)
-    const d = parseDriver(r['Driver ID'])
-    let base = r['Status Operacional'] || ''
-    // 'Arrived' é ambíguo na SPX: chegou na ORIGEM (aguardando carregar) ou no DESTINO
-    // (aguardando descarregar). O de-para da aba "asp" assume sempre destino. Corrige:
-    // se ainda NÃO partiu da origem (sem saída real), está aguardando carregamento.
-    if (r['Status'] === 'Arrived' && !(r['CPT ORIGEM REAL'] || '').trim()) {
-      base = 'AGUARDANDO CARREGAMENTO'
-    }
-    const ov = ovMap.get(lh)
+  for (const r of rows) {
+    if (seen.has(r.lh)) continue
+    const st = r.status.toUpperCase()
+    // operação corrente: fora os concluídos e sem status
+    if (!st || st === 'DESCARREGADO') continue
+    const dt = parseBrDate(r.dataCarregamento)
+    if (!dt || dt.getTime() < lo || dt.getTime() > hi) continue
+    seen.add(r.lh)
+    const ov = ovMap.get(r.lh)
     out.push({
-      lh,
-      carregamento: r['ETA ORIGEM PROGRAMADO'] || '',
-      descarga: r['ETA DESTINO PROGRAMADO'] || '',
-      motorista: d.nome,
-      motoristaId: d.id,
-      origem: stripStation(r['Station_Origem']),
-      destino: stripStation(r['Station_Destino']),
-      placa: r['Vehicle Plate Number'] || '',
-      veiculo: r['Vehicle'] || '',
-      statusSpx: r['Status'] || '',
-      statusBase: base,
-      statusOperacional: ov?.status_operacional ?? base,
+      lh: r.lh,
+      tipo: r.tipo,
+      carregamento: r.dataCarregamento,
+      descarga: r.dataDescarga,
+      motorista: r.motorista,
+      origem: r.origem,
+      destino: r.destino,
+      cavalo: r.cavalo,
+      carreta: r.carreta,
+      vinculo: r.vinculo,
+      grCavalo: r.checklistCavalo,
+      grCarreta: r.checklistCarreta1 || r.checklistCarreta2,
+      statusBase: r.status,
+      statusOperacional: ov?.status_operacional ?? r.status,
       overridden: ov != null,
       atualizadoEm: ov?.updated_at ?? null,
     })

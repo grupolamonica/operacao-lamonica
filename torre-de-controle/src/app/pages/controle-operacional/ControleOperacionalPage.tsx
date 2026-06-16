@@ -14,13 +14,15 @@ import {
 } from '@/hooks/useOperacional'
 
 /**
- * Controle Operacional — réplica do painel Shopee (Google Apps Script) na Torre,
- * com a UI do Argon. Os dados vêm SÓ da API SPX (aba "asp"); nada do /api/trips.
- *   • 6 KPIs por status operacional
- *   • Status operacional EDITÁVEL pelo operador (override persistido na Torre)
- *   • "Últimas movimentações" — as alterações de status reais (server-side) + áudio
- *   • Tabela LH/Carregamento/Descarga/Motorista/Origem/Destino/Status(editável)/Log
- *   • Log = histórico de status da viagem · auto-atualização (10s)
+ * Controle Operacional — réplica do painel da Cargas na Torre, com a UI do Argon.
+ * Os dados vêm da MESMA planilha do sistema de cargas (CSV), com o STATUS de lá e o
+ * GR (vigência) das colunas CheckList. Operação corrente (janela ±3 dias, sem os
+ * concluídos).
+ *   • 6 KPIs por status
+ *   • Status EDITÁVEL pelo operador (override persistido na Torre, vence sobre a planilha)
+ *   • "Últimas movimentações" — mudanças de status (planilha + manuais) + áudio
+ *   • Tabela LH/Carregamento/Descarga/Motorista/Origem/Destino/Status(editável)/GR/Log
+ *   • Log = Histórico da Viagem (DE→PARA) · auto-atualização (10s)
  */
 
 const norm = (s?: string | null) => (s ?? '').trim().toUpperCase()
@@ -29,9 +31,18 @@ const norm = (s?: string | null) => (s ?? '').trim().toUpperCase()
 function statusTone(s?: string | null): { bg: string; fg: string } {
   const u = norm(s)
   if (u === 'CARREGADO' || u === 'DESCARREGADO') return { bg: 'var(--status-no-prazo-bg)', fg: 'var(--status-no-prazo-fg)' }
-  if (u === 'CANCELADO') return { bg: 'var(--status-atrasado-bg)', fg: 'var(--status-atrasado-fg)' }
+  if (u === 'CANCELADO' || u === 'NO SHOW') return { bg: 'var(--status-atrasado-bg)', fg: 'var(--status-atrasado-fg)' }
   if (u.startsWith('CTE')) return { bg: 'rgba(45,118,232,0.15)', fg: '#2d76e8' }
   return { bg: 'var(--status-em-risco-bg)', fg: 'var(--status-em-risco-fg)' } // aguardando / descarregando
+}
+
+// GR / vigência (CheckList Cavalo|Carreta): Aprovado=verde, Vencido/Reprovado=vermelho, resto=cinza.
+function grTone(v?: string | null): { fg: string; label: string } {
+  const u = norm(v)
+  if (u === 'APROVADO') return { fg: '#2dce89', label: 'Aprovado' }
+  if (u === 'VENCIDO' || u === 'REPROVADO') return { fg: '#f5365c', label: (v || '').trim() }
+  if (!u || u === '#REF!' || u.includes('ENCONTRAD')) return { fg: 'var(--muted-foreground)', label: (v || '').trim() || '—' }
+  return { fg: 'var(--muted-foreground)', label: (v || '').trim() }
 }
 
 // AudioContext único e reaproveitado. Navegadores bloqueiam áudio até um gesto do
@@ -163,7 +174,7 @@ export function ControleOperacionalPage() {
           </div>
           <div>
             <h1 className="text-lg font-bold text-primary">Controle Operacional</h1>
-            <p className="text-xs text-muted-foreground">Direto da SPX (linehaul) · atualiza a cada 10s</p>
+            <p className="text-xs text-muted-foreground">Da planilha de operação (Cargas) · atualiza a cada 10s</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -173,12 +184,11 @@ export function ControleOperacionalPage() {
             variant="outline"
             className="gap-1.5 text-xs"
             onClick={() => {
+              // bipa SEMPRE no clique (no stack do gesto = desbloqueia o autoplay e
+              // confirma na hora que o áudio funciona), além de alternar o estado.
               unlockAudio()
-              setSoundOn((v) => {
-                const next = !v
-                if (next) beep() // confirma que o áudio está funcionando
-                return next
-              })
+              beep()
+              setSoundOn((v) => !v)
             }}
           >
             {soundOn ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
@@ -203,7 +213,7 @@ export function ControleOperacionalPage() {
       {/* Últimas movimentações */}
       <PanelCard title={<span className="text-sm">Últimas movimentações</span>}>
         {movs.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Sem movimentações ainda — alterações de status do operador aparecem aqui ao vivo.</p>
+          <p className="text-xs text-muted-foreground">Sem movimentações ainda — mudanças de status aparecem aqui ao vivo.</p>
         ) : (
           <ul className="space-y-1.5">
             {movs.map((m, i) => (
@@ -242,6 +252,7 @@ export function ControleOperacionalPage() {
                 <th className="px-3 py-2.5 font-medium">Origem</th>
                 <th className="px-3 py-2.5 font-medium">Destino</th>
                 <th className="px-3 py-2.5 font-medium">Status operacional</th>
+                <th className="px-3 py-2.5 font-medium">GR (Cav/Car)</th>
                 <th className="px-3 py-2.5 text-center font-medium">Log</th>
               </tr>
             </thead>
@@ -251,7 +262,10 @@ export function ControleOperacionalPage() {
                 const saving = savingLh === t.lh
                 return (
                   <tr key={t.lh} className="border-b hover:bg-muted/30" style={{ borderColor: 'var(--border)' }}>
-                    <td className="px-3 py-2 font-mono">{t.lh}</td>
+                    <td className="px-3 py-2 font-mono">
+                      {t.lh}
+                      {t.tipo && <span className="ml-1.5 rounded px-1 py-0.5 text-[9px] font-semibold uppercase" style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}>{t.tipo}</span>}
+                    </td>
                     <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{t.carregamento || '—'}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{t.descarga || '—'}</td>
                     <td className="px-3 py-2 font-medium">{t.motorista || '—'}</td>
@@ -274,6 +288,12 @@ export function ControleOperacionalPage() {
                         {t.overridden && !saving && <span title="Status editado pelo operador" className="text-[9px] text-muted-foreground">✎</span>}
                       </div>
                     </td>
+                    <td className="px-3 py-2">
+                      <div className="flex flex-col gap-0.5 text-[10px] leading-tight">
+                        <span style={{ color: grTone(t.grCavalo).fg }}>Cav: {grTone(t.grCavalo).label}</span>
+                        <span style={{ color: grTone(t.grCarreta).fg }}>Car: {grTone(t.grCarreta).label}</span>
+                      </div>
+                    </td>
                     <td className="px-3 py-2 text-center">
                       <button className="text-muted-foreground hover:text-primary" title="Histórico de status" onClick={() => setLogLh(t.lh)}>
                         <History className="mx-auto h-4 w-4" />
@@ -283,7 +303,7 @@ export function ControleOperacionalPage() {
                 )
               })}
               {rows.length === 0 && (
-                <tr><td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">{isLoading ? 'Carregando viagens da SPX…' : 'Nenhuma viagem no recorte.'}</td></tr>
+                <tr><td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">{isLoading ? 'Carregando viagens…' : 'Nenhuma viagem na operação corrente.'}</td></tr>
               )}
             </tbody>
           </table>
