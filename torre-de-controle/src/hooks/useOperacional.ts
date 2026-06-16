@@ -32,6 +32,7 @@ export interface OpViagem {
   grCarreta: string
   statusBase: string
   statusOperacional: string
+  statusShopee: string
   overridden: boolean
   atualizadoEm: string | null
 }

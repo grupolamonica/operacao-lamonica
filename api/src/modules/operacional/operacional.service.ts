@@ -15,9 +15,11 @@
 import { sql } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { fetchCargasSheet, parseBrDate, type SheetRow } from './cargas-sheet.adapter'
+import { fetchAspRows } from '../../adapters/spx-portal/asp.adapter'
 
 const CACHE_KEY = 'operacional:sheet:v1'
-const CACHE_TTL = 60 // s — CSV é baixado no máx. 1x/60s independente do polling do painel
+const SPX_KEY = 'operacional:spxmap:v1'
+const CACHE_TTL = 60 // s — CSV/SPX batidos no máx. 1x/60s independente do polling do painel
 const DAYS_BACK = 3
 const DAYS_FWD = 3
 
@@ -49,8 +51,9 @@ export interface OpViagem {
   vinculo: string
   grCavalo: string // CheckList Cavalo (Aprovado/Vencido/...)
   grCarreta: string // CheckList Carreta1 (ou Carreta2)
-  statusBase: string // STATUS da planilha
+  statusBase: string // STATUS da planilha (operacional)
   statusOperacional: string // override do operador ?? statusBase
+  statusShopee: string // status da SPX (Shopee) p/ a mesma LH — read-only, p/ comparar
   overridden: boolean
   atualizadoEm: string | null // updated_at do override
 }
@@ -79,8 +82,39 @@ async function getSheetCached(): Promise<SheetRow[]> {
   return rows
 }
 
+/**
+ * Status da SPX (Shopee) por LH — só p/ exibir ao lado do operacional (comparação).
+ * Read-only, resiliente: se a SPX estiver indisponível, devolve mapa vazio (coluna
+ * Shopee fica em branco) sem derrubar o painel. Cacheado 60s.
+ */
+async function getSpxStatusByLh(): Promise<Map<string, string>> {
+  const { redis } = await import('../../redis/client')
+  try {
+    const cached = await redis.get(SPX_KEY)
+    if (cached) return new Map(JSON.parse(cached) as [string, string][])
+  } catch {
+    /* segue p/ buscar */
+  }
+  try {
+    const { rows } = await fetchAspRows({ queryTypes: [1, 2, 3], daysBack: 5, daysFwd: 5 })
+    const m = new Map<string, string>()
+    for (const r of rows) {
+      const lh = (r['LH Trip Number'] || '').trim()
+      if (!lh) continue
+      let s = r['Status Operacional'] || ''
+      // mesmo ajuste do 'Arrived' ambíguo (chegou na origem = aguardando carregar)
+      if (r['Status'] === 'Arrived' && !(r['CPT ORIGEM REAL'] || '').trim()) s = 'AGUARDANDO CARREGAMENTO'
+      m.set(lh, s)
+    }
+    try { await redis.set(SPX_KEY, JSON.stringify([...m]), 'EX', CACHE_TTL) } catch { /* noop */ }
+    return m
+  } catch {
+    return new Map() // SPX fora do ar → coluna Shopee vazia, painel segue pela planilha
+  }
+}
+
 export async function getOperacionalViagens(): Promise<OpViagem[]> {
-  const rows = await getSheetCached()
+  const [rows, spxByLh] = await Promise.all([getSheetCached(), getSpxStatusByLh()])
   const overrides = (await db.execute(sql`
     SELECT lh, status_operacional, updated_at FROM op_status_override
   `)) as unknown as Array<{ lh: string; status_operacional: string; updated_at: string }>
@@ -117,6 +151,7 @@ export async function getOperacionalViagens(): Promise<OpViagem[]> {
       grCarreta: r.checklistCarreta1 || r.checklistCarreta2,
       statusBase: r.status,
       statusOperacional: ov?.status_operacional ?? r.status,
+      statusShopee: spxByLh.get(r.lh) ?? '',
       overridden: ov != null,
       atualizadoEm: ov?.updated_at ?? null,
     })
