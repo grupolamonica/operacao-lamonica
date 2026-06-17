@@ -9,7 +9,7 @@ import type { Alert, AlertType, AlertSeverity } from '@/data/types'
 
 // Rótulo do tipo de alerta — mesma tabela da página de Ocorrências.
 const tipoLabel: Record<string, string> = {
-  atraso: 'Atraso', parada: 'Parada', sem_sinal: 'Sem sinal', sem_gps: 'Sem GPS',
+  atraso: 'Atraso', adiantado: 'Adiantado', parada: 'Parada', sem_sinal: 'Sem sinal', sem_gps: 'Sem GPS',
   prazo_proximo: 'Prazo próximo', proximo_entrega: 'Próx. entrega', manual: 'Manual',
 }
 const fmtTipo = (t: AlertType | string) => tipoLabel[t] ?? String(t).replace(/_/g, ' ')

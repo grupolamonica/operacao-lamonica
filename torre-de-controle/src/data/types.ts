@@ -34,6 +34,7 @@ export type AlertType =
   | 'checklist_incompleto'
   // Phase 12 — taxonomia real Lamonica (detectores + histórico Angellira)
   | 'atraso'
+  | 'adiantado'
   | 'parada'
   | 'sem_sinal'
   | 'prazo_proximo'
