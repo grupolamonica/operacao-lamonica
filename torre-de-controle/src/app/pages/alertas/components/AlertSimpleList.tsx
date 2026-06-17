@@ -11,7 +11,7 @@ import type { Alert, AlertSeverity, AlertType } from '@/data/types'
 // Sem KPIs/funil — feito para o operador bater o olho e agir rápido.
 
 const tipoLabel: Record<string, string> = {
-  atraso: 'Atraso', parada: 'Parada', sem_sinal: 'Sem sinal', sem_gps: 'Sem GPS',
+  atraso: 'Atraso', adiantado: 'Adiantado', parada: 'Parada', sem_sinal: 'Sem sinal', sem_gps: 'Sem GPS',
   prazo_proximo: 'Prazo próximo', proximo_entrega: 'Próx. entrega', manual: 'Manual', ok: 'OK',
 }
 const fmtTipo = (t: AlertType | string) => tipoLabel[t] ?? String(t).replace(/_/g, ' ')

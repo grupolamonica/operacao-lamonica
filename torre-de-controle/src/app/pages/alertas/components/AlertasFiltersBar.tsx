@@ -5,6 +5,7 @@ import type { AlertFilters, AlertType } from '@/data/types'
 
 const typeLabels: Record<string, string> = {
   atraso:          'Atraso',
+  adiantado:       'Adiantado',
   parada:          'Parada',
   sem_sinal:       'Sem sinal GPS',
   prazo_proximo:   'Prazo próximo',
@@ -12,9 +13,9 @@ const typeLabels: Record<string, string> = {
 }
 
 // Só os alertas que o script do painel (verificarECriarTickets) gera — os mesmos que
-// piscam: ATRASO, PARADA, SEM_GPS(→sem_sinal), PRAZO_PROXIMO, PROXIMO_ENTREGA.
-// Fora: OK (marca "resolvido", não alerta) e 'manual' (aberto pelo operador, não vem do script).
-const SCRIPT_ALERT_TYPES: AlertType[] = ['atraso', 'parada', 'sem_sinal', 'prazo_proximo', 'proximo_entrega']
+// piscam: ATRASO, ADIANTADO (chegada 0-30min antes do prazo), PARADA, SEM_GPS(→sem_sinal),
+// PRAZO_PROXIMO, PROXIMO_ENTREGA. Fora: OK (marca "resolvido") e 'manual' (aberto pelo operador).
+const SCRIPT_ALERT_TYPES: AlertType[] = ['atraso', 'adiantado', 'parada', 'sem_sinal', 'prazo_proximo', 'proximo_entrega']
 
 interface Props {
   filters: AlertFilters

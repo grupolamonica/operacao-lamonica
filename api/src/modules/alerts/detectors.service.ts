@@ -5,6 +5,8 @@
  * Roda a cada 30 min — RE-TICKA enquanto o problema persiste (≈2/h), igual ao painel
  * (verificarECriarTickets do GAS com permitirDuplicata). Cada ciclo re-abre o ticket do problema.
  *   - ATRASO          : in_progress e janela (window_end) já passou
+ *   - ADIANTADO       : chegada prevista 0-30min ANTES do prazo (igual ao que pisca no painel:
+ *                       atrasoHoras ∈ [-0.5,0)). Conta ruim p/ o indicador (meta = dentro da janela).
  *   - PRAZO_PROXIMO   : window_end nas próximas 2h e ainda longe (>100km ou km desconhecido)
  *   - PROXIMO_ENTREGA : km restante < 100 e no prazo/adiantada  (b — usa distance_total/done)
  *   - PARADA          : ≥2 posições em 45min, span ≥30min e sem deslocamento (b — usa driver_positions)
@@ -21,8 +23,9 @@
 import { sql } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { createAlert } from './alerts.service'
+import { calcularAdiantamentoHoras } from '../../lib/regulamentacao'
 
-const AUTO_TYPES = ['atraso', 'prazo_proximo', 'sem_sinal', 'parada', 'proximo_entrega']
+const AUTO_TYPES = ['atraso', 'adiantado', 'prazo_proximo', 'sem_sinal', 'parada', 'proximo_entrega']
 // Re-tickar enquanto o problema persiste (≈2/h, igual ao painel): em vez de "não duplicar
 // enquanto houver um aberto", só evita duplicar se JÁ criou um ticket do mesmo trip+tipo nos
 // últimos RETICKET_WINDOW_MIN. Janela < cron (*/30) p/ cada run re-abrir de forma confiável.
@@ -85,11 +88,21 @@ export async function runDetectors(): Promise<DetectorResult> {
     const distTotal = t.distance_total != null ? Number(t.distance_total) : null
     const distDone = t.distance_done != null ? Number(t.distance_done) : null
     const kmRest = (distTotal != null && distDone != null) ? Math.max(0, distTotal - distDone) : null
+    // Adiantamento previsto (+ = adiantado/early), mesma fn do painel (calcularAdiantamentoHoras_).
+    // Passa a janela CRUA + morosidade separada: a fn já soma a morosidade ao prazo internamente
+    // (NÃO passar `we`, que já está ajustado, senão conta dobrado). Precisa de km restante p/ prever ETA.
+    const adiant = (t.window_end != null && kmRest != null)
+      ? calcularAdiantamentoHoras(kmRest, new Date(t.window_end), new Date(now), moros)
+      : null
     const detected: Array<{ type: string; severity: 'critico' | 'medio' | 'baixo'; title: string }> = []
 
-    // ATRASO / PRAZO_PROXIMO / PROXIMO_ENTREGA — mesma árvore de decisão do GAS
+    // ATRASO / ADIANTADO / PRAZO_PROXIMO / PROXIMO_ENTREGA — mesma árvore de decisão do GAS
     if (we != null && horasParaPrazo! < 0) {
       detected.push({ type: 'atraso', severity: 'critico', title: `Viagem ${t.code} atrasada (janela vencida)` })
+    } else if (adiant != null && adiant > 0 && adiant <= 0.5) {
+      // ADIANTADO 0-30min — chegada prevista antes do prazo. Igual ao que pisca no painel
+      // (atrasoHoras ∈ [-0.5,0) ⇔ adiantamento ∈ (0,0.5]). Adiantar conta ruim p/ o indicador.
+      detected.push({ type: 'adiantado', severity: 'medio', title: `Viagem ${t.code} adiantada ${Math.round(adiant * 60)} min (chegada antes do prazo)` })
     } else if (kmRest != null && kmRest <= KM_CHEGOU) {
       // praticamente chegou — não gera prazo/proximo
     } else if (kmRest != null && kmRest < 100 && (horasParaPrazo == null || horasParaPrazo > 0)) {

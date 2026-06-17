@@ -20,7 +20,7 @@ const sevRank: Record<AlertSeverity, number> = { critico: 0, medio: 1, baixo: 2 
 
 // Rótulos curtos por tipo de ticket (para o resumo da viagem).
 const tipoLabel: Record<string, string> = {
-  atraso: 'Atraso', parada: 'Parada', sem_sinal: 'Sem sinal', sem_gps: 'Sem GPS',
+  atraso: 'Atraso', adiantado: 'Adiantado', parada: 'Parada', sem_sinal: 'Sem sinal', sem_gps: 'Sem GPS',
   prazo_proximo: 'Prazo próximo', proximo_entrega: 'Próx. entrega', manual: 'Manual',
 }
 const fmtTipo = (t: AlertType | string) => tipoLabel[t] ?? String(t).replace(/_/g, ' ')
