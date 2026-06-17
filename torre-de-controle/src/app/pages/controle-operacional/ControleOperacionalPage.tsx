@@ -83,6 +83,26 @@ async function beep() {
   } catch { /* autoplay ainda bloqueado (sem gesto prévio) */ }
 }
 
+// Voz (Web Speech / SpeechSynthesis) em pt-BR — fala a mensagem da movimentação.
+function speak(text: string) {
+  try {
+    const synth = window.speechSynthesis
+    if (!synth) return
+    const u = new SpeechSynthesisUtterance(text)
+    u.lang = 'pt-BR'
+    u.rate = 1.05
+    const voices = synth.getVoices()
+    const pt = voices.find((v) => /pt[-_]?br/i.test(v.lang)) || voices.find((v) => /^pt/i.test(v.lang))
+    if (pt) u.voice = pt
+    synth.speak(u)
+  } catch { /* sem suporte a voz — ignora */ }
+}
+
+// Prime da voz no 1º gesto (carrega vozes + libera o autoplay).
+function primeSpeech() {
+  try { window.speechSynthesis?.resume(); window.speechSynthesis?.getVoices() } catch { /* noop */ }
+}
+
 const KPIS: Array<{ label: string; match: (u: string) => boolean; color: string }> = [
   { label: 'TOTAL DE VIAGENS', match: () => true, color: 'var(--primary)' },
   { label: 'CARREGADO', match: (u) => u === 'CARREGADO', color: '#2dce89' },
@@ -125,7 +145,7 @@ export function ControleOperacionalPage() {
   const [soundOn, setSoundOn] = useState(true)
   const [logLh, setLogLh] = useState<string | null>(null)
   const [savingLh, setSavingLh] = useState<string | null>(null)
-  const lastTopEvent = useRef<string | null>(null)
+  const seenEvents = useRef<Set<string> | null>(null)
 
   // Deep-link (ex.: da Auditoria): /controle-operacional?lh=<lh> abre o histórico
   // de status daquela viagem direto (onde o operador alterou).
@@ -135,21 +155,31 @@ export function ControleOperacionalPage() {
     if (lh) setLogLh(lh)
   }, [searchParams])
 
-  // Desbloqueia o áudio no 1º gesto do usuário (autoplay policy do navegador).
+  // Desbloqueia áudio + voz no 1º gesto do usuário (autoplay policy do navegador).
   useEffect(() => {
-    const unlock = () => { unlockAudio(); window.removeEventListener('pointerdown', unlock) }
+    const unlock = () => { unlockAudio(); primeSpeech(); window.removeEventListener('pointerdown', unlock) }
     window.addEventListener('pointerdown', unlock)
     return () => window.removeEventListener('pointerdown', unlock)
   }, [])
 
-  // Áudio quando chega uma movimentação nova (compara a chave do evento mais recente).
+  // Voz quando muda o status: para cada movimentação NOVA, fala
+  // "Status da viagem de <motorista>, atualizado para <status>." (+ bip de atenção).
   useEffect(() => {
-    const top = movs[0]
-    if (!top) return
-    const key = `${top.lh}|${top.status_operacional}|${top.created_at}`
-    if (lastTopEvent.current !== null && lastTopEvent.current !== key && soundOn) beep()
-    lastTopEvent.current = key
-  }, [movs, soundOn])
+    if (!movs.length) return
+    const keys = movs.map((m) => `${m.lh}|${m.status_operacional}|${m.created_at}`)
+    const prev = seenEvents.current
+    seenEvents.current = new Set(keys)
+    if (prev === null) return // 1ª carga: não anuncia o que já estava lá
+    const novos = movs.filter((_, i) => !prev.has(keys[i]))
+    if (!novos.length || !soundOn) return
+    beep()
+    // anuncia os mais recentes (até 5), do mais antigo p/ o mais novo
+    for (const m of novos.slice(0, 5).reverse()) {
+      const motorista = viagens.find((v) => v.lh === m.lh)?.motorista
+      const quem = motorista ? `de ${motorista}` : m.lh
+      speak(`Status da viagem ${quem}, atualizado para ${m.status_operacional.toLowerCase()}.`)
+    }
+  }, [movs, soundOn, viagens])
 
   const counts = useMemo(
     () => KPIS.map((k) => viagens.filter((t) => k.match(norm(t.statusOperacional))).length),
@@ -202,10 +232,12 @@ export function ControleOperacionalPage() {
             variant="outline"
             className="gap-1.5 text-xs"
             onClick={() => {
-              // bipa SEMPRE no clique (no stack do gesto = desbloqueia o autoplay e
-              // confirma na hora que o áudio funciona), além de alternar o estado.
+              // SEMPRE no clique (no stack do gesto = desbloqueia autoplay e confirma
+              // na hora): bip + voz de teste. Também alterna o estado de anúncio.
               unlockAudio()
+              primeSpeech()
               beep()
+              speak('Som do painel ativado. Status da viagem de teste, atualizado para carregado.')
               setSoundOn((v) => !v)
             }}
           >
