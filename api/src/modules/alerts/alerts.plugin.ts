@@ -46,7 +46,7 @@ export const alertsPlugin = new Elysia({ name: 'alerts' })
           type:       t.Optional(t.String()),
           clientName: t.Optional(t.String()),
           routeCode:  t.Optional(t.String()),
-          assignedTo: t.Optional(t.String({ format: 'uuid' })),
+          assignedTo: t.Optional(t.String()), // uuid do operador OU '__unassigned' (sentinela tratada no service)
           inicio:     t.Optional(t.String()),
           fim:        t.Optional(t.String()),
           search:     t.Optional(t.String()),

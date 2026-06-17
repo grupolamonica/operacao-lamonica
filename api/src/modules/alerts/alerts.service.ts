@@ -1,4 +1,4 @@
-import { and, eq, ilike, or, sql, inArray } from 'drizzle-orm'
+import { and, eq, ilike, or, sql, inArray, isNull } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { alerts } from '../../db/schema/alerts'
 import { treatments } from '../../db/schema/treatments'
@@ -30,7 +30,9 @@ export async function listAlerts(f: AlertFilters) {
   if (f.severity)   conditions.push(eq(alerts.severity, f.severity))
   if (f.status)     conditions.push(eq(alerts.status, f.status))
   if (f.type)       conditions.push(eq(alerts.type, f.type))
-  if (f.assignedTo) conditions.push(eq(alerts.assignedTo, f.assignedTo))
+  // Responsável: uuid do operador, ou '__unassigned' (sem responsável) → IS NULL.
+  if (f.assignedTo === '__unassigned') conditions.push(isNull(alerts.assignedTo))
+  else if (f.assignedTo) conditions.push(eq(alerts.assignedTo, f.assignedTo))
   // Período por DATA DE ABERTURA do ticket (occurred_at) — filtra TODOS os tickets, inclusive os
   // sem viagem vinculada (~52% não têm trip_id; o EXISTS no window_end da viagem os derrubava → era
   // o motivo do filtro "não funcionar"). occurred_at é wall-clock de Brasília como UTC → bounds UTC.
