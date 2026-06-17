@@ -62,21 +62,25 @@ function unlockAudio() {
   const ctx = getCtx()
   if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {})
 }
-function beep() {
+async function beep() {
   const ctx = getCtx()
   if (!ctx) return
-  if (ctx.state === 'suspended') ctx.resume().catch(() => {})
   try {
+    // ESSENCIAL: aguardar o resume() ANTES de agendar a nota. Sem o await, num
+    // contexto recém-desbloqueado o oscilador era agendado enquanto ainda estava
+    // 'suspended' → nenhum som saía (era o bug). Se não houver gesto prévio, o
+    // resume() rejeita (autoplay policy) e cai no catch — sem erro.
+    if (ctx.state !== 'running') await ctx.resume()
     const o = ctx.createOscillator()
     const g = ctx.createGain()
     o.connect(g); g.connect(ctx.destination)
     o.type = 'sine'; o.frequency.value = 880
     const t = ctx.currentTime
     g.gain.setValueAtTime(0.0001, t)
-    g.gain.exponentialRampToValueAtTime(0.22, t + 0.02)
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35)
-    o.start(t); o.stop(t + 0.36)
-  } catch { /* contexto ainda suspenso — próximo gesto desbloqueia */ }
+    g.gain.exponentialRampToValueAtTime(0.25, t + 0.02)
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4)
+    o.start(t); o.stop(t + 0.42)
+  } catch { /* autoplay ainda bloqueado (sem gesto prévio) */ }
 }
 
 const KPIS: Array<{ label: string; match: (u: string) => boolean; color: string }> = [
