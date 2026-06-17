@@ -3,23 +3,18 @@ import { Label } from '@/components/ui/label'
 import { useAlerts } from '@/hooks/useAlerts'
 import type { AlertFilters, AlertType } from '@/data/types'
 
-const typeLabels: Record<AlertType, string> = {
-  // Taxonomia real Lamonica (Phase 12) — detectores + histórico
-  atraso:                  'Atraso',
-  parada:                  'Parada',
-  sem_sinal:               'Sem sinal GPS',
-  prazo_proximo:           'Prazo próximo',
-  proximo_entrega:         'Próximo da entrega',
-  manual:                  'Manual',
-  // Legado (mantido p/ retrocompat)
-  atraso_critico:          'Atraso crítico',
-  desvio_nao_autorizado:   'Desvio não autorizado',
-  parada_nao_planejada:    'Parada não planejada',
-  sinal_gps_intermitente:  'Sinal GPS intermitente',
-  tempo_parada_elevado:    'Tempo de parada elevado',
-  entrega_fora_janela:     'Entrega fora da janela',
-  checklist_incompleto:    'Checklist incompleto',
+const typeLabels: Record<string, string> = {
+  atraso:          'Atraso',
+  parada:          'Parada',
+  sem_sinal:       'Sem sinal GPS',
+  prazo_proximo:   'Prazo próximo',
+  proximo_entrega: 'Próximo da entrega',
 }
+
+// Só os alertas que o script do painel (verificarECriarTickets) gera — os mesmos que
+// piscam: ATRASO, PARADA, SEM_GPS(→sem_sinal), PRAZO_PROXIMO, PROXIMO_ENTREGA.
+// Fora: OK (marca "resolvido", não alerta) e 'manual' (aberto pelo operador, não vem do script).
+const SCRIPT_ALERT_TYPES: AlertType[] = ['atraso', 'parada', 'sem_sinal', 'prazo_proximo', 'proximo_entrega']
 
 interface Props {
   filters: AlertFilters
@@ -32,7 +27,13 @@ export function AlertasFiltersBar({ filters, onChange }: Props) {
   const nonEmpty = (x: string | null | undefined): x is string => Boolean(x && x.trim())
   const clients = Array.from(new Set(all.map(a => a.clientName).filter(nonEmpty))).sort()
   const routes = Array.from(new Set(all.map(a => a.routeCode).filter(nonEmpty))).sort()
-  const assignees = Array.from(new Set(all.map(a => a.assignedTo).filter(nonEmpty))).sort()
+  // Responsável = operadores que ASSUMIRAM ocorrências (tickets de viagens). Mostra o NOME
+  // (assignedToName), mas filtra pelo assignedTo (uuid). Antes listava o uuid cru (bug).
+  const assigneeMap = new Map<string, string>()
+  for (const a of all) {
+    if (nonEmpty(a.assignedTo)) assigneeMap.set(a.assignedTo, nonEmpty(a.assignedToName) ? a.assignedToName : a.assignedTo)
+  }
+  const assignees = Array.from(assigneeMap.entries()).sort((x, y) => x[1].localeCompare(y[1]))
 
   const set = <K extends keyof AlertFilters>(key: K, value: AlertFilters[K] | undefined) =>
     onChange({ ...filters, [key]: value })
@@ -44,7 +45,7 @@ export function AlertasFiltersBar({ filters, onChange }: Props) {
           <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Todos" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all">Todos</SelectItem>
-            {(Object.keys(typeLabels) as AlertType[]).map(t => <SelectItem key={t} value={t}>{typeLabels[t]}</SelectItem>)}
+            {SCRIPT_ALERT_TYPES.map(t => <SelectItem key={t} value={t}>{typeLabels[t]}</SelectItem>)}
           </SelectContent>
         </Select>
       </Filter>
@@ -75,7 +76,7 @@ export function AlertasFiltersBar({ filters, onChange }: Props) {
           <SelectContent>
             <SelectItem value="__all">Todos</SelectItem>
             <SelectItem value="__unassigned">Não atribuído</SelectItem>
-            {assignees.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+            {assignees.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}
           </SelectContent>
         </Select>
       </Filter>
