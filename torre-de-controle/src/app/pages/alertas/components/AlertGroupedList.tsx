@@ -10,6 +10,7 @@ import { useUIStore } from '@/stores/useUIStore'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { shouldBlinkAlert } from '@/lib/alertBlink'
 import type { Alert, AlertSeverity, AlertType } from '@/data/types'
 
 interface Props {
@@ -185,7 +186,7 @@ export function AlertGroupedList({ alerts }: Props) {
                     variant="list"
                     onClick={(id) => setSelectedAlertId(id)}
                     selected={selectedAlertId === a.id}
-                    blink={a.type !== 'manual' && a.status === 'aberto'}
+                    blink={shouldBlinkAlert(a)}
                     alert={{
                       id: a.id, severity: a.severity,
                       title: `${fmtTipo(a.type)} · ${a.title}`,

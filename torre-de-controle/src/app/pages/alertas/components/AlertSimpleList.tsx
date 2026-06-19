@@ -4,6 +4,7 @@ import { DriverAvatar } from '@/components/domain/DriverAvatar'
 import { formatRelativeWall } from '@/lib/formatters'
 import { useUIStore } from '@/stores/useUIStore'
 import { cn } from '@/lib/utils'
+import { shouldBlinkAlert } from '@/lib/alertBlink'
 import type { Alert, AlertSeverity, AlertType } from '@/data/types'
 
 // Visão SIMPLES das ocorrências (estilo "Tickets e Alertas" do painel GAS):
@@ -24,9 +25,8 @@ const sevDot: Record<AlertSeverity, string> = {
   critico: 'bg-danger', medio: 'bg-warning', baixo: 'bg-success',
 }
 
-// Ticket gerado por alerta (automático), não manual. Pisca em vermelho enquanto
-// está 'aberto' (ninguém assumiu) p/ chamar atenção do operador. Para ao assumir.
-const blinkAlerta = (a: Alert) => a.type !== 'manual' && a.status === 'aberto'
+// Pisca só os riscos de janela (atraso/adiantado) ainda 'aberto' — ver lib/alertBlink.
+const blinkAlerta = shouldBlinkAlert
 
 const SECTIONS: { key: string; label: string; tone: string; match: (a: Alert) => boolean }[] = [
   { key: 'tratar',   label: 'A tratar',     tone: 'text-danger',  match: (a) => a.status === 'aberto' || a.status === 'em_analise' },

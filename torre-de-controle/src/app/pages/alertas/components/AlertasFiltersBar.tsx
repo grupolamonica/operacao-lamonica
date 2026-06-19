@@ -12,9 +12,9 @@ const typeLabels: Record<string, string> = {
   proximo_entrega: 'Próximo da entrega',
 }
 
-// Só os alertas que o script do painel (verificarECriarTickets) gera — os mesmos que
-// piscam: ATRASO, ADIANTADO (chegada 0-30min antes do prazo), PARADA, SEM_GPS(→sem_sinal),
-// PRAZO_PROXIMO, PROXIMO_ENTREGA. Fora: OK (marca "resolvido") e 'manual' (aberto pelo operador).
+// Tipos que o script do painel (verificarECriarTickets) gera: ATRASO, ADIANTADO, PARADA,
+// SEM_GPS(→sem_sinal), PRAZO_PROXIMO, PROXIMO_ENTREGA. Fora: OK (marca "resolvido") e 'manual'.
+// OBS: destes, só ATRASO e ADIANTADO PISCAM (riscos de janela) — ver lib/alertBlink.
 const SCRIPT_ALERT_TYPES: AlertType[] = ['atraso', 'adiantado', 'parada', 'sem_sinal', 'prazo_proximo', 'proximo_entrega']
 
 interface Props {
