@@ -54,6 +54,8 @@ import { syncPlugin } from './modules/sync/sync.plugin'
 import { cargasPlugin } from './modules/cargas/cargas.plugin'
 // Phase 15 — viagens SPX linehaul (aba "asp" via HTTP)
 import { spxPlugin } from './modules/spx/spx.plugin'
+// API de integração — motorista completo por CPF (x-api-key, consumo server-to-server)
+import { integrationsPlugin } from './modules/integrations/integrations.plugin'
 
 import { operacionalPlugin } from './modules/operacional/operacional.plugin'
 import { auditPlugin } from './modules/audit/audit.plugin'
@@ -151,6 +153,8 @@ export const app = new Elysia()
         { name: 'ranking',      description: 'Ranking de motoristas (proxy Supabase ride-rank + Sheets, Redis cache 60s)' },
         // Phase 11 tag
         { name: 'positions',    description: 'Posições de frota importada (read-only, enriquecido c/ ranking)' },
+        // API de integração (consumo server-to-server)
+        { name: 'integrations', description: 'Dados completos do motorista por CPF (ranking + torre + cargas), gate x-api-key' },
       ],
     },
   }))
@@ -223,6 +227,8 @@ export const app = new Elysia()
   .use(cargasPlugin)
   // Phase 15 — SPX linehaul / aba "asp" via HTTP (BEFORE wsPlugin)
   .use(spxPlugin)
+  // API de integração — motorista por CPF (x-api-key, BEFORE wsPlugin: regra plugin-last Elysia 1.4)
+  .use(integrationsPlugin)
   .use(wsPlugin)
   // Telemetry inlined to avoid Elysia 1.4.28 plugin-composition issue with body schema
   .post('/api/telemetry/ingest', async ({ body, headers, set }) => {
