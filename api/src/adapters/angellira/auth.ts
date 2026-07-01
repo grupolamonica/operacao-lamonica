@@ -9,6 +9,10 @@
  * Retorna o token do Maps usado para montar as URLs /t/<token>/sub/*.
  */
 
+import { eq } from 'drizzle-orm'
+import { db } from '../../db/client'
+import { integrationCredentials } from '../../db/schema/integration-credentials'
+
 const AUTH_BASE = 'https://auth.angellira.com.br'
 const MAPS_BASE = 'https://maps.angellira.com.br'
 
@@ -17,12 +21,27 @@ export interface AngelliraSession {
   obtainedAt: number
 }
 
-function cfg() {
-  const user = process.env.ANGELLIRA_USER
-  const pass = process.env.ANGELLIRA_PASS
-  const empresa = process.env.ANGELLIRA_EMPRESA
+/**
+ * Credenciais: tabela `integration_credentials` (service='angellira') PRIMEIRO,
+ * env como fallback. Assim a rotação de senha é só um UPDATE no banco — sem
+ * mexer em env/secret/deploy. Se o banco estiver fora, cai no env.
+ */
+async function cfg() {
+  let row: { login: string | null; password: string | null; empresa: string | null } | undefined
+  try {
+    const r = await db
+      .select({ login: integrationCredentials.login, password: integrationCredentials.password, empresa: integrationCredentials.empresa })
+      .from(integrationCredentials)
+      .where(eq(integrationCredentials.service, 'angellira'))
+      .limit(1)
+    row = r[0]
+  } catch { /* tabela ausente / DB off → fallback env */ }
+
+  const user = (row?.login || process.env.ANGELLIRA_USER || '').trim()
+  const pass = (row?.password || process.env.ANGELLIRA_PASS || '').trim()
+  const empresa = (row?.empresa || process.env.ANGELLIRA_EMPRESA || '').trim()
   if (!user || !pass || !empresa) {
-    throw new Error('Angellira: defina ANGELLIRA_USER, ANGELLIRA_PASS, ANGELLIRA_EMPRESA')
+    throw new Error('Angellira: defina a senha em integration_credentials (service=angellira) ou nas envs ANGELLIRA_USER/PASS/EMPRESA')
   }
   return { user, pass, empresa }
 }
@@ -35,7 +54,7 @@ function collectCookies(res: Response): string {
 }
 
 export async function obterTokenMaps(): Promise<string> {
-  const { user, pass, empresa } = cfg()
+  const { user, pass, empresa } = await cfg()
 
   // 1) login → cookies
   const resLogin = await fetch(`${AUTH_BASE}/auth`, {

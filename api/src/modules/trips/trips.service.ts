@@ -100,31 +100,22 @@ export async function listTrips(filters: TripFilters, page = 0, limit = 100) {
 const normMot = (s: unknown) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toUpperCase()
 
 function mergeTripsByLh<T extends Record<string, any>>(rows: T[]): T[] {
-  // Mapa motorista→LH só das viagens ATIVAS com LH (cargas): um motorista dirige UMA viagem
-  // por vez, então a viagem-painel ativa sem LH e a carga ativa do mesmo motorista são a
-  // MESMA viagem — fundem mesmo quando o linked_lh não casou (dedup robusto no dashboard).
-  const motToLh = new Map<string, string>()
+  // Agrupa pela IDENTIDADE CANÔNICA (mesma regra do canonical_key / getTripStats):
+  //   ATIVA → MOT:<motorista> (1 motorista = 1 viagem por vez → painel+carga do mesmo
+  //   motorista são a MESMA viagem e fundem SEMPRE, mesmo com LH divergente);
+  //   senão → LH (sheet_lh/linked_lh) → ID:<id>. Calculado em JS (não depende do cron).
+  const ckey = (r: T): string => {
+    if (r.status === 'in_progress') { const m = normMot(r.sheetMotorista); if (m) return 'MOT:' + m }
+    const lh = String(r.sheetLh ?? r.linkedLh ?? '').toUpperCase().trim()
+    return lh || ('ID:' + r.id)
+  }
+  const byKey = new Map<string, T[]>()
   for (const r of rows) {
-    if (r.status !== 'in_progress') continue
-    const lh = String(r.sheetLh ?? r.linkedLh ?? '').toUpperCase().trim()
-    const mot = normMot(r.sheetMotorista)
-    if (lh && mot && !motToLh.has(mot)) motToLh.set(mot, lh)
+    const k = ckey(r)
+    const g = byKey.get(k); if (g) g.push(r); else byKey.set(k, [r])
   }
-  const effLh = (r: T): string => {
-    const lh = String(r.sheetLh ?? r.linkedLh ?? '').toUpperCase().trim()
-    if (lh) return lh
-    if (r.status === 'in_progress') { const m = normMot(r.sheetMotorista); if (m) return motToLh.get(m) ?? '' }
-    return ''
-  }
-
-  const byLh = new Map<string, T[]>()
   const out: T[] = []
-  for (const r of rows) {
-    const lh = effLh(r)
-    if (!lh) { out.push(r); continue }
-    const g = byLh.get(lh); if (g) g.push(r); else byLh.set(lh, [r])
-  }
-  for (const group of byLh.values()) {
+  for (const group of byKey.values()) {
     out.push(group.length === 1 ? group[0] : mergeGroup(group))
   }
   return out.sort((a, b) => new Date(b.windowStart).getTime() - new Date(a.windowStart).getTime())
@@ -220,27 +211,66 @@ export async function getTripRouteOptions(): Promise<RouteOption[]> {
   return out
 }
 
-export async function getTripStats() {
-  const allActive = await db.select().from(trips).where(and(
-    eq(trips.source, 'painel'),
-    or(
-      eq(trips.status, 'in_progress'),
-      eq(trips.status, 'planned'),
-      eq(trips.status, 'delayed'),
-    )!,
-  ))
-  const total    = allActive.length
-  const noPrazo  = allActive.filter(t => t.slaStatus === 'no_prazo').length
-  const emRisco  = allActive.filter(t => t.slaStatus === 'em_risco').length
-  const atrasadas = allActive.filter(t => t.slaStatus === 'atrasado' || t.status === 'delayed').length
-  const avgProgress = total > 0 ? Math.round(allActive.reduce((s, t) => s + (t.progressPct ?? 0), 0) / total) : 0
+// P5 — strip de acentos no Postgres (mesmo par do reconcile do Angellira).
+const ACC_FROM_TO = "'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇç','AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCc'"
 
+/**
+ * P5 — recomputa a IDENTIDADE CANÔNICA de cada viagem visível (painel+cargas).
+ * A mesma viagem física (PNLA do painel + CRG da carga) passa a compartilhar a chave:
+ *   - ATIVA (in_progress) → `MOT:<motorista>` — um motorista dirige UMA viagem por vez,
+ *     então painel+carga do mesmo motorista são a MESMA viagem e fundem SEMPRE, mesmo
+ *     quando os LHs do painel e da carga divergem (era a falha que duplicava o Franklin).
+ *   - SENÃO (concluída / sem motorista) → LH (sheet_lh) → linked_lh → 'ID:'+id.
+ * Derivada — roda no cron, não briga com os syncs. Base do dedup consistente das contagens.
+ */
+export async function recomputeCanonicalKeys(): Promise<number> {
+  const res = await db.execute(sql`
+    UPDATE trips t SET canonical_key = CASE
+      WHEN t.status='in_progress' AND t.sheet_motorista IS NOT NULL AND trim(t.sheet_motorista) <> ''
+        THEN 'MOT:' || upper(translate(trim(t.sheet_motorista), ${sql.raw(ACC_FROM_TO)}))
+      ELSE COALESCE(
+        NULLIF(upper(trim(t.sheet_lh)), ''),
+        NULLIF(upper(trim(t.linked_lh)), ''),
+        'ID:' || t.id::text
+      )
+    END
+    WHERE t.source IN ('painel','cargas')
+  `)
+  return (res as any)?.rowCount ?? (res as any)?.count ?? 0
+}
+
+export async function getTripStats() {
+  // P5 — universo = ativas painel+cargas, DEDUPLICADAS por canonical_key (1 por viagem
+  // física, preferindo a linha do painel p/ o SLA). Antes contava só source='painel'
+  // (perdia cargas) e sem dedup → agora é consistente com a tela (sem dupla contagem).
+  // Mesma base de antes (in_progress+planned+delayed, dedup por canonical_key). ÚNICA
+  // mudança vs. o original: ATRASADA só conta quem JÁ PARTIU (in_progress) — planejada
+  // não-partida não pode estar atrasada (era o bug: 8 planejadas infladas em atrasadas).
+  const rows = (await db.execute(sql`
+    WITH canon AS (
+      SELECT DISTINCT ON (canonical_key) canonical_key, status, sla_status, progress_pct
+      FROM trips
+      WHERE source IN ('painel','cargas') AND canonical_key IS NOT NULL
+        AND status IN ('in_progress','planned','delayed')
+      ORDER BY canonical_key, (source='painel') DESC, updated_at DESC
+    )
+    SELECT
+      count(*)::int AS total,
+      count(*) FILTER (WHERE sla_status='no_prazo')::int AS no_prazo,
+      count(*) FILTER (WHERE sla_status='em_risco')::int AS em_risco,
+      count(*) FILTER (WHERE status='in_progress' AND sla_status='atrasado')::int AS atrasadas,
+      COALESCE(round(avg(progress_pct)), 0)::int AS avg_progress
+    FROM canon
+  `)) as unknown as any[]
+  const r = (Array.isArray(rows) ? rows : (rows as any).rows ?? [])[0] ?? {}
+  const total = Number(r.total ?? 0)
+  const noPrazo = Number(r.no_prazo ?? 0), emRisco = Number(r.em_risco ?? 0), atrasadas = Number(r.atrasadas ?? 0)
   return {
     total:          { count: total },
     noPrazo:        { count: noPrazo,   pct: total ? Math.round((noPrazo   / total) * 100) : 0 },
     emRisco:        { count: emRisco,   pct: total ? Math.round((emRisco   / total) * 100) : 0 },
     atrasadas:      { count: atrasadas, pct: total ? Math.round((atrasadas / total) * 100) : 0 },
-    progressoMedio: { pct: avgProgress },
+    progressoMedio: { pct: Number(r.avg_progress ?? 0) },
   }
 }
 

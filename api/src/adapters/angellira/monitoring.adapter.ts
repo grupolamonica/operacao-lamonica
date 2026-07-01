@@ -180,15 +180,18 @@ async function reconcileTrackingToCargas(): Promise<number> {
       distance_total     = COALESCE(a.distance_total, c.distance_total),
       distance_done      = COALESCE(a.distance_done, c.distance_done),
       eta                = COALESCE(a.eta, c.eta),
+      -- window_end da carga (CRG) é a DATA da carga (lixo p/ SLA); puxa o Prazo Final
+      -- REAL do rastreamento Angellira (dataPrevFim) — evita "atrasado" falso nas cargas-só.
+      window_end         = COALESCE(a.window_end, c.window_end),
       sla_status         = a.sla_status,
       adiantamento_horas = a.adiantamento_horas,
       departed_at        = COALESCE(a.departed_at, c.departed_at),
       updated_at         = now()
     FROM (
-      SELECT DISTINCT ON (mot) mot, progress_pct, distance_total, distance_done, eta, sla_status, adiantamento_horas, departed_at
+      SELECT DISTINCT ON (mot) mot, progress_pct, distance_total, distance_done, eta, window_end, sla_status, adiantamento_horas, departed_at
       FROM (
         SELECT upper(translate(trim(sheet_motorista), ${sql.raw(ACC)})) AS mot,
-               progress_pct, distance_total, distance_done, eta, sla_status, adiantamento_horas, departed_at, updated_at
+               progress_pct, distance_total, distance_done, eta, window_end, sla_status, adiantamento_horas, departed_at, updated_at
         FROM trips
         WHERE code ~ '^[0-9]+$' AND status = 'in_progress'
           AND sheet_motorista IS NOT NULL AND trim(sheet_motorista) <> ''
@@ -225,6 +228,44 @@ async function reconcileTrackingToCargas(): Promise<number> {
   `)
 
   return (res as any)?.rowCount ?? (res as any)?.count ?? 0
+}
+
+/**
+ * Conclusão UNIFICADA para QUALQUER fonte (painel/cargas/numérica) — fonte única de
+ * verdade da "lei do motorista", resolve as divergências de conclusão entre os feeds:
+ *   (a) CHEGOU: km que falta ≤ 2 (com distância válida) → completed. Cobre as cargas
+ *       (CRG) que o reconcile atualizava o km mas NÃO concluía.
+ *   (b) ABANDONADA: iniciada há > 7 dias e ainda in_progress → completed. O painel só
+ *       mantém ~7 dias no feed "Carrega"; alinha a janela da Torre à do painel.
+ * NÃO toca planejadas, nem fecha atrasada-porém-em-rota (km>2 e <7d seguem in_progress).
+ * Idempotente — pode rodar a cada ciclo e num cron próprio (independe do Angellira).
+ */
+export async function closeStaleTrips(): Promise<{ chegou: number; abandonada: number; prazoLimpo: number }> {
+  const n = (r: any) => r?.rowCount ?? r?.count ?? 0
+  const chegou = await db.execute(sql`
+    UPDATE trips SET status='completed', sla_status=NULL,
+      arrived_at=COALESCE(arrived_at, now()), updated_at=now()
+    WHERE status='in_progress'
+      AND COALESCE(distance_total,0) > 0
+      AND (COALESCE(distance_total,0) - COALESCE(distance_done,0)) <= ${PARAMS_PADRAO.kmParaConsiderarChegou}
+  `)
+  const abandonada = await db.execute(sql`
+    UPDATE trips SET status='completed', sla_status=NULL,
+      arrived_at=COALESCE(arrived_at, updated_at), updated_at=now()
+    WHERE status='in_progress' AND window_start < now() - interval '7 days'
+  `)
+  // Carga (CRG) cujo window_end é a DATA da carga (meia-noite exata) já vencida e sem GPS
+  // p/ corrigir via reconcile → não é um Prazo Final real; zera p/ não virar "atrasado" falso
+  // no recálculo ao vivo (recomputeSla aceita window_end nulo). Quando o GPS volta, o reconcile
+  // repõe o prazo correto.
+  const prazoLimpo = await db.execute(sql`
+    UPDATE trips SET window_end = NULL, sla_status = NULL, updated_at = now()
+    WHERE source='cargas' AND status='in_progress'
+      AND window_end IS NOT NULL
+      AND window_end = date_trunc('day', window_end)
+      AND window_end < now() - interval '6 hours'
+  `)
+  return { chegou: n(chegou), abandonada: n(abandonada), prazoLimpo: n(prazoLimpo) }
 }
 
 export interface MonitoringResult { fetched: number; upserted: number; positions: number; semViagem: number; cargasReconciled?: number; lhFromObs?: number; cargasByLh?: number }
@@ -375,11 +416,14 @@ export async function syncMonitoring(): Promise<MonitoringResult> {
   `)
   const closedCount = (closed as any)?.rowCount ?? (closed as any)?.count ?? 0
 
+  // Conclusão UNIFICADA (chegou km<=2 / abandonada >7d) em TODAS as fontes, com o GPS fresco.
+  const staleClosed = await closeStaleTrips()
+
   // Sincroniza o rastreamento ao vivo → cargas da aba SHOPEE.
   // 1º por LH da observação do Angellira (preciso); 2º por motorista (fallback p/ o resto).
   const cargasByLh = await reconcileByLh(lhMatches)
   const cargasReconciled = await reconcileTrackingToCargas()
 
-  logger.info({ fetched: lista.length, upserted, positions, semViagem, closedStale: closedCount, lhFromObs: lhMatches.length, cargasByLh, cargasReconciled }, '[angellira-monitoring] sync ok')
+  logger.info({ fetched: lista.length, upserted, positions, semViagem, closedStale: closedCount, staleClosed, lhFromObs: lhMatches.length, cargasByLh, cargasReconciled }, '[angellira-monitoring] sync ok')
   return { fetched: lista.length, upserted, positions, semViagem, cargasReconciled, lhFromObs: lhMatches.length, cargasByLh }
 }

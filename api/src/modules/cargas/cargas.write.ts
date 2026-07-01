@@ -96,3 +96,38 @@ export async function allocateLoad(loadId: string, input: AllocateInput): Promis
     return { ok: true, raw: text }
   }
 }
+
+/**
+ * DESALOCA um motorista de uma carga: cancela o lead (ou claim) ativo que a prende.
+ * Em teste as alocações são leads → caminho `leadId` (cancel lead). Reabre a carga.
+ * GATED por CARGAS_WRITE_ENABLED (igual allocateLoad).
+ */
+export async function deallocateLoad(
+  loadId: string,
+  input: { leadId?: string; claimId?: string },
+): Promise<unknown> {
+  if (!isCargasWriteEnabled()) {
+    throw new Error('CARGAS_WRITE_ENABLED is false — desalocação desabilitada')
+  }
+  if (!input.leadId && !input.claimId) {
+    throw new Error('leadId ou claimId obrigatório para desalocar')
+  }
+  const apiUrl = requireEnv('CARGAS_API_URL')
+  const token = await signInOperator()
+  const headers = operatorHeaders(token)
+
+  const endpoint = input.leadId
+    ? `${apiUrl}/api/loads/${loadId}/leads/${input.leadId}/cancel`
+    : `${apiUrl}/api/loads/${loadId}/claims/${input.claimId}/cancel`
+
+  const res = await fetch(endpoint, { method: 'POST', headers })
+  const text = await res.text()
+  if (!res.ok) {
+    throw new Error(`Cargas deallocation failed (${res.status}): ${text.slice(0, 300)}`)
+  }
+  try {
+    return JSON.parse(text)
+  } catch {
+    return { ok: true, raw: text }
+  }
+}

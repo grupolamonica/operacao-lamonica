@@ -12,8 +12,8 @@
 
 import { Elysia, t } from 'elysia'
 import { authGuard } from '../../lib/rbac'
-import { getOpenLoads, getLoadCandidates, getAvailableDrivers } from './cargas.service'
-import { allocateLoad, isCargasWriteEnabled } from './cargas.write'
+import { getOpenLoads, getLoadCandidates, getAvailableDrivers, getAllocatedLoads } from './cargas.service'
+import { allocateLoad, deallocateLoad, isCargasWriteEnabled } from './cargas.write'
 import { syncCargas } from './cargas.sync'
 
 const allocateSchema = t.Object({
@@ -62,6 +62,33 @@ export const cargasPlugin = new Elysia({ name: 'cargas' })
           detail: {
             tags: ['cargas'],
             summary: 'Aloca motorista na carga (approve lead OU direct-allocation). GATED por CARGAS_WRITE_ENABLED.',
+          },
+        },
+      )
+      .get('/allocated-loads', () => getAllocatedLoads(), {
+        detail: {
+          tags: ['cargas'],
+          summary: 'Cargas alocadas (com motorista) + lead ativo cancelável para desalocar',
+        },
+      })
+      .post(
+        '/loads/:id/deallocate',
+        async ({ params, body, set }) => {
+          if (!isCargasWriteEnabled()) {
+            set.status = 501
+            return { error: 'CARGAS_WRITE_ENABLED is false — desalocação desabilitada' }
+          }
+          if (!body.leadId && !body.claimId) {
+            set.status = 422
+            return { error: 'leadId ou claimId obrigatório' }
+          }
+          return deallocateLoad(params.id, body)
+        },
+        {
+          body: t.Object({ leadId: t.Optional(t.String()), claimId: t.Optional(t.String()) }),
+          detail: {
+            tags: ['cargas'],
+            summary: 'Desaloca motorista da carga (cancela o lead/claim ativo). GATED por CARGAS_WRITE_ENABLED.',
           },
         },
       )

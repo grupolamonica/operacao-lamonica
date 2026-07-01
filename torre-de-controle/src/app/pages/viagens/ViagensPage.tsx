@@ -4,6 +4,8 @@ import { PrazoFinalFilter, type PrazoRange, defaultPrazoRange } from '@/componen
 import { ViagensKPIRow } from './components/ViagensKPIRow'
 import { ViagensTable } from './components/ViagensTable'
 import { CargasAbertasPanel } from './components/CargasAbertasPanel'
+import { CargasAlocadasPanel } from './components/CargasAlocadasPanel'
+import { AlocacaoSpxPanel } from './components/AlocacaoSpxPanel'
 
 export function ViagensPage() {
   const [range, setRange] = useState<PrazoRange>(() => defaultPrazoRange('op')) // hoje (igual ao painel)
@@ -24,9 +26,19 @@ export function ViagensPage() {
 
       <ViagensTable range={range} />
 
+      {/* Alocação direta na viagem SPX (motorista + cavalo/carreta via sidecar) */}
+      <div className="bg-card border border-border rounded-lg p-4">
+        <AlocacaoSpxPanel />
+      </div>
+
       {/* Phase 14 — cargas em aberto (sem motorista) + alocação no Cargas */}
       <div className="bg-card border border-border rounded-lg p-4">
         <CargasAbertasPanel />
+      </div>
+
+      {/* Cargas alocadas (com motorista) + desalocação */}
+      <div className="bg-card border border-border rounded-lg p-4">
+        <CargasAlocadasPanel />
       </div>
     </div>
   )

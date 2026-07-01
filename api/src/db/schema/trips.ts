@@ -61,6 +61,10 @@ export const trips = pgTable('trips', {
   cargasLoadId:    uuid('cargas_load_id'),
   // Phase 14 — elo NÃO-único p/ fundir viagem-painel (PNLA, dona do code) + carga (CRG, dona do sheet_lh único)
   linkedLh:        varchar('linked_lh', { length: 50 }),
+  // P5 — identidade CANÔNICA da viagem física (LH, ou motorista-ativo, ou própria id). Mesma viagem
+  // representada em painel(PNLA)+cargas(CRG) compartilha a chave → dedup consistente em toda contagem.
+  // Derivada (recomputada por recomputeCanonicalKeys), não brigam com os syncs.
+  canonicalKey:    text('canonical_key'),
   createdAt:      timestamp('created_at',  { withTimezone: true }).defaultNow().notNull(),
   updatedAt:      timestamp('updated_at',  { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
@@ -68,6 +72,7 @@ export const trips = pgTable('trips', {
   slaStatusIdx: index('idx_trips_sla_status').on(t.slaStatus),
   windowIdx:    index('idx_trips_window').on(t.windowStart, t.windowEnd),
   riskIdx:      index('idx_trips_risk_level').on(t.riskLevel),
+  canonicalIdx: index('idx_trips_canonical_key').on(t.canonicalKey),
 }))
 
 export type SelectTrip = typeof trips.$inferSelect
