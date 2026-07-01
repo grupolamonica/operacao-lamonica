@@ -18,9 +18,11 @@ import {
   fetchQueuedLeads,
   fetchClientes,
   fetchMotoristasByCpf,
+  fetchAllocatedLoadRows,
+  fetchActiveLeads,
 } from './cargas.reads'
 import { resolveClientName } from './cargas.clients'
-import type { OpenLoad, LoadCandidate, AvailableDriver } from './cargas.types'
+import type { OpenLoad, LoadCandidate, AvailableDriver, AllocatedLoad } from './cargas.types'
 
 function toNum(v: number | string | null): number | null {
   if (v === null || v === undefined || v === '') return null
@@ -226,4 +228,39 @@ export async function getLoadCandidates(loadId: string): Promise<LoadCandidate[]
     vehicleType: l.vehicle_type,
     status: l.status,
   }))
+}
+
+/** Cargas alocadas (com motorista) + lead ativo p/ desalocar (cancelar). */
+export async function getAllocatedLoads(): Promise<AllocatedLoad[]> {
+  const rows = await fetchAllocatedLoadRows()
+  if (rows.length === 0) return []
+  const [clientes, leads] = await Promise.all([
+    fetchClientes(),
+    fetchActiveLeads(rows.map((r) => r.id)),
+  ])
+  const clientesById = new Map(clientes.map((c) => [c.id, c.nome]))
+  // 1 lead ativo por carga (o que prende a alocação).
+  const leadByLoad = new Map<string, (typeof leads)[number]>()
+  for (const l of leads) if (!leadByLoad.has(l.load_id)) leadByLoad.set(l.load_id, l)
+  const cpfs = leads.map((l) => l.cpf).filter((c): c is string => !!c)
+  const motoristas = await fetchMotoristasByCpf(cpfs)
+  const nomeByCpf = new Map(motoristas.map((m) => [m.cpf, m.nome]))
+
+  return rows.map((r) => {
+    const lead = leadByLoad.get(r.id)
+    return {
+      id: r.id,
+      lh: r.sheet_lh,
+      cliente: resolveClientName(r.cliente_id, clientesById),
+      origem: r.origem,
+      destino: r.destino,
+      perfil: r.perfil,
+      status: r.status,
+      leadId: lead?.id ?? null,
+      cpf: lead?.cpf ?? null,
+      driverName: lead?.cpf ? nomeByCpf.get(lead.cpf) ?? null : r.sheet_motorista ?? null,
+      horsePlate: lead?.horse_plate ?? r.sheet_cavalo ?? null,
+      trailerPlate: lead?.trailer_plate ?? r.sheet_carreta ?? null,
+    }
+  })
 }

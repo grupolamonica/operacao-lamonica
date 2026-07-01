@@ -105,3 +105,47 @@ export function useAllocateLoad() {
     },
   })
 }
+
+// --- Cargas ALOCADAS + desalocação (cancela o lead/claim ativo) ---
+
+export interface AllocatedLoad {
+  id: string
+  lh: string | null
+  cliente: string | null
+  origem: string | null
+  destino: string | null
+  perfil: string | null
+  status: string
+  leadId: string | null
+  cpf: string | null
+  driverName: string | null
+  horsePlate: string | null
+  trailerPlate: string | null
+}
+
+export function useAllocatedLoads() {
+  const q = useQuery({
+    queryKey: ['cargas', 'allocated-loads'],
+    queryFn: async (): Promise<AllocatedLoad[]> => {
+      const { data, error } = await (api.api as any).cargas['allocated-loads'].get()
+      if (error) throw new Error('Falha ao carregar cargas alocadas')
+      return (data ?? []) as AllocatedLoad[]
+    },
+    refetchInterval: 30_000,
+  })
+  return { data: q.data ?? [], isLoading: q.isLoading, isError: q.isError, refetch: q.refetch }
+}
+
+export function useDeallocateLoad() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ loadId, leadId, claimId }: { loadId: string; leadId?: string; claimId?: string }) => {
+      const { data, error } = await (api.api as any).cargas.loads[loadId].deallocate.post({ leadId, claimId })
+      if (error) throw new Error(error?.value?.error ?? 'Falha ao desalocar motorista no Cargas')
+      return data
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cargas'] })
+    },
+  })
+}

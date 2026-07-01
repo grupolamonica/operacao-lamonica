@@ -114,3 +114,26 @@ export interface AllocateInput {
   trailerPlate2?: string
   vehicleType?: string
 }
+
+/** Uma carga JÁ alocada (com motorista) + o lead ativo cancelável (p/ desalocar). */
+export interface AllocatedLoad {
+  id: string
+  lh: string | null
+  cliente: string | null
+  origem: string | null
+  destino: string | null
+  perfil: string | null
+  status: string
+  /** lead ativo que prende a carga; null se não houver (ex.: alocação por claim). */
+  leadId: string | null
+  cpf: string | null
+  driverName: string | null
+  horsePlate: string | null
+  trailerPlate: string | null
+}
+
+/** Payload de desalocação — cancela o lead (ou claim) que prende a carga. */
+export interface DeallocateInput {
+  leadId?: string
+  claimId?: string
+}

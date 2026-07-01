@@ -56,6 +56,10 @@ import { cargasPlugin } from './modules/cargas/cargas.plugin'
 import { spxPlugin } from './modules/spx/spx.plugin'
 // API de integração — motorista completo por CPF (x-api-key, consumo server-to-server)
 import { integrationsPlugin } from './modules/integrations/integrations.plugin'
+// API de alocação SPX para outros sistemas (machine-to-machine, x-api-key)
+import { spxAllocPlugin } from './modules/spx/spx-alloc.plugin'
+// Alocação de motorista em viagem SPX (via sidecar spx-bot; dry-run por padrão)
+import { allocacaoPlugin } from './modules/allocacao/allocacao.plugin'
 
 import { operacionalPlugin } from './modules/operacional/operacional.plugin'
 import { auditPlugin } from './modules/audit/audit.plugin'
@@ -229,6 +233,10 @@ export const app = new Elysia()
   .use(spxPlugin)
   // API de integração — motorista por CPF (x-api-key, BEFORE wsPlugin: regra plugin-last Elysia 1.4)
   .use(integrationsPlugin)
+  // API de alocação SPX para outros sistemas (x-api-key; BEFORE wsPlugin)
+  .use(spxAllocPlugin)
+  // Alocação de motorista em viagem SPX (BEFORE wsPlugin: Elysia 1.4 plugin-last rule)
+  .use(allocacaoPlugin)
   .use(wsPlugin)
   // Telemetry inlined to avoid Elysia 1.4.28 plugin-composition issue with body schema
   .post('/api/telemetry/ingest', async ({ body, headers, set }) => {

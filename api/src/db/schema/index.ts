@@ -21,4 +21,8 @@ export * from './driver-positions'
 export * from './geocode-cache'
 // Phase 14 — cache de cargas em aberto + candidatos (sync do Cargas)
 export * from './cargas'
+// Phase 15 — cruzamento SPX (line_haul trips) x Angellira (risco) por viagem
+export * from './spx-trip-check'
+// Credenciais das integrações (Angellira/aspx) — rotação de senha via banco
+export * from './integration-credentials'
 export * from './relations'

@@ -131,3 +131,30 @@ export async function fetchMotoristasByCpf(cpfs: string[]): Promise<MotoristaHis
   }
   return out
 }
+
+/** Status de lead que representam alocação ATIVA (não-QUEUED, não-cancelada). */
+export const ACTIVE_LEAD_STATUSES = ['APPROVED', 'WON_RESERVATION', 'PROMOTED', 'CONFIRMED', 'RESERVED'] as const
+
+/** Cargas com motorista alocado (booked_driver_id preenchido). */
+export async function fetchAllocatedLoadRows(): Promise<CargaRow[]> {
+  const { data, error } = await cargasSupabase
+    .from('cargas')
+    .select(
+      'id, cliente_id, origem, destino, perfil, valor, bonus, status, sheet_lh, sheet_status, sheet_motorista, sheet_cavalo, sheet_carreta, reserved_driver_id, booked_driver_id, distancia_km, rota_id',
+    )
+    .not('booked_driver_id', 'is', null)
+  if (error) throw error
+  return (data ?? []) as unknown as CargaRow[]
+}
+
+/** Leads ATIVOS (alocação vigente) por loadIds — o lead a cancelar no desalocar. */
+export async function fetchActiveLeads(loadIds: string[]): Promise<PublicLeadRow[]> {
+  if (loadIds.length === 0) return []
+  const { data, error } = await cargasSupabase
+    .from('load_public_leads')
+    .select('id, load_id, cpf, phone, horse_plate, trailer_plate, vehicle_type, status')
+    .in('load_id', loadIds)
+    .in('status', ACTIVE_LEAD_STATUSES as unknown as string[])
+  if (error) throw error
+  return (data ?? []) as unknown as PublicLeadRow[]
+}
