@@ -216,7 +216,7 @@ function renderFleet(map: maplibregl.Map, fleet: FleetPosition[]) {
   })
 }
 
-/** Add/update geofence fill + outline layers. Only active fences rendered. */
+/** Add/update geofence fill + outline layers + centro (ponto do local). Only active fences rendered. */
 function renderGeofences(map: maplibregl.Map, fences: Geofence[]) {
   const active = fences.filter((f) => f.isActive)
   const geojson: GeoJSON.FeatureCollection = {
@@ -227,22 +227,39 @@ function renderGeofences(map: maplibregl.Map, fences: Geofence[]) {
       geometry: { type: 'Polygon' as const, coordinates: f.coordinates },
     })),
   }
+  // Ponto central = localização exata do local (carregamento/descarga).
+  const centers: GeoJSON.FeatureCollection = {
+    type: 'FeatureCollection',
+    features: active
+      .filter((f) => f.centerLat != null && f.centerLng != null)
+      .map((f) => ({
+        type: 'Feature' as const,
+        properties: { color: f.color, name: f.name },
+        geometry: { type: 'Point' as const, coordinates: [f.centerLng!, f.centerLat!] },
+      })),
+  }
 
   if (map.getSource('fences')) {
     ;(map.getSource('fences') as maplibregl.GeoJSONSource).setData(geojson)
+    ;(map.getSource('fence-centers') as maplibregl.GeoJSONSource | undefined)?.setData(centers)
     return
   }
 
   map.addSource('fences', { type: 'geojson', data: geojson })
   map.addLayer({ id: 'fences-fill', type: 'fill',   source: 'fences', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.15 } })
   map.addLayer({ id: 'fences-line', type: 'line',   source: 'fences', paint: { 'line-color': ['get', 'color'], 'line-width': 2 } })
+  map.addSource('fence-centers', { type: 'geojson', data: centers })
+  map.addLayer({ id: 'fence-centers-dot', type: 'circle', source: 'fence-centers', paint: { 'circle-radius': 4, 'circle-color': ['get', 'color'], 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5 } })
+  map.addLayer({ id: 'fence-centers-label', type: 'symbol', source: 'fence-centers', minzoom: 10, layout: { 'text-field': ['get', 'name'], 'text-size': 10, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-allow-overlap': false }, paint: { 'text-color': '#0f766e', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } })
 }
 
 /** Remove geofence layers + source */
 function removeGeofences(map: maplibregl.Map) {
-  if (map.getLayer('fences-fill')) map.removeLayer('fences-fill')
-  if (map.getLayer('fences-line')) map.removeLayer('fences-line')
-  if (map.getSource('fences'))     map.removeSource('fences')
+  for (const id of ['fences-fill', 'fences-line', 'fence-centers-dot', 'fence-centers-label']) {
+    if (map.getLayer(id)) map.removeLayer(id)
+  }
+  if (map.getSource('fences'))        map.removeSource('fences')
+  if (map.getSource('fence-centers')) map.removeSource('fence-centers')
 }
 
 /** Remove all fleet layers + source from map */

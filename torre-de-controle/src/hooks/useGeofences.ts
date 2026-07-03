@@ -9,6 +9,11 @@ export type Geofence = {
   coordinates: number[][][]
   isActive:    boolean
   description: string | null
+  stationId:   number | null
+  radiusM:     number | null
+  centerLat:   number | null
+  centerLng:   number | null
+  source:      string | null
   createdAt:   string
   updatedAt:   string
 }

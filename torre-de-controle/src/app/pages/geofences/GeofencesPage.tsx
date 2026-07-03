@@ -138,14 +138,16 @@ export function GeofencesPage() {
   }, [isDrawing, drawPoints])
 
   function renderGeofences(map: maplibregl.Map) {
-    if (map.getLayer('fences-fill')) map.removeLayer('fences-fill')
-    if (map.getLayer('fences-line')) map.removeLayer('fences-line')
-    if (map.getLayer('fences-label')) map.removeLayer('fences-label')
+    for (const id of ['fences-fill', 'fences-line', 'fence-centers-dot', 'fence-centers-label']) {
+      if (map.getLayer(id)) map.removeLayer(id)
+    }
     if (map.getSource('fences')) map.removeSource('fences')
+    if (map.getSource('fence-centers')) map.removeSource('fence-centers')
 
+    const active = fences.filter(f => f.isActive)
     const geojson: GeoJSON.GeoJSON = {
       type: 'FeatureCollection',
-      features: fences.filter(f => f.isActive).map(f => ({
+      features: active.map(f => ({
         type: 'Feature' as const,
         properties: { id: f.id, name: f.name, color: f.color },
         geometry: { type: 'Polygon' as const, coordinates: f.coordinates },
@@ -154,6 +156,29 @@ export function GeofencesPage() {
     map.addSource('fences', { type: 'geojson', data: geojson })
     map.addLayer({ id: 'fences-fill', type: 'fill', source: 'fences', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.15 } })
     map.addLayer({ id: 'fences-line', type: 'line', source: 'fences', paint: { 'line-color': ['get', 'color'], 'line-width': 2 } })
+
+    // Ponto central = localização exata do local (carregamento/descarga). Sem ele
+    // só se via o círculo do raio; o marcador mostra ONDE fica a doca + o nome.
+    const centers: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: active
+        .filter(f => f.centerLat != null && f.centerLng != null)
+        .map(f => ({
+          type: 'Feature' as const,
+          properties: { name: f.name, color: f.color, radius: f.radiusM ?? null },
+          geometry: { type: 'Point' as const, coordinates: [f.centerLng!, f.centerLat!] },
+        })),
+    }
+    map.addSource('fence-centers', { type: 'geojson', data: centers })
+    map.addLayer({
+      id: 'fence-centers-dot', type: 'circle', source: 'fence-centers',
+      paint: { 'circle-radius': 5, 'circle-color': ['get', 'color'], 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2 },
+    })
+    map.addLayer({
+      id: 'fence-centers-label', type: 'symbol', source: 'fence-centers', minzoom: 8,
+      layout: { 'text-field': ['get', 'name'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-allow-overlap': false },
+      paint: { 'text-color': '#0f766e', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 },
+    })
 
     // Enquadra todas as geofences uma vez (evita abrir o mapa longe dos pontos).
     if (!fittedRef.current && geojson.features.length > 0) {
