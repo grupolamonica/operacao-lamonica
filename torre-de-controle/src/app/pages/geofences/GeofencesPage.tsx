@@ -12,6 +12,7 @@ const FENCE_TYPES = [
   { value: 'zona_perigo',   label: 'Zona de Perigo', color: '#f97316' },
   { value: 'zona_operacao', label: 'Zona Operação',  color: '#3b82f6' },
   { value: 'checkpoint',    label: 'Checkpoint',     color: '#22c55e' },
+  { value: 'doca',          label: 'Doca (carreg./descarga)', color: '#14b8a6' },
 ]
 
 export function GeofencesPage() {

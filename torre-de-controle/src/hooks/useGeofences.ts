@@ -4,7 +4,7 @@ import { api } from '@/lib/api'
 export type Geofence = {
   id:          string
   name:        string
-  type:        'zona_restrita' | 'zona_perigo' | 'zona_operacao' | 'checkpoint'
+  type:        'zona_restrita' | 'zona_perigo' | 'zona_operacao' | 'checkpoint' | 'doca'
   color:       string
   coordinates: number[][][]
   isActive:    boolean

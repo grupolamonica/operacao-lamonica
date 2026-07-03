@@ -82,7 +82,7 @@ async function checkGeofences(vehicleId: string, lat: number, lng: number): Prom
   const point = `POINT(${lng} ${lat})`
   const inside = await db.execute(sql`
     SELECT id, name, type FROM geofences
-    WHERE is_active = true AND geom IS NOT NULL
+    WHERE is_active = true AND geom IS NOT NULL AND type <> 'doca'
       AND ST_Contains(geom, ST_GeomFromText(${point}, 4326))
   `) as Array<{ id: string; name: string; type: string }>
 

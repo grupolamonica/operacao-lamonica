@@ -17,6 +17,7 @@ import { syncPainel } from '../adapters/painel-sheet/painel-sync'
 import { runDetectors } from '../modules/alerts/detectors.service'
 import { syncCargas } from '../modules/cargas/cargas.sync'
 import { syncRankTrips } from '../adapters/spx-portal/rank-trips-sync.adapter'
+import { syncSpxGeofences } from '../adapters/spx-portal/spx-geofences.adapter'
 import { trackOpStatusTransitions } from '../modules/operacional/operacional.service'
 
 const QUEUE_NAME = 'angellira-cron'
@@ -68,6 +69,7 @@ export function startAngelliraJobs(): void {
     if (job.name === 'cargas') return syncCargas()
     if (job.name === 'rank-sync') return syncRankTrips()
     if (job.name === 'op-tracker') return trackOpStatusTransitions()
+    if (job.name === 'spx-geofences') return syncSpxGeofences()
     if (job.name === 'close-stale') { const r = await closeStaleTrips(); await recomputeCanonicalKeys(); return r }
   }, { connection })
 
@@ -117,6 +119,9 @@ export function startAngelliraJobs(): void {
   // Conclusão unificada (chegou/abandonada) a cada 5min — INDEPENDE do Angellira estar de pé,
   // então fecha as presas mesmo durante uma queda do feed (P1/P2/P3/P4).
   void queue.add('close-stale', {}, { repeat: { pattern: '*/5 * * * *' }, jobId: 'close-stale-trips' })
+  // Phase 16 — docas SPX (carregamento/descarga) → geofences de estação, 1x/dia (04:00).
+  // Geofence de estação quase nunca muda; diário basta e captura estações de rotas novas.
+  void queue.add('spx-geofences', {}, { repeat: { pattern: '0 4 * * *' }, jobId: 'spx-geofences-sync' })
 
-  logger.info('[angellira] jobs agendados — positions */3min, monitoring */5min, painel */3min, cargas */15min, rank-sync */10min, op-tracker */2min, close-stale */5min, detectors hora cheia')
+  logger.info('[angellira] jobs agendados — positions */3min, monitoring */5min, painel */3min, cargas */15min, rank-sync */10min, op-tracker */2min, close-stale */5min, detectors */30min, spx-geofences 04:00')
 }

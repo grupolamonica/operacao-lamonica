@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { and, eq, ne } from 'drizzle-orm'
 import { db } from '../db/client'
 import { redis } from '../redis/client'
 import { geofences } from '../db/schema/geofences'
@@ -28,7 +28,8 @@ const FENCES_TTL_MS = 60_000
 async function loadActiveFences() {
   const now = Date.now()
   if (now - fencesLoadedAt < FENCES_TTL_MS && activeFencesCache.length > 0) return activeFencesCache
-  const rows = await db.select().from(geofences).where(eq(geofences.isActive, true))
+  // Docas SPX (type 'doca') são catálogo/mapa — fora da detecção de entrada/saída p/ não inundar a timeline.
+  const rows = await db.select().from(geofences).where(and(eq(geofences.isActive, true), ne(geofences.type, 'doca')))
   activeFencesCache = rows.flatMap((f) => {
     const coords = (f.coordinates as { coordinates?: number[][][] } | number[][][]) as any
     // Support both bare [[[lng,lat],...]] and full GeoJSON { type:'Polygon', coordinates:[[[...]]] }

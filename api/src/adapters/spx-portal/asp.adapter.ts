@@ -13,8 +13,8 @@
  */
 import { getCargasSupabase } from '../../modules/cargas/cargas.supabase'
 
-const SPX_BASE = (process.env.SPX_BASE_URL || 'https://logistics.myagencyservice.com.br').replace(/\/+$/, '')
-const DEFAULT_STATION = process.env.SPX_LINEHAUL_STATION_ID || '5015'
+export const SPX_BASE = (process.env.SPX_BASE_URL || 'https://logistics.myagencyservice.com.br').replace(/\/+$/, '')
+export const DEFAULT_STATION = process.env.SPX_LINEHAUL_STATION_ID || '5015'
 
 // enum tt_trip_status (conf do portal SPX)
 const TS: Record<number, string> = {
@@ -40,7 +40,7 @@ export const ASP_COLUMNS = [
 
 export type AspRow = Record<(typeof ASP_COLUMNS)[number], string>
 
-async function getCookieHeader(): Promise<string> {
+export async function getCookieHeader(): Promise<string> {
   const sb = getCargasSupabase()
   const { data, error } = await sb
     .from('aspx_credentials')
