@@ -216,6 +216,9 @@ function renderFleet(map: maplibregl.Map, fleet: FleetPosition[]) {
   })
 }
 
+// Registra os handlers do popup da doca uma única vez por instância de mapa.
+const geofencePopupMaps = new WeakSet<maplibregl.Map>()
+
 /** Add/update geofence fill + outline layers + centro (ponto do local). Only active fences rendered. */
 function renderGeofences(map: maplibregl.Map, fences: Geofence[]) {
   const active = fences.filter((f) => f.isActive)
@@ -234,7 +237,7 @@ function renderGeofences(map: maplibregl.Map, fences: Geofence[]) {
       .filter((f) => f.centerLat != null && f.centerLng != null)
       .map((f) => ({
         type: 'Feature' as const,
-        properties: { color: f.color, name: f.name, label: f.radiusM != null ? `${f.name} · ${f.radiusM} m` : f.name },
+        properties: { color: f.color, name: f.name, radius: f.radiusM ?? null, stationId: f.stationId ?? null, label: f.radiusM != null ? `${f.name} · ${f.radiusM} m` : f.name },
         geometry: { type: 'Point' as const, coordinates: [f.centerLng!, f.centerLat!] },
       })),
   }
@@ -251,6 +254,28 @@ function renderGeofences(map: maplibregl.Map, fences: Geofence[]) {
   map.addSource('fence-centers', { type: 'geojson', data: centers })
   map.addLayer({ id: 'fence-centers-dot', type: 'circle', source: 'fence-centers', paint: { 'circle-radius': 4, 'circle-color': ['get', 'color'], 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5 } })
   map.addLayer({ id: 'fence-centers-label', type: 'symbol', source: 'fence-centers', minzoom: 10, layout: { 'text-field': ['get', 'label'], 'text-size': 10, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-allow-overlap': false }, paint: { 'text-color': '#0f766e', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } })
+
+  // Popup de detalhes ao clicar na bolinha (mesmo comportamento da tela Geofences). Uma vez por mapa.
+  if (!geofencePopupMaps.has(map)) {
+    geofencePopupMaps.add(map)
+    const popup = new maplibregl.Popup({ closeButton: true, offset: 10 })
+    map.on('click', 'fence-centers-dot', (e) => {
+      const feat = e.features?.[0]
+      if (!feat) return
+      const p = feat.properties as { name?: string; radius?: number; stationId?: number }
+      const [lng, lat] = (feat.geometry as GeoJSON.Point).coordinates as [number, number]
+      popup.setLngLat([lng, lat]).setHTML(
+        `<div style="font-size:12px;line-height:1.5">
+           <strong>${p.name ?? 'Doca'}</strong><br/>
+           Estação: ${p.stationId ?? '—'}<br/>
+           Raio: ${p.radius != null ? `${p.radius} m` : '—'}<br/>
+           <span style="color:#64748b">${lat.toFixed(5)}, ${lng.toFixed(5)}</span>
+         </div>`,
+      ).addTo(map)
+    })
+    map.on('mouseenter', 'fence-centers-dot', () => { map.getCanvas().style.cursor = 'pointer' })
+    map.on('mouseleave', 'fence-centers-dot', () => { map.getCanvas().style.cursor = '' })
+  }
 }
 
 /** Remove geofence layers + source */
