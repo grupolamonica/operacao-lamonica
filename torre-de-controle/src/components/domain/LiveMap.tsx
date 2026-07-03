@@ -234,7 +234,7 @@ function renderGeofences(map: maplibregl.Map, fences: Geofence[]) {
       .filter((f) => f.centerLat != null && f.centerLng != null)
       .map((f) => ({
         type: 'Feature' as const,
-        properties: { color: f.color, name: f.name },
+        properties: { color: f.color, name: f.name, label: f.radiusM != null ? `${f.name} · ${f.radiusM} m` : f.name },
         geometry: { type: 'Point' as const, coordinates: [f.centerLng!, f.centerLat!] },
       })),
   }
@@ -250,7 +250,7 @@ function renderGeofences(map: maplibregl.Map, fences: Geofence[]) {
   map.addLayer({ id: 'fences-line', type: 'line',   source: 'fences', paint: { 'line-color': ['get', 'color'], 'line-width': 2 } })
   map.addSource('fence-centers', { type: 'geojson', data: centers })
   map.addLayer({ id: 'fence-centers-dot', type: 'circle', source: 'fence-centers', paint: { 'circle-radius': 4, 'circle-color': ['get', 'color'], 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5 } })
-  map.addLayer({ id: 'fence-centers-label', type: 'symbol', source: 'fence-centers', minzoom: 10, layout: { 'text-field': ['get', 'name'], 'text-size': 10, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-allow-overlap': false }, paint: { 'text-color': '#0f766e', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } })
+  map.addLayer({ id: 'fence-centers-label', type: 'symbol', source: 'fence-centers', minzoom: 10, layout: { 'text-field': ['get', 'label'], 'text-size': 10, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-allow-overlap': false }, paint: { 'text-color': '#0f766e', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 } })
 }
 
 /** Remove geofence layers + source */

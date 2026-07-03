@@ -21,6 +21,7 @@ export function GeofencesPage() {
   const initRef      = useRef(false)
   const markersRef   = useRef<maplibregl.Marker[]>([])
   const fittedRef    = useRef(false)
+  const centerHandlersRef = useRef(false)
 
   const [isDrawing, setIsDrawing]     = useState(false)
   const [drawPoints, setDrawPoints]   = useState<[number, number][]>([])
@@ -165,7 +166,14 @@ export function GeofencesPage() {
         .filter(f => f.centerLat != null && f.centerLng != null)
         .map(f => ({
           type: 'Feature' as const,
-          properties: { name: f.name, color: f.color, radius: f.radiusM ?? null },
+          properties: {
+            name:      f.name,
+            color:     f.color,
+            radius:    f.radiusM ?? null,
+            stationId: f.stationId ?? null,
+            // rótulo com o raio, ex.: "SoC_BA_Simoes Filho · 600 m"
+            label:     f.radiusM != null ? `${f.name} · ${f.radiusM} m` : f.name,
+          },
           geometry: { type: 'Point' as const, coordinates: [f.centerLng!, f.centerLat!] },
         })),
     }
@@ -176,9 +184,32 @@ export function GeofencesPage() {
     })
     map.addLayer({
       id: 'fence-centers-label', type: 'symbol', source: 'fence-centers', minzoom: 8,
-      layout: { 'text-field': ['get', 'name'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-allow-overlap': false },
+      layout: { 'text-field': ['get', 'label'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-allow-overlap': false },
       paint: { 'text-color': '#0f766e', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 },
     })
+
+    // Popup de detalhes ao clicar na bolinha. Handlers registrados uma única vez
+    // (renderGeofences roda várias vezes; o listener é por id de layer e persiste).
+    if (!centerHandlersRef.current) {
+      centerHandlersRef.current = true
+      const popup = new maplibregl.Popup({ closeButton: true, offset: 10 })
+      map.on('click', 'fence-centers-dot', (e) => {
+        const feat = e.features?.[0]
+        if (!feat) return
+        const p = feat.properties as { name?: string; radius?: number; stationId?: number }
+        const [lng, lat] = (feat.geometry as GeoJSON.Point).coordinates as [number, number]
+        popup.setLngLat([lng, lat]).setHTML(
+          `<div style="font-size:12px;line-height:1.5">
+             <strong>${p.name ?? 'Doca'}</strong><br/>
+             Estação: ${p.stationId ?? '—'}<br/>
+             Raio: ${p.radius != null ? `${p.radius} m` : '—'}<br/>
+             <span style="color:#64748b">${lat.toFixed(5)}, ${lng.toFixed(5)}</span>
+           </div>`,
+        ).addTo(map)
+      })
+      map.on('mouseenter', 'fence-centers-dot', () => { map.getCanvas().style.cursor = 'pointer' })
+      map.on('mouseleave', 'fence-centers-dot', () => { map.getCanvas().style.cursor = '' })
+    }
 
     // Enquadra todas as geofences uma vez (evita abrir o mapa longe dos pontos).
     if (!fittedRef.current && geojson.features.length > 0) {
