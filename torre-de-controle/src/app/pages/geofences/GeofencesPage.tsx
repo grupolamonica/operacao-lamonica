@@ -20,6 +20,7 @@ export function GeofencesPage() {
   const mapRef       = useRef<maplibregl.Map | null>(null)
   const initRef      = useRef(false)
   const markersRef   = useRef<maplibregl.Marker[]>([])
+  const fittedRef    = useRef(false)
 
   const [isDrawing, setIsDrawing]     = useState(false)
   const [drawPoints, setDrawPoints]   = useState<[number, number][]>([])
@@ -83,11 +84,15 @@ export function GeofencesPage() {
     map.on('click', handleMapClick)
   }, [handleMapClick])
 
-  // Update geofence overlays when fences change
+  // Update geofence overlays when fences change. Se o estilo ainda não terminou de
+  // carregar (corrida entre o fetch e o 'load' do mapa), renderiza no próximo 'idle'
+  // — senão as geofences nunca apareciam quando os dados chegavam antes do estilo.
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !map.isStyleLoaded()) return
-    renderGeofences(map)
+    if (!map) return
+    const render = () => { map.resize(); renderGeofences(map) }
+    if (map.isStyleLoaded()) render()
+    else map.once('idle', render)
   }, [fences])
 
   // Draw preview markers for current polygon points
@@ -149,6 +154,15 @@ export function GeofencesPage() {
     map.addSource('fences', { type: 'geojson', data: geojson })
     map.addLayer({ id: 'fences-fill', type: 'fill', source: 'fences', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.15 } })
     map.addLayer({ id: 'fences-line', type: 'line', source: 'fences', paint: { 'line-color': ['get', 'color'], 'line-width': 2 } })
+
+    // Enquadra todas as geofences uma vez (evita abrir o mapa longe dos pontos).
+    if (!fittedRef.current && geojson.features.length > 0) {
+      const b = new maplibregl.LngLatBounds()
+      for (const f of geojson.features) {
+        for (const c of (f.geometry as GeoJSON.Polygon).coordinates[0]!) b.extend(c as [number, number])
+      }
+      if (!b.isEmpty()) { map.fitBounds(b, { padding: 40, maxZoom: 13, duration: 0 }); fittedRef.current = true }
+    }
   }
 
   function cancelDraw() {
