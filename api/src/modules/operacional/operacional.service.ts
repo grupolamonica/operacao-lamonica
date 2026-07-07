@@ -39,25 +39,43 @@ export const OP_STATUSES = [
 ] as const
 export type OpStatus = (typeof OP_STATUSES)[number]
 
-const DESCARGA = ['AGUARDANDO DESCARGA', 'DESCARREGANDO', 'DESCARREGADO']
-const PERMITEM_DESCARGA = ['CTE ENVIADO', 'AGUARDANDO DESCARGA', 'DESCARREGANDO']
 const EXCECAO = ['CANCELADO', 'DEVOLVIDO']
 
+// Fluxo linear do status operacional (ordinal). A SPX é a verdade e o status só ANDA
+// PRA FRENTE — nunca regride. Fora do fluxo: NO SHOW (intocável) e as exceções
+// CANCELADO/DEVOLVIDO (tratadas à parte).
+const FLOW = [
+  'AGUARDANDO CHEGAR NO CLIENTE',
+  'AGUARDANDO CARREGAMENTO',
+  'CARREGADO',
+  'CTE EM EMISSÃO',
+  'CTE ENVIADO',
+  'AGUARDANDO DESCARGA',
+  'DESCARREGANDO',
+  'DESCARREGADO',
+]
+
 /**
- * Reconciliação de status (réplica das regras do script da planilha). Decide o status
- * efetivo a partir do atual (persistido) e do novo (SPX). Estável: mesma entrada → mesma saída.
+ * Reconciliação de status. Decide o status efetivo a partir do atual (persistido) e do
+ * novo (SPX). Estável: mesma entrada → mesma saída. Regra: a SPX manda e o status avança
+ * SÓ PRA FRENTE no fluxo (nunca regride), preservando os estados manuais/especiais.
+ *
+ * FIX (2026-07-07): a regra antiga exigia CTE ENVIADO antes de qualquer status de descarga
+ * → como a SPX pula CARREGADO→DESCARREGADO direto (sem CTE ENVIADO), a Torre travava em
+ * CARREGADO pra sempre (65/114 viagens desatualizadas vs a planilha). Agora usa ordinal.
  */
 export function reconcileStatus(atual: string, spx: string): string {
   const a = (atual || '').trim().toUpperCase()
   const n = (spx || '').trim().toUpperCase()
-  if (!n) return atual // sem SPX → mantém
-  if (!a) return spx // primeira vez → adota o status da SPX
+  if (!n) return atual                                        // sem SPX → mantém
+  if (!a) return spx                                          // primeira vez → adota a SPX
   if (a === n) return atual
-  if (a === 'NO SHOW' || a === 'CTE EM EMISSÃO') return atual // intocáveis
-  if (EXCECAO.includes(n)) return spx // exceção sempre propaga
-  if (DESCARGA.includes(n)) return PERMITEM_DESCARGA.includes(a) ? spx : atual // descarga só depois do CTE
-  if (a !== 'CTE ENVIADO' && !DESCARGA.includes(a)) return spx // anti-regressão
-  return atual
+  if (EXCECAO.includes(n)) return spx                         // CANCELADO/DEVOLVIDO sempre propagam
+  if (a === 'NO SHOW' || a === 'CTE EM EMISSÃO') return atual // estados manuais → intocáveis
+  if (EXCECAO.includes(a)) return atual                       // já cancelado/devolvido não volta ao fluxo
+  const ra = FLOW.indexOf(a), rn = FLOW.indexOf(n)
+  if (ra === -1 || rn === -1) return atual                    // status desconhecido → não mexe
+  return rn > ra ? spx : atual                                // avança pra frente; nunca regride
 }
 
 interface SpxTrip {
@@ -153,7 +171,9 @@ export async function getOperacionalViagens(): Promise<OpViagem[]> {
   for (const t of trips) {
     if (!t.motorista) continue // operação = viagens com motorista designado
     const p = persisted.get(t.lh)
-    const eff = p?.status ?? t.spxStatus // persistido ?? inicial (SPX)
+    // Reconcilia na LEITURA (não só no job */2min): garante que o status exibido acompanha
+    // a SPX na hora, sem esperar o próximo ciclo do job (corrige a defasagem imediatamente).
+    const eff = reconcileStatus(p?.status ?? '', t.spxStatus)
     if ((eff || '').toUpperCase() === 'DESCARREGADO') continue // concluído sai da lista
     out.push({
       lh: t.lh,
