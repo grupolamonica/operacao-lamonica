@@ -37,6 +37,15 @@ import {
 
 const norm = (s?: string | null) => (s ?? '').trim().toUpperCase()
 
+// Carregamento/Descarga chegam ora como string 'dd/MM/yyyy HH:mm' (backend), ora como Date:
+// o Eden Treaty REVIVE strings ISO em objeto Date no cliente. Renderizar Date cru quebra o
+// React (#31 "Objects are not valid as a React child"). Sempre normaliza para texto.
+const fmtCell = (v: string | Date | null | undefined): string => {
+  if (v == null || v === '') return '—'
+  if (v instanceof Date) return isNaN(v.getTime()) ? '—' : fmtDateTime(v)
+  return String(v)
+}
+
 // de-para status operacional → cor (Argon)
 function statusTone(s?: string | null): { bg: string; fg: string } {
   const u = norm(s)
@@ -112,8 +121,8 @@ const KPIS: Array<{ label: string; match: (u: string) => boolean; color: string 
   { label: 'CANCELADO', match: (u) => u === 'CANCELADO', color: '#f5365c' },
 ]
 
-function fmtDateTime(iso: string): string {
-  const d = new Date(iso)
+function fmtDateTime(iso: string | Date): string {
+  const d = iso instanceof Date ? iso : new Date(iso)
   if (isNaN(d.getTime())) return '—'
   const p = (n: number) => String(n).padStart(2, '0')
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`
@@ -343,8 +352,8 @@ export function ControleOperacionalPage() {
                 return (
                   <tr key={t.lh} className="border-b hover:bg-muted/30" style={{ borderColor: 'var(--border)' }}>
                     <td className="px-3 py-2 font-mono">{t.lh}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{t.carregamento || '—'}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{t.descarga || '—'}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{fmtCell(t.carregamento)}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{fmtCell(t.descarga)}</td>
                     <td className="px-3 py-2 font-medium">{t.motorista || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground">{t.origem || '—'}</td>
                     <td className="px-3 py-2 text-muted-foreground">{t.destino || '—'}</td>
