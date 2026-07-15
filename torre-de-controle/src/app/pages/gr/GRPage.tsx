@@ -53,9 +53,11 @@ function Chip({ label, color, title, pulse }: { label: string; color: string; ti
   )
 }
 
-/** "não localizado na base Angellira" — estado que o painel destaca/pulsa. */
+/** "não localizado na base Angellira" — estado que o painel destaca/pulsa.
+ *  Normaliza igual ao backend (isAngelliraNotFound: trim/lower/sem acento) p/
+ *  não divergir se o Cargas gravar "não_encontrado" com acento no rawStatus. */
 function isNotFound(p: GrProviderStatus | null | undefined): boolean {
-  const s = (p?.rawStatus ?? '').trim().toLowerCase()
+  const s = (p?.rawStatus ?? '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
   return s === 'not_found' || s === 'nao_encontrado' || s === 'nao encontrado'
 }
 
@@ -90,8 +92,11 @@ const inputCls =
 
 export function GRPage() {
   const role = useAuthStore((s) => s.user?.role)
-  const isAdmin = role === 'admin'
-  const canManage = role === 'admin' || role === 'supervisor'
+  const canManage = role === 'admin' || role === 'supervisor' // Sincronizar
+  // Cofre: operadores do GR (analistas) + supervisão + admin veem, preenchem e
+  // revelam (auditado). Excluir (destrutivo) fica só com supervisão + admin.
+  const canVault = canManage || role === 'analyst'
+  const canDeleteVault = canManage
 
   const [tab, setTab] = useState<Tab>('alertas')
   const [search, setSearch] = useState('')
@@ -100,14 +105,14 @@ export function GRPage() {
   const drivers = useGRDrivers()
   const vehicles = useGRVehicles()
   const alerts = useGRAlerts()
-  const vault = useGRVault(canManage && tab === 'credenciais')
+  const vault = useGRVault(canVault && tab === 'credenciais')
   const syncMut = useGRSync()
 
   const tabs: Array<{ key: Tab; label: string; count: number; hidden?: boolean }> = [
     { key: 'alertas', label: 'Alertas', count: alerts.data.length },
     { key: 'motoristas', label: 'Motoristas', count: overview.data.drivers.total },
     { key: 'veiculos', label: 'Veículos', count: overview.data.vehicles.total },
-    { key: 'credenciais', label: 'Credenciais', count: vault.data.length, hidden: !canManage },
+    { key: 'credenciais', label: 'Credenciais', count: vault.data.length, hidden: !canVault },
   ]
 
   const q = search.trim().toUpperCase()
@@ -186,7 +191,7 @@ export function GRPage() {
       {tab === 'alertas' && <AlertsTab alerts={alerts.data} isLoading={alerts.isLoading} />}
       {tab === 'motoristas' && <DriversTab drivers={filteredDrivers} isLoading={drivers.isLoading} />}
       {tab === 'veiculos' && <VehiclesTab vehicles={filteredVehicles} isLoading={vehicles.isLoading} />}
-      {tab === 'credenciais' && canManage && <VaultTab items={vault.data} isLoading={vault.isLoading} isAdmin={isAdmin} />}
+      {tab === 'credenciais' && canVault && <VaultTab items={vault.data} isLoading={vault.isLoading} canWrite={canVault} canDelete={canDeleteVault} />}
     </div>
   )
 }
@@ -302,7 +307,7 @@ function VehiclesTab({ vehicles, isLoading }: { vehicles: GrVehicle[]; isLoading
 }
 
 // ── Aba Credenciais (cofre) ───────────────────────────────────────────────────
-function VaultTab({ items, isLoading, isAdmin }: { items: VaultItem[]; isLoading: boolean; isAdmin: boolean }) {
+function VaultTab({ items, isLoading, canWrite, canDelete }: { items: VaultItem[]; isLoading: boolean; canWrite: boolean; canDelete: boolean }) {
   const upsertMut = useVaultUpsert()
   const revealMut = useVaultReveal()
   const deleteMut = useVaultDelete()
@@ -332,7 +337,7 @@ function VaultTab({ items, isLoading, isAdmin }: { items: VaultItem[]; isLoading
           <ShieldAlert className="h-3.5 w-3.5" />
           Senhas cifradas em repouso; cada “Revelar” fica registrado na trilha de auditoria.
         </p>
-        {isAdmin && !form && (
+        {canWrite && !form && (
           <button
             onClick={() => setForm({ plate: '' })}
             className="inline-flex items-center gap-1.5 h-8 rounded-md bg-card border border-border px-3 text-xs font-semibold text-foreground hover:bg-muted"
@@ -384,7 +389,7 @@ function VaultTab({ items, isLoading, isAdmin }: { items: VaultItem[]; isLoading
                 <th className={thCls}>Senha</th>
                 <th className={thCls}>ID/MCT</th>
                 <th className={thCls}>Embarcador</th>
-                {isAdmin && <th className={thCls}></th>}
+                {canWrite && <th className={thCls}></th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -399,7 +404,7 @@ function VaultTab({ items, isLoading, isAdmin }: { items: VaultItem[]; isLoading
                       <span className="font-mono text-xs tabular-nums">
                         {revealed[it.plate] !== undefined ? revealed[it.plate] || '(vazia)' : it.hasPassword ? '••••••••' : '—'}
                       </span>
-                      {isAdmin && it.hasPassword && (
+                      {canWrite && it.hasPassword && (
                         <button
                           onClick={() => toggleReveal(it.plate)}
                           disabled={revealMut.isPending}
@@ -413,7 +418,7 @@ function VaultTab({ items, isLoading, isAdmin }: { items: VaultItem[]; isLoading
                   </td>
                   <td className={cn(tdCls, 'text-xs')}>{it.rastreadorId || '—'}</td>
                   <td className={cn(tdCls, 'text-xs')}>{it.embarcador || '—'}</td>
-                  {isAdmin && (
+                  {canWrite && (
                     <td className={cn(tdCls, 'text-right whitespace-nowrap')}>
                       <button
                         onClick={() => setForm({
@@ -425,13 +430,15 @@ function VaultTab({ items, isLoading, isAdmin }: { items: VaultItem[]; isLoading
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
-                      <button
-                        onClick={() => { if (window.confirm(`Remover a credencial de ${it.plate}?`)) deleteMut.mutate(it.plate) }}
-                        title="Excluir"
-                        className="text-muted-foreground hover:text-danger"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      {canDelete && (
+                        <button
+                          onClick={() => { if (window.confirm(`Remover a credencial de ${it.plate}?`)) deleteMut.mutate(it.plate) }}
+                          title="Excluir"
+                          className="text-muted-foreground hover:text-danger"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </td>
                   )}
                 </tr>
