@@ -7,6 +7,7 @@ import { useMemo, useState } from 'react'
 import {
   ShieldAlert, Users, Truck, AlertTriangle, RefreshCw,
   Eye, EyeOff, Pencil, Trash2, Plus, X,
+  CalendarDays, CalendarPlus, ShieldCheck, WifiOff,
 } from 'lucide-react'
 import { KPICard } from '@/components/domain/KPICard'
 import { useAuthStore } from '@/stores/useAuthStore'
@@ -15,8 +16,9 @@ import { cn } from '@/lib/utils'
 import {
   useGROverview, useGRDrivers, useGRVehicles, useGRAlerts, useGRVault,
   useGRSync, useVaultUpsert, useVaultReveal, useVaultDelete,
+  useSpxOverview, useSpxRows,
   type GrVerdict, type GrProviderStatus, type GrDriver, type GrVehicle,
-  type VaultItem, type VaultUpsertInput,
+  type VaultItem, type VaultUpsertInput, type SpxRow,
 } from '@/hooks/useGR'
 
 // ── Metadados visuais (hex Argon, mesmo vocabulário das outras telas) ─────────
@@ -29,7 +31,9 @@ const VERDICT: Record<GrVerdict, { label: string; color: string }> = {
 
 const PLATE_ROLE: Record<string, string> = { HORSE: 'Cavalo', TRAILER_1: 'Carreta', TRAILER_2: '2ª carreta' }
 
-type Tab = 'motoristas' | 'veiculos' | 'alertas' | 'credenciais'
+type Tab = 'motoristas' | 'veiculos' | 'alertas' | 'credenciais' | 'spx'
+type SpxScope = 'today' | 'tomorrow'
+type SpxRowFilter = 'all' | 'conforme' | 'pendencia' | 'semsinal'
 
 /** 'YYYY-MM-DD...' → 'DD/MM/YYYY' (sem passar por Date/fuso). */
 function fmtDay(iso: string | null): string {
@@ -101,6 +105,8 @@ export function GRPage() {
   const [tab, setTab] = useState<Tab>('alertas')
   const [search, setSearch] = useState('')
   const [alertFilter, setAlertFilter] = useState<'all' | 'crit' | 'warn'>('all')
+  const [spxScope, setSpxScope] = useState<SpxScope>('today')
+  const [spxRowFilter, setSpxRowFilter] = useState<SpxRowFilter>('all')
 
   const overview = useGROverview()
   const drivers = useGRDrivers()
@@ -108,11 +114,14 @@ export function GRPage() {
   const alerts = useGRAlerts()
   const vault = useGRVault(canVault && tab === 'credenciais')
   const syncMut = useGRSync()
+  const spxOverview = useSpxOverview(tab === 'spx')
+  const spxRows = useSpxRows(spxScope, tab === 'spx')
 
   const tabs: Array<{ key: Tab; label: string; count: number; hidden?: boolean }> = [
     { key: 'alertas', label: 'Alertas', count: alerts.data.length },
     { key: 'motoristas', label: 'Motoristas', count: overview.data.drivers.total },
     { key: 'veiculos', label: 'Veículos', count: overview.data.vehicles.total },
+    { key: 'spx', label: 'SPX / Shopee', count: spxOverview.data.escaladosHoje },
     { key: 'credenciais', label: 'Credenciais', count: vault.data.length, hidden: !canVault },
   ]
 
@@ -155,13 +164,23 @@ export function GRPage() {
         )}
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 pt-4">
-        <KPICard title="Motoristas monitorados" value={overview.data.drivers.total} subtitle={`${overview.data.drivers.critico} críticos · ${overview.data.drivers.atencao} em atenção`} color="blue" icon={Users} onClick={() => setTab('motoristas')} />
-        <KPICard title="Veículos monitorados" value={overview.data.vehicles.total} subtitle={`${overview.data.vehicles.critico} críticos · ${overview.data.vehicles.atencao} em atenção`} color="purple" icon={Truck} onClick={() => setTab('veiculos')} />
-        <KPICard title="Alertas críticos" value={overview.data.alertas.criticos} color="red" icon={AlertTriangle} onClick={() => { setAlertFilter('crit'); setTab('alertas') }} />
-        <KPICard title="Em atenção" value={overview.data.alertas.atencao} color="orange" icon={AlertTriangle} onClick={() => { setAlertFilter('warn'); setTab('alertas') }} />
-      </div>
+      {/* KPIs — contextuais à aba ativa */}
+      {tab === 'spx' ? (
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 pt-4">
+          <KPICard title="Escalados hoje" value={spxOverview.data.escaladosHoje} color="blue" icon={CalendarDays} onClick={() => { setSpxScope('today'); setSpxRowFilter('all') }} />
+          <KPICard title="Programados amanhã" value={spxOverview.data.programadosAmanha} color="purple" icon={CalendarPlus} onClick={() => { setSpxScope('tomorrow'); setSpxRowFilter('all') }} />
+          <KPICard title="Frotas conformes" value={spxOverview.data.frotasConformes} color="green" icon={ShieldCheck} onClick={() => { setSpxScope('today'); setSpxRowFilter('conforme') }} />
+          <KPICard title="Sem espelhamento" value={spxOverview.data.semEspelhamento} color="orange" icon={WifiOff} onClick={() => { setSpxScope('today'); setSpxRowFilter('semsinal') }} />
+          <KPICard title="Não conforme" value={spxOverview.data.naoConforme} color="red" icon={AlertTriangle} onClick={() => { setSpxScope('today'); setSpxRowFilter('pendencia') }} />
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 pt-4">
+          <KPICard title="Motoristas monitorados" value={overview.data.drivers.total} subtitle={`${overview.data.drivers.critico} críticos · ${overview.data.drivers.atencao} em atenção`} color="blue" icon={Users} onClick={() => setTab('motoristas')} />
+          <KPICard title="Veículos monitorados" value={overview.data.vehicles.total} subtitle={`${overview.data.vehicles.critico} críticos · ${overview.data.vehicles.atencao} em atenção`} color="purple" icon={Truck} onClick={() => setTab('veiculos')} />
+          <KPICard title="Alertas críticos" value={overview.data.alertas.criticos} color="red" icon={AlertTriangle} onClick={() => { setAlertFilter('crit'); setTab('alertas') }} />
+          <KPICard title="Em atenção" value={overview.data.alertas.atencao} color="orange" icon={AlertTriangle} onClick={() => { setAlertFilter('warn'); setTab('alertas') }} />
+        </div>
+      )}
 
       {/* Tabs + busca */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -193,6 +212,16 @@ export function GRPage() {
       {tab === 'motoristas' && <DriversTab drivers={filteredDrivers} isLoading={drivers.isLoading} />}
       {tab === 'veiculos' && <VehiclesTab vehicles={filteredVehicles} isLoading={vehicles.isLoading} />}
       {tab === 'credenciais' && canVault && <VaultTab items={vault.data} isLoading={vault.isLoading} canWrite={canVault} canDelete={canDeleteVault} />}
+      {tab === 'spx' && (
+        <SpxTab
+          rows={spxRows.data}
+          isLoading={spxRows.isLoading}
+          scope={spxScope}
+          onScope={setSpxScope}
+          filter={spxRowFilter}
+          onFilter={setSpxRowFilter}
+        />
+      )}
     </div>
   )
 }
@@ -269,6 +298,182 @@ function AlertsTab({
               </div>
             )
           })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Aba SPX / Shopee (Matriz de Operação) ─────────────────────────────────────
+const normTxt = (s: string | null | undefined) =>
+  String(s ?? '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+
+function tripStatusChip(s: string | null) {
+  const n = normTxt(s)
+  if (!n) return <Chip label="Sem status" color="#8392ab" />
+  let color = '#8392ab'
+  if (/(cte enviado|carregado|descarregado|finaliz|conclu)/.test(n)) color = '#2dce89'
+  else if (/(aguardando|emiss|descarreg|transito|carregamento)/.test(n)) color = '#fb6340'
+  else if (/(no show|cancel|devolv|reprov)/.test(n)) color = '#f5365c'
+  else if (/agendad/.test(n)) color = '#5e72e4'
+  return <Chip label={s ?? 'Sem status'} color={color} />
+}
+
+function perfilChip(t: string | null) {
+  if (!t) return <span className="text-xs text-muted-foreground">—</span>
+  return <Chip label={t} color={normTxt(t) === 'conforme' ? '#2dce89' : '#f5365c'} />
+}
+
+function checklistChip(t: string | null, dias: number | null) {
+  if (!t) return <span className="text-xs text-muted-foreground">—</span>
+  const n = normTxt(t)
+  const color = n === 'aprovado' ? '#2dce89' : n === 'em andamento' ? '#fb6340' : '#f5365c'
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Chip label={t} color={color} />
+      {dias != null && <span className="text-[9px] font-bold text-muted-foreground tabular-nums">{dias}d</span>}
+    </span>
+  )
+}
+
+function fmtSignalTime(iso: string | null): string {
+  if (!iso) return '—'
+  try {
+    return new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' }).format(new Date(iso))
+  } catch {
+    return '—'
+  }
+}
+
+function EspelhamentoCell({ e }: { e: SpxRow['espelhamento'] }) {
+  if (e.status === 'sem_sinal') {
+    return <Chip label="Sem sinal" color="#f5365c" pulse title="Sem posição recente do rastreador" />
+  }
+  const color = e.status === 'stale' ? '#fb6340' : '#2dce89'
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs font-semibold tabular-nums" style={{ color }}>
+      <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: color }} />
+      {fmtSignalTime(e.lastAt)}
+    </span>
+  )
+}
+
+function SpxTab({
+  rows, isLoading, scope, onScope, filter, onFilter,
+}: {
+  rows: SpxRow[]
+  isLoading: boolean
+  scope: SpxScope
+  onScope: (s: SpxScope) => void
+  filter: SpxRowFilter
+  onFilter: (f: SpxRowFilter) => void
+}) {
+  const assigned = rows.filter((r) => r.hasDriver)
+  const counts = {
+    all: rows.length,
+    conforme: assigned.filter((r) => r.conforme).length,
+    pendencia: assigned.filter((r) => r.pendencia).length,
+    semsinal: assigned.filter((r) => r.espelhamento.status === 'sem_sinal').length,
+  }
+  const shown = rows.filter((r) => {
+    if (filter === 'conforme') return r.hasDriver && r.conforme
+    if (filter === 'pendencia') return r.hasDriver && r.pendencia
+    if (filter === 'semsinal') return r.hasDriver && r.espelhamento.status === 'sem_sinal'
+    return true
+  })
+
+  const chips: Array<{ key: SpxRowFilter; label: string; n: number; color: string }> = [
+    { key: 'all', label: 'Todos', n: counts.all, color: '#5e72e4' },
+    { key: 'conforme', label: 'Conformes', n: counts.conforme, color: '#2dce89' },
+    { key: 'pendencia', label: 'Pendências', n: counts.pendencia, color: '#f5365c' },
+    { key: 'semsinal', label: 'Sem sinal', n: counts.semsinal, color: '#fb6340' },
+  ]
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {chips.map((c) => (
+            <button
+              key={c.key}
+              onClick={() => onFilter(c.key)}
+              className={cn(
+                'h-7 rounded-full px-3 text-xs font-semibold transition-colors tabular-nums',
+                filter === c.key ? 'text-white' : 'bg-card border border-border text-muted-foreground hover:text-foreground',
+              )}
+              style={filter === c.key ? { background: c.color } : undefined}
+            >
+              {c.label} ({c.n})
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-1.5">
+          {(['today', 'tomorrow'] as SpxScope[]).map((s) => (
+            <button
+              key={s}
+              onClick={() => onScope(s)}
+              className={cn(
+                'h-7 rounded-full px-3 text-xs font-semibold transition-colors',
+                scope === s ? 'bg-primary text-primary-foreground' : 'bg-card border border-border text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {s === 'today' ? 'Hoje' : 'Amanhã'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <h2 className="flex items-center gap-2 text-sm font-bold text-foreground">
+        <ShieldAlert className="h-4 w-4" /> Matriz de Operação — Status de Segurança GR
+      </h2>
+
+      {isLoading ? (
+        <Empty text="Carregando matriz…" />
+      ) : shown.length === 0 ? (
+        <Empty text={scope === 'today' ? 'Nenhuma viagem escalada para hoje.' : 'Nenhuma viagem programada para amanhã.'} />
+      ) : (
+        <div className="bg-card border border-border rounded-lg overflow-x-auto">
+          <table className="w-full">
+            <thead className="border-b border-border">
+              <tr>
+                <th className={thCls}>Horário</th>
+                <th className={thCls}>Motorista</th>
+                <th className={thCls}>Equipamento</th>
+                <th className={thCls}>Status Viagem</th>
+                <th className={thCls}>Perfil Cav.</th>
+                <th className={thCls}>Perfil Car.</th>
+                <th className={thCls}>Chk Cavalo</th>
+                <th className={thCls}>Chk Carreta</th>
+                <th className={thCls}>Espelhamento</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {shown.map((r) => (
+                <tr key={r.lh} style={r.pendencia ? { background: 'rgba(245,54,92,0.05)' } : undefined}>
+                  <td className={cn(tdCls, 'whitespace-nowrap tabular-nums')}>
+                    {r.horario ?? '—'}
+                    {r.tipo && <span className="block text-[10px] text-muted-foreground">{r.tipo}</span>}
+                  </td>
+                  <td className={tdCls}>
+                    <p className="font-semibold">{r.motorista ?? (r.isAvailable ? 'Disponível' : '—')}</p>
+                    {r.cpf && <p className="text-xs text-muted-foreground tabular-nums">{r.cpf}</p>}
+                  </td>
+                  <td className={tdCls}>
+                    <div className="flex flex-col gap-0.5 font-mono text-xs">
+                      <span>{r.cavalo ?? '—'} <span className="text-[9px] text-muted-foreground uppercase">cav</span></span>
+                      {r.carreta && <span>{r.carreta} <span className="text-[9px] text-muted-foreground uppercase">car</span></span>}
+                    </div>
+                  </td>
+                  <td className={tdCls}>{tripStatusChip(r.statusViagem)}</td>
+                  <td className={tdCls}>{perfilChip(r.perfilCavalo)}</td>
+                  <td className={tdCls}>{perfilChip(r.perfilCarreta)}</td>
+                  <td className={tdCls}>{checklistChip(r.checklistCavalo, r.checklistCavaloDias)}</td>
+                  <td className={tdCls}>{checklistChip(r.checklistCarreta, r.checklistCarretaDias)}</td>
+                  <td className={tdCls}><EspelhamentoCell e={r.espelhamento} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
