@@ -215,7 +215,7 @@ export function useVaultDelete() {
   return useMutation({
     mutationFn: async (plate: string) => {
       // Segmento dinâmico do treaty (bypass de tipo — padrão do projeto p/ :param)
-      const vault = (api as { api: { gr: { vault: Record<string, { delete: () => Promise<{ data: unknown; error: unknown }> }> } } }).api.gr.vault
+      const vault = (api as unknown as { api: { gr: { vault: Record<string, { delete: () => Promise<{ data: unknown; error: unknown }> }> } } }).api.gr.vault
       const { error } = await vault[plate]!.delete()
       if (error) throw error
       return true
