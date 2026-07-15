@@ -17,6 +17,7 @@ import { Elysia, t } from 'elysia'
 import { authGuard } from '../../lib/rbac'
 import { getGrOverview, getGrDrivers, getGrVehicles, getGrAlerts } from './gr.service'
 import { syncGr } from './gr.sync'
+import { getSpxOverview, getSpxRows } from './gr.spx.service'
 import {
   listVaultCredentials,
   upsertVaultCredential,
@@ -57,6 +58,14 @@ export const grPlugin = new Elysia({ name: 'gr' })
       })
       .get('/alerts', () => getGrAlerts(), {
         detail: { tags: ['gr'], summary: 'Feed de alertas de vigência/estado (motoristas + veículos), ordenado por urgência' },
+      })
+      // ── SPX / Shopee: matriz de operação por viagem (dados no nosso banco) ──
+      .get('/spx/overview', () => getSpxOverview(), {
+        detail: { tags: ['gr'], summary: 'SPX/Shopee: KPIs (escalados hoje/amanhã, frotas conformes, sem espelhamento, não conforme)' },
+      })
+      .get('/spx/rows', ({ query }) => getSpxRows(query.scope ?? 'today'), {
+        query: t.Object({ scope: t.Optional(t.Union([t.Literal('today'), t.Literal('tomorrow')])) }),
+        detail: { tags: ['gr'], summary: 'SPX/Shopee: matriz de operação por viagem (escala + perfil + checklist + espelhamento); default hoje' },
       })
       .post(
         '/sync',
