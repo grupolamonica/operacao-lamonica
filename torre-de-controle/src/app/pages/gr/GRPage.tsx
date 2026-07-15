@@ -114,7 +114,7 @@ export function GRPage() {
   const alerts = useGRAlerts()
   const vault = useGRVault(canVault && tab === 'credenciais')
   const syncMut = useGRSync()
-  const spxOverview = useSpxOverview(tab === 'spx')
+  const spxOverview = useSpxOverview(true) // sempre: alimenta o contador da aba
   const spxRows = useSpxRows(spxScope, tab === 'spx')
 
   const tabs: Array<{ key: Tab; label: string; count: number; hidden?: boolean }> = [
