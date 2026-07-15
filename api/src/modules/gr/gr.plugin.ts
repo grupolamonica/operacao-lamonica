@@ -5,14 +5,36 @@
  *   GET  /api/gr/vehicles  → veículos + vigência Angellira por placa
  *   GET  /api/gr/alerts    → feed de alertas (vencimento/estado) por urgência
  *   POST /api/gr/sync      → materializa gr_vigencias do Cargas (admin|supervisor)
+ *   GET    /api/gr/vault          → cofre: lista mascarada (admin|supervisor)
+ *   PUT    /api/gr/vault          → cofre: upsert cifrado (admin)
+ *   POST   /api/gr/vault/reveal   → cofre: decifra 1 placa + audita (admin)
+ *   DELETE /api/gr/vault/:plate   → cofre: remove + audita (admin)
  *
  * Módulo 'gr' (NÃO 'risk' — modules/risk é risco de ENTREGA). O dado de risco
  * cadastral vem do Cargas via gr.reads/gr.sync. Registrar ANTES do wsPlugin.
  */
-import { Elysia } from 'elysia'
+import { Elysia, t } from 'elysia'
 import { authGuard } from '../../lib/rbac'
 import { getGrOverview, getGrDrivers, getGrVehicles, getGrAlerts } from './gr.service'
 import { syncGr } from './gr.sync'
+import {
+  listVaultCredentials,
+  upsertVaultCredential,
+  revealVaultCredential,
+  deleteVaultCredential,
+  normalizePlate,
+} from './gr.vault'
+
+const vaultUpsertSchema = t.Object({
+  plate: t.String(),
+  provider: t.Optional(t.String()),
+  login: t.Optional(t.String()),
+  username: t.Optional(t.String()),
+  senha: t.Optional(t.String()),
+  rastreadorId: t.Optional(t.String()),
+  embarcador: t.Optional(t.String()),
+  notes: t.Optional(t.String()),
+})
 
 export const grPlugin = new Elysia({ name: 'gr' })
   .use(authGuard)
@@ -45,5 +67,78 @@ export const grPlugin = new Elysia({ name: 'gr' })
             summary: 'Sync manual: materializa gr_vigencias a partir do Cargas (driver_profiles + vehicles)',
           },
         },
+      )
+      // ── Cofre de credenciais do rastreador (senha CIFRADA; ver gr.vault.ts) ──
+      .get(
+        '/vault',
+        ({ user, set }) => {
+          if (user.role !== 'admin' && user.role !== 'supervisor') {
+            set.status = 403
+            return { error: 'Forbidden: requires admin|supervisor' }
+          }
+          return listVaultCredentials()
+        },
+        { detail: { tags: ['gr'], summary: 'Cofre: credenciais do rastreador por placa (lista MASCARADA, sem senha)' } },
+      )
+      .put(
+        '/vault',
+        async ({ user, body, set }) => {
+          if (user.role !== 'admin') {
+            set.status = 403
+            return { error: 'Forbidden: requires admin' }
+          }
+          if (!normalizePlate(body.plate)) {
+            set.status = 422
+            return { error: 'Placa de cavalo inválida.' }
+          }
+          return upsertVaultCredential(body, user.id)
+        },
+        {
+          body: vaultUpsertSchema,
+          detail: { tags: ['gr'], summary: 'Cofre: upsert de credencial (senha entra cifrada; omitida = preserva a atual)' },
+        },
+      )
+      .post(
+        '/vault/reveal',
+        async ({ user, body, set }) => {
+          if (user.role !== 'admin') {
+            set.status = 403
+            return { error: 'Forbidden: requires admin' }
+          }
+          if (!normalizePlate(body.plate)) {
+            set.status = 422
+            return { error: 'Placa de cavalo inválida.' }
+          }
+          const credential = await revealVaultCredential(body.plate, user.id)
+          if (!credential) {
+            set.status = 404
+            return { error: 'Credencial não encontrada para essa placa.' }
+          }
+          return credential
+        },
+        {
+          body: t.Object({ plate: t.String() }),
+          detail: { tags: ['gr'], summary: 'Cofre: decifra a senha de UMA placa (fail-closed: audita na mesma transação)' },
+        },
+      )
+      .delete(
+        '/vault/:plate',
+        async ({ user, params, set }) => {
+          if (user.role !== 'admin') {
+            set.status = 403
+            return { error: 'Forbidden: requires admin' }
+          }
+          if (!normalizePlate(params.plate)) {
+            set.status = 422
+            return { error: 'Placa de cavalo inválida.' }
+          }
+          const removed = await deleteVaultCredential(params.plate, user.id)
+          if (!removed) {
+            set.status = 404
+            return { error: 'Credencial não encontrada para essa placa.' }
+          }
+          return { ok: true }
+        },
+        { detail: { tags: ['gr'], summary: 'Cofre: remove a credencial de uma placa (audita)' } },
       ),
   )

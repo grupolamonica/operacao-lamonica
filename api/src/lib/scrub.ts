@@ -15,6 +15,8 @@ export const SCRUB_KEYS = [
   'password', 'passwordhash', 'authorization', 'cookie', 'cookies',
   'email', 'phone', 'lat', 'lng', 'latitude', 'longitude', 'address',
   'token', 'jwt', 'access_token', 'refresh_token',
+  // GR/cofre do rastreador — a senha trafega como 'senha' (PUT/reveal do /api/gr/vault)
+  'senha', 'password_cipher',
 ] as const
 
 const MAX_DEPTH = 8
