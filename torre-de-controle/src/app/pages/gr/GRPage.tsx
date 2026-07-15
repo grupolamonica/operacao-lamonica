@@ -100,6 +100,7 @@ export function GRPage() {
 
   const [tab, setTab] = useState<Tab>('alertas')
   const [search, setSearch] = useState('')
+  const [alertFilter, setAlertFilter] = useState<'all' | 'crit' | 'warn'>('all')
 
   const overview = useGROverview()
   const drivers = useGRDrivers()
@@ -156,10 +157,10 @@ export function GRPage() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 pt-4">
-        <KPICard title="Motoristas monitorados" value={overview.data.drivers.total} subtitle={`${overview.data.drivers.critico} críticos · ${overview.data.drivers.atencao} em atenção`} color="blue" icon={Users} />
-        <KPICard title="Veículos monitorados" value={overview.data.vehicles.total} subtitle={`${overview.data.vehicles.critico} críticos · ${overview.data.vehicles.atencao} em atenção`} color="purple" icon={Truck} />
-        <KPICard title="Alertas críticos" value={overview.data.alertas.criticos} color="red" icon={AlertTriangle} />
-        <KPICard title="Em atenção" value={overview.data.alertas.atencao} color="orange" icon={AlertTriangle} />
+        <KPICard title="Motoristas monitorados" value={overview.data.drivers.total} subtitle={`${overview.data.drivers.critico} críticos · ${overview.data.drivers.atencao} em atenção`} color="blue" icon={Users} onClick={() => setTab('motoristas')} />
+        <KPICard title="Veículos monitorados" value={overview.data.vehicles.total} subtitle={`${overview.data.vehicles.critico} críticos · ${overview.data.vehicles.atencao} em atenção`} color="purple" icon={Truck} onClick={() => setTab('veiculos')} />
+        <KPICard title="Alertas críticos" value={overview.data.alertas.criticos} color="red" icon={AlertTriangle} onClick={() => { setAlertFilter('crit'); setTab('alertas') }} />
+        <KPICard title="Em atenção" value={overview.data.alertas.atencao} color="orange" icon={AlertTriangle} onClick={() => { setAlertFilter('warn'); setTab('alertas') }} />
       </div>
 
       {/* Tabs + busca */}
@@ -188,7 +189,7 @@ export function GRPage() {
         )}
       </div>
 
-      {tab === 'alertas' && <AlertsTab alerts={alerts.data} isLoading={alerts.isLoading} />}
+      {tab === 'alertas' && <AlertsTab alerts={alerts.data} isLoading={alerts.isLoading} filter={alertFilter} onFilter={setAlertFilter} />}
       {tab === 'motoristas' && <DriversTab drivers={filteredDrivers} isLoading={drivers.isLoading} />}
       {tab === 'veiculos' && <VehiclesTab vehicles={filteredVehicles} isLoading={vehicles.isLoading} />}
       {tab === 'credenciais' && canVault && <VaultTab items={vault.data} isLoading={vault.isLoading} canWrite={canVault} canDelete={canDeleteVault} />}
@@ -197,40 +198,79 @@ export function GRPage() {
 }
 
 // ── Aba Alertas ───────────────────────────────────────────────────────────────
-function AlertsTab({ alerts, isLoading }: { alerts: ReturnType<typeof useGRAlerts>['data']; isLoading: boolean }) {
+function AlertsTab({
+  alerts, isLoading, filter, onFilter,
+}: {
+  alerts: ReturnType<typeof useGRAlerts>['data']
+  isLoading: boolean
+  filter: 'all' | 'crit' | 'warn'
+  onFilter: (f: 'all' | 'crit' | 'warn') => void
+}) {
   if (isLoading) return <Empty text="Carregando alertas…" />
-  if (alerts.length === 0) return <Empty text="Nenhum alerta de risco no momento. 🎉" />
+
+  const critCount = alerts.filter((a) => a.severity === 'crit').length
+  const warnCount = alerts.length - critCount
+  const shown = filter === 'all' ? alerts : alerts.filter((a) => (filter === 'crit' ? a.severity === 'crit' : a.severity === 'warn'))
+
+  const chips: Array<{ key: 'all' | 'crit' | 'warn'; label: string; n: number; color: string }> = [
+    { key: 'all', label: 'Todos', n: alerts.length, color: '#5e72e4' },
+    { key: 'crit', label: 'Críticos', n: critCount, color: '#f5365c' },
+    { key: 'warn', label: 'Em atenção', n: warnCount, color: '#fb6340' },
+  ]
+
   return (
-    <div className="bg-card border border-border rounded-lg divide-y divide-border">
-      {alerts.map((a) => {
-        const notFound = a.alertType === 'NOT_FOUND'
-        const sev = a.severity === 'crit' ? '#f5365c' : '#fb6340'
-        return (
-          <div
-            key={a.id}
-            className="flex items-center gap-3 p-3"
-            style={notFound ? { background: 'rgba(245,54,92,0.06)' } : undefined}
+    <div className="space-y-3">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {chips.map((c) => (
+          <button
+            key={c.key}
+            onClick={() => onFilter(c.key)}
+            className={cn(
+              'h-7 rounded-full px-3 text-xs font-semibold transition-colors tabular-nums',
+              filter === c.key ? 'text-white' : 'bg-card border border-border text-muted-foreground hover:text-foreground',
+            )}
+            style={filter === c.key ? { background: c.color } : undefined}
           >
-            <span
-              className={cn('w-1 self-stretch rounded-full shrink-0', notFound && 'animate-pulse')}
-              style={{ background: sev }}
-            />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-foreground truncate">{a.message}</p>
-              <p className="text-xs text-muted-foreground truncate">
-                {a.entityType === 'motorista'
-                  ? `${a.displayName ?? '—'}${a.document ? ` · CPF ${a.document}` : ''}`
-                  : `${a.plate ?? '—'}${a.plateRole ? ` · ${PLATE_ROLE[a.plateRole] ?? a.plateRole}` : ''}${a.linkedDriver?.name ? ` · ${a.linkedDriver.name}` : ''}`}
-                {a.dueDate ? ` · vence ${fmtDay(a.dueDate)}` : ''}
-              </p>
-            </div>
-            <Chip label={a.source} color="#5e72e4" />
-            {notFound
-              ? <Chip label="NÃO LOCALIZADO" color="#f5365c" pulse title="Não localizado na base Angellira" />
-              : <Chip label={a.severity === 'crit' ? 'Crítico' : 'Atenção'} color={sev} />}
-          </div>
-        )
-      })}
+            {c.label} ({c.n})
+          </button>
+        ))}
+      </div>
+
+      {shown.length === 0 ? (
+        <Empty text={filter === 'all' ? 'Nenhum alerta de risco no momento. 🎉' : 'Nenhum alerta nesse filtro.'} />
+      ) : (
+        <div className="bg-card border border-border rounded-lg divide-y divide-border">
+          {shown.map((a) => {
+            const notFound = a.alertType === 'NOT_FOUND'
+            const sev = a.severity === 'crit' ? '#f5365c' : '#fb6340'
+            return (
+              <div
+                key={a.id}
+                className="flex items-center gap-3 p-3"
+                style={notFound ? { background: 'rgba(245,54,92,0.06)' } : undefined}
+              >
+                <span
+                  className={cn('w-1 self-stretch rounded-full shrink-0', notFound && 'animate-pulse')}
+                  style={{ background: sev }}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-foreground truncate">{a.message}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {a.entityType === 'motorista'
+                      ? `${a.displayName ?? '—'}${a.document ? ` · CPF ${a.document}` : ''}`
+                      : `${a.plate ?? '—'}${a.plateRole ? ` · ${PLATE_ROLE[a.plateRole] ?? a.plateRole}` : ''}${a.linkedDriver?.name ? ` · ${a.linkedDriver.name}` : ''}`}
+                    {a.dueDate ? ` · vence ${fmtDay(a.dueDate)}` : ''}
+                  </p>
+                </div>
+                <Chip label={a.source} color="#5e72e4" />
+                {notFound
+                  ? <Chip label="NÃO LOCALIZADO" color="#f5365c" pulse title="Não localizado na base Angellira" />
+                  : <Chip label={a.severity === 'crit' ? 'Crítico' : 'Atenção'} color={sev} />}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
