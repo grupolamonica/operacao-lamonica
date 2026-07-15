@@ -52,6 +52,8 @@ import { operatorsPlugin } from './modules/operators/operators.plugin'
 import { syncPlugin } from './modules/sync/sync.plugin'
 // Phase 14 — integração Cargas (open-loads + candidatos + alocação gated)
 import { cargasPlugin } from './modules/cargas/cargas.plugin'
+// GR — Gerenciamento de Risco (vigências Angellira/BRK/SPX por motorista/veículo, do Cargas)
+import { grPlugin } from './modules/gr/gr.plugin'
 // Phase 15 — viagens SPX linehaul (aba "asp" via HTTP)
 import { spxPlugin } from './modules/spx/spx.plugin'
 // API de integração — motorista completo por CPF (x-api-key, consumo server-to-server)
@@ -159,6 +161,7 @@ export const app = new Elysia()
         { name: 'positions',    description: 'Posições de frota importada (read-only, enriquecido c/ ranking)' },
         // API de integração (consumo server-to-server)
         { name: 'integrations', description: 'Dados completos do motorista por CPF (ranking + torre + cargas), gate x-api-key' },
+        { name: 'gr',           description: 'Gerenciamento de Risco: vigências Angellira/BRK/SPX por motorista/veículo (cache do Cargas)' },
       ],
     },
   }))
@@ -229,6 +232,8 @@ export const app = new Elysia()
   .use(syncPlugin)
   // Phase 14 — Cargas (BEFORE wsPlugin: Elysia 1.4 plugin-last rule)
   .use(cargasPlugin)
+  // GR — Gerenciamento de Risco (BEFORE wsPlugin: Elysia 1.4 plugin-last rule)
+  .use(grPlugin)
   // Phase 15 — SPX linehaul / aba "asp" via HTTP (BEFORE wsPlugin)
   .use(spxPlugin)
   // API de integração — motorista por CPF (x-api-key, BEFORE wsPlugin: regra plugin-last Elysia 1.4)
