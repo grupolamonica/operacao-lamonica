@@ -66,6 +66,46 @@ export interface GrOverview {
   lastSyncAt: string | null
 }
 
+// ── SPX / Shopee (espelham api/src/modules/gr/gr.spx.types.ts) ────────────────
+export interface SpxEspelhamento {
+  lastAt: string | null
+  status: 'ok' | 'stale' | 'sem_sinal'
+}
+export interface SpxRow {
+  lh: string
+  data: string | null
+  horario: string | null
+  tipo: string | null
+  vinculo: string | null
+  motorista: string | null
+  cpf: string | null
+  cavalo: string | null
+  carreta: string | null
+  origem: string | null
+  destino: string | null
+  statusViagem: string | null
+  perfilCavalo: string | null
+  perfilCarreta: string | null
+  checklistCavalo: string | null
+  checklistCarreta: string | null
+  checklistCavaloDias: number | null
+  checklistCarretaDias: number | null
+  espelhamento: SpxEspelhamento
+  hasDriver: boolean
+  isAvailable: boolean
+  pendencia: boolean
+  conforme: boolean
+}
+export interface SpxOverview {
+  date: string
+  escaladosHoje: number
+  programadosAmanha: number
+  frotasConformes: number
+  semEspelhamento: number
+  naoConforme: number
+  lastSyncAt: string | null
+}
+
 export interface VaultItem {
   plate: string
   provider: string
@@ -154,6 +194,38 @@ export function useGRAlerts() {
       return (data ?? []) as GrAlertItem[]
     },
     refetchInterval: 30_000,
+  })
+  return { data: q.data ?? [], isLoading: q.isLoading }
+}
+
+const EMPTY_SPX_OVERVIEW: SpxOverview = {
+  date: '', escaladosHoje: 0, programadosAmanha: 0, frotasConformes: 0, semEspelhamento: 0, naoConforme: 0, lastSyncAt: null,
+}
+
+export function useSpxOverview(enabled: boolean) {
+  const q = useQuery({
+    queryKey: ['spx-overview'],
+    queryFn: async () => {
+      const { data, error } = await api.api.gr.spx.overview.get()
+      if (error) throw error
+      return (data ?? EMPTY_SPX_OVERVIEW) as SpxOverview
+    },
+    enabled,
+    refetchInterval: 60_000,
+  })
+  return { data: q.data ?? EMPTY_SPX_OVERVIEW, isLoading: q.isLoading }
+}
+
+export function useSpxRows(scope: 'today' | 'tomorrow', enabled: boolean) {
+  const q = useQuery({
+    queryKey: ['spx-rows', scope],
+    queryFn: async () => {
+      const { data, error } = await api.api.gr.spx.rows.get({ query: { scope } })
+      if (error) throw error
+      return (data ?? []) as SpxRow[]
+    },
+    enabled,
+    refetchInterval: 60_000,
   })
   return { data: q.data ?? [], isLoading: q.isLoading }
 }
