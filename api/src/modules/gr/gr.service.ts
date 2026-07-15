@@ -167,3 +167,9 @@ export async function getGrVehicles(): Promise<GrVehicleView[]> {
   const model = await loadGrModel()
   return model.vehicles
 }
+
+/** Feed de alertas de vigência/estado (motoristas + veículos), ordenado por urgência. */
+export async function getGrAlerts(): Promise<GrAlert[]> {
+  const model = await loadGrModel()
+  return model.alerts
+}
