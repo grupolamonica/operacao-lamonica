@@ -38,16 +38,25 @@ function fmtDay(iso: string | null): string {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso
 }
 
-function Chip({ label, color, title }: { label: string; color: string; title?: string }) {
+function Chip({ label, color, title, pulse }: { label: string; color: string; title?: string; pulse?: boolean }) {
   return (
     <span
       title={title}
-      className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold whitespace-nowrap"
-      style={{ background: `${color}22`, color }}
+      className={cn(
+        'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold whitespace-nowrap',
+        pulse && 'animate-pulse',
+      )}
+      style={{ background: `${color}22`, color, ...(pulse ? { boxShadow: `0 0 0 1px ${color}` } : null) }}
     >
       {label}
     </span>
   )
+}
+
+/** "não localizado na base Angellira" — estado que o painel destaca/pulsa. */
+function isNotFound(p: GrProviderStatus | null | undefined): boolean {
+  const s = (p?.rawStatus ?? '').trim().toLowerCase()
+  return s === 'not_found' || s === 'nao_encontrado' || s === 'nao encontrado'
 }
 
 /** Chip de um provider a partir do status materializado (gr_vigencias). */
@@ -64,6 +73,12 @@ function ProviderChip({ p }: { p: GrProviderStatus | null | undefined }) {
   }
   if (p.provider === 'brk' && p.conjuntoApto === false) {
     return <Chip label="Reprovado" color="#f5365c" title={p.statusText ?? undefined} />
+  }
+  if (isNotFound(p)) {
+    return <Chip label="Não localizado" color="#f5365c" pulse title="Não localizado na base Angellira" />
+  }
+  if ((p.rawStatus ?? '').trim().toLowerCase() === 'found') {
+    return <Chip label="Na base" color="#8392ab" title="Na base Angellira, sem data de vigência" />
   }
   return <Chip label={p.statusText ?? p.rawStatus ?? 'situacional'} color="#5e72e4" />
 }
@@ -183,10 +198,18 @@ function AlertsTab({ alerts, isLoading }: { alerts: ReturnType<typeof useGRAlert
   return (
     <div className="bg-card border border-border rounded-lg divide-y divide-border">
       {alerts.map((a) => {
+        const notFound = a.alertType === 'NOT_FOUND'
         const sev = a.severity === 'crit' ? '#f5365c' : '#fb6340'
         return (
-          <div key={a.id} className="flex items-center gap-3 p-3">
-            <span className="w-1 self-stretch rounded-full shrink-0" style={{ background: sev }} />
+          <div
+            key={a.id}
+            className="flex items-center gap-3 p-3"
+            style={notFound ? { background: 'rgba(245,54,92,0.06)' } : undefined}
+          >
+            <span
+              className={cn('w-1 self-stretch rounded-full shrink-0', notFound && 'animate-pulse')}
+              style={{ background: sev }}
+            />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-foreground truncate">{a.message}</p>
               <p className="text-xs text-muted-foreground truncate">
@@ -197,7 +220,9 @@ function AlertsTab({ alerts, isLoading }: { alerts: ReturnType<typeof useGRAlert
               </p>
             </div>
             <Chip label={a.source} color="#5e72e4" />
-            <Chip label={a.severity === 'crit' ? 'Crítico' : 'Atenção'} color={sev} />
+            {notFound
+              ? <Chip label="NÃO LOCALIZADO" color="#f5365c" pulse title="Não localizado na base Angellira" />
+              : <Chip label={a.severity === 'crit' ? 'Crítico' : 'Atenção'} color={sev} />}
           </div>
         )
       })}

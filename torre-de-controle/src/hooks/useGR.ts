@@ -49,7 +49,7 @@ export interface GrAlertItem {
   plateRole: string | null
   linkedDriver: { name: string | null; cpf: string | null } | null
   source: GrSource
-  alertType: 'EXPIRY' | 'STATE'
+  alertType: 'EXPIRY' | 'STATE' | 'NOT_FOUND'
   severity: 'crit' | 'warn'
   daysUntilExpiry: number | null
   dueDate: string | null
