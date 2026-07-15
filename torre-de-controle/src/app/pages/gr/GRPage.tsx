@@ -38,16 +38,27 @@ function fmtDay(iso: string | null): string {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso
 }
 
-function Chip({ label, color, title }: { label: string; color: string; title?: string }) {
+function Chip({ label, color, title, pulse }: { label: string; color: string; title?: string; pulse?: boolean }) {
   return (
     <span
       title={title}
-      className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold whitespace-nowrap"
-      style={{ background: `${color}22`, color }}
+      className={cn(
+        'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold whitespace-nowrap',
+        pulse && 'animate-pulse',
+      )}
+      style={{ background: `${color}22`, color, ...(pulse ? { boxShadow: `0 0 0 1px ${color}` } : null) }}
     >
       {label}
     </span>
   )
+}
+
+/** "não localizado na base Angellira" — estado que o painel destaca/pulsa.
+ *  Normaliza igual ao backend (isAngelliraNotFound: trim/lower/sem acento) p/
+ *  não divergir se o Cargas gravar "não_encontrado" com acento no rawStatus. */
+function isNotFound(p: GrProviderStatus | null | undefined): boolean {
+  const s = (p?.rawStatus ?? '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  return s === 'not_found' || s === 'nao_encontrado' || s === 'nao encontrado'
 }
 
 /** Chip de um provider a partir do status materializado (gr_vigencias). */
@@ -65,6 +76,12 @@ function ProviderChip({ p }: { p: GrProviderStatus | null | undefined }) {
   if (p.provider === 'brk' && p.conjuntoApto === false) {
     return <Chip label="Reprovado" color="#f5365c" title={p.statusText ?? undefined} />
   }
+  if (isNotFound(p)) {
+    return <Chip label="Não localizado" color="#f5365c" pulse title="Não localizado na base Angellira" />
+  }
+  if ((p.rawStatus ?? '').trim().toLowerCase() === 'found') {
+    return <Chip label="Na base" color="#8392ab" title="Na base Angellira, sem data de vigência" />
+  }
   return <Chip label={p.statusText ?? p.rawStatus ?? 'situacional'} color="#5e72e4" />
 }
 
@@ -75,8 +92,11 @@ const inputCls =
 
 export function GRPage() {
   const role = useAuthStore((s) => s.user?.role)
-  const isAdmin = role === 'admin'
-  const canManage = role === 'admin' || role === 'supervisor'
+  const canManage = role === 'admin' || role === 'supervisor' // Sincronizar
+  // Cofre: operadores do GR (analistas) + supervisão + admin veem, preenchem e
+  // revelam (auditado). Excluir (destrutivo) fica só com supervisão + admin.
+  const canVault = canManage || role === 'analyst'
+  const canDeleteVault = canManage
 
   const [tab, setTab] = useState<Tab>('alertas')
   const [search, setSearch] = useState('')
@@ -85,14 +105,14 @@ export function GRPage() {
   const drivers = useGRDrivers()
   const vehicles = useGRVehicles()
   const alerts = useGRAlerts()
-  const vault = useGRVault(canManage && tab === 'credenciais')
+  const vault = useGRVault(canVault && tab === 'credenciais')
   const syncMut = useGRSync()
 
   const tabs: Array<{ key: Tab; label: string; count: number; hidden?: boolean }> = [
     { key: 'alertas', label: 'Alertas', count: alerts.data.length },
     { key: 'motoristas', label: 'Motoristas', count: overview.data.drivers.total },
     { key: 'veiculos', label: 'Veículos', count: overview.data.vehicles.total },
-    { key: 'credenciais', label: 'Credenciais', count: vault.data.length, hidden: !canManage },
+    { key: 'credenciais', label: 'Credenciais', count: vault.data.length, hidden: !canVault },
   ]
 
   const q = search.trim().toUpperCase()
@@ -171,7 +191,7 @@ export function GRPage() {
       {tab === 'alertas' && <AlertsTab alerts={alerts.data} isLoading={alerts.isLoading} />}
       {tab === 'motoristas' && <DriversTab drivers={filteredDrivers} isLoading={drivers.isLoading} />}
       {tab === 'veiculos' && <VehiclesTab vehicles={filteredVehicles} isLoading={vehicles.isLoading} />}
-      {tab === 'credenciais' && canManage && <VaultTab items={vault.data} isLoading={vault.isLoading} isAdmin={isAdmin} />}
+      {tab === 'credenciais' && canVault && <VaultTab items={vault.data} isLoading={vault.isLoading} canWrite={canVault} canDelete={canDeleteVault} />}
     </div>
   )
 }
@@ -183,10 +203,18 @@ function AlertsTab({ alerts, isLoading }: { alerts: ReturnType<typeof useGRAlert
   return (
     <div className="bg-card border border-border rounded-lg divide-y divide-border">
       {alerts.map((a) => {
+        const notFound = a.alertType === 'NOT_FOUND'
         const sev = a.severity === 'crit' ? '#f5365c' : '#fb6340'
         return (
-          <div key={a.id} className="flex items-center gap-3 p-3">
-            <span className="w-1 self-stretch rounded-full shrink-0" style={{ background: sev }} />
+          <div
+            key={a.id}
+            className="flex items-center gap-3 p-3"
+            style={notFound ? { background: 'rgba(245,54,92,0.06)' } : undefined}
+          >
+            <span
+              className={cn('w-1 self-stretch rounded-full shrink-0', notFound && 'animate-pulse')}
+              style={{ background: sev }}
+            />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-foreground truncate">{a.message}</p>
               <p className="text-xs text-muted-foreground truncate">
@@ -197,7 +225,9 @@ function AlertsTab({ alerts, isLoading }: { alerts: ReturnType<typeof useGRAlert
               </p>
             </div>
             <Chip label={a.source} color="#5e72e4" />
-            <Chip label={a.severity === 'crit' ? 'Crítico' : 'Atenção'} color={sev} />
+            {notFound
+              ? <Chip label="NÃO LOCALIZADO" color="#f5365c" pulse title="Não localizado na base Angellira" />
+              : <Chip label={a.severity === 'crit' ? 'Crítico' : 'Atenção'} color={sev} />}
           </div>
         )
       })}
@@ -277,7 +307,7 @@ function VehiclesTab({ vehicles, isLoading }: { vehicles: GrVehicle[]; isLoading
 }
 
 // ── Aba Credenciais (cofre) ───────────────────────────────────────────────────
-function VaultTab({ items, isLoading, isAdmin }: { items: VaultItem[]; isLoading: boolean; isAdmin: boolean }) {
+function VaultTab({ items, isLoading, canWrite, canDelete }: { items: VaultItem[]; isLoading: boolean; canWrite: boolean; canDelete: boolean }) {
   const upsertMut = useVaultUpsert()
   const revealMut = useVaultReveal()
   const deleteMut = useVaultDelete()
@@ -307,7 +337,7 @@ function VaultTab({ items, isLoading, isAdmin }: { items: VaultItem[]; isLoading
           <ShieldAlert className="h-3.5 w-3.5" />
           Senhas cifradas em repouso; cada “Revelar” fica registrado na trilha de auditoria.
         </p>
-        {isAdmin && !form && (
+        {canWrite && !form && (
           <button
             onClick={() => setForm({ plate: '' })}
             className="inline-flex items-center gap-1.5 h-8 rounded-md bg-card border border-border px-3 text-xs font-semibold text-foreground hover:bg-muted"
@@ -359,7 +389,7 @@ function VaultTab({ items, isLoading, isAdmin }: { items: VaultItem[]; isLoading
                 <th className={thCls}>Senha</th>
                 <th className={thCls}>ID/MCT</th>
                 <th className={thCls}>Embarcador</th>
-                {isAdmin && <th className={thCls}></th>}
+                {canWrite && <th className={thCls}></th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -374,7 +404,7 @@ function VaultTab({ items, isLoading, isAdmin }: { items: VaultItem[]; isLoading
                       <span className="font-mono text-xs tabular-nums">
                         {revealed[it.plate] !== undefined ? revealed[it.plate] || '(vazia)' : it.hasPassword ? '••••••••' : '—'}
                       </span>
-                      {isAdmin && it.hasPassword && (
+                      {canWrite && it.hasPassword && (
                         <button
                           onClick={() => toggleReveal(it.plate)}
                           disabled={revealMut.isPending}
@@ -388,7 +418,7 @@ function VaultTab({ items, isLoading, isAdmin }: { items: VaultItem[]; isLoading
                   </td>
                   <td className={cn(tdCls, 'text-xs')}>{it.rastreadorId || '—'}</td>
                   <td className={cn(tdCls, 'text-xs')}>{it.embarcador || '—'}</td>
-                  {isAdmin && (
+                  {canWrite && (
                     <td className={cn(tdCls, 'text-right whitespace-nowrap')}>
                       <button
                         onClick={() => setForm({
@@ -400,13 +430,15 @@ function VaultTab({ items, isLoading, isAdmin }: { items: VaultItem[]; isLoading
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
-                      <button
-                        onClick={() => { if (window.confirm(`Remover a credencial de ${it.plate}?`)) deleteMut.mutate(it.plate) }}
-                        title="Excluir"
-                        className="text-muted-foreground hover:text-danger"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      {canDelete && (
+                        <button
+                          onClick={() => { if (window.confirm(`Remover a credencial de ${it.plate}?`)) deleteMut.mutate(it.plate) }}
+                          title="Excluir"
+                          className="text-muted-foreground hover:text-danger"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </td>
                   )}
                 </tr>

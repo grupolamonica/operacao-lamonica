@@ -14,7 +14,7 @@ export const EXPIRY_WARN_DAYS = 30
 export type AlertLevel = 'OK' | 'EXPIRING_SOON' | 'EXPIRED'
 export type Verdict = 'OK' | 'ATENCAO' | 'CRITICO' | 'SEM_DADO'
 export type Severity = 'crit' | 'warn'
-export type AlertType = 'EXPIRY' | 'STATE'
+export type AlertType = 'EXPIRY' | 'STATE' | 'NOT_FOUND'
 export type Source = 'ANGELLIRA' | 'BRK' | 'SPX'
 
 type SrcSeverity = 'ok' | 'atencao' | 'critico' | 'sem_dado'
@@ -108,6 +108,15 @@ export function classifyExpiry(
 const ANGELLIRA_BAD = new Set([
   'not_found', 'nao_encontrado', 'nao encontrado', 'nao_conforme', 'nao conforme', 'reprovado', 'invalid', 'vencido',
 ])
+
+// "Não localizado na base" é crítico, mas é um estado distinto de "vencido"/"não
+// conforme": não tem data de vigência e pede uma ação diferente (cadastrar o
+// veículo/motorista na Angellira). Merece alerta + sinal visual próprios.
+const ANGELLIRA_NOT_FOUND = new Set(['not_found', 'nao_encontrado', 'nao encontrado'])
+
+function isAngelliraNotFound(status?: string | null): boolean {
+  return ANGELLIRA_NOT_FOUND.has(norm(status))
+}
 
 function classifyAngellira(a?: AngelliraInput | null): SrcSeverity {
   if (!a) return 'sem_dado'
@@ -204,9 +213,12 @@ export function deriveDriverAlerts(d?: DriverRiskInput | null): GrAlert[] {
         message: expiryMessage('Angellira', a.alertLevel, a.daysUntilExpiry), checkedAt: a.checkedAt ?? null,
       })
     } else if (classifyAngellira(a) === 'critico') {
+      const notFound = isAngelliraNotFound(a.status)
       alerts.push({
-        ...base, source: 'ANGELLIRA', alertType: 'STATE', severity: 'crit',
-        daysUntilExpiry: null, dueDate: null, message: 'Angellira não conforme', checkedAt: a.checkedAt ?? null,
+        ...base, source: 'ANGELLIRA', alertType: notFound ? 'NOT_FOUND' : 'STATE', severity: 'crit',
+        daysUntilExpiry: null, dueDate: null,
+        message: notFound ? 'Angellira: motorista não localizado na base' : 'Angellira não conforme',
+        checkedAt: a.checkedAt ?? null,
       })
     }
   }
@@ -245,29 +257,54 @@ export function deriveDriverAlerts(d?: DriverRiskInput | null): GrAlert[] {
 export function deriveVehicleAlerts(v?: VehicleRiskInput | null): GrAlert[] {
   if (!v) return []
   const a = v.angellira
-  if (!a || (a.alertLevel !== 'EXPIRED' && a.alertLevel !== 'EXPIRING_SOON')) return []
-  return [withId({
-    entityType: 'veiculo',
+  if (!a) return []
+  const base = {
+    entityType: 'veiculo' as const,
     entityId: v.entityId,
     displayName: v.plate ?? null,
     document: null,
     plate: v.plate ?? null,
     plateRole: v.plateRole ?? null,
     linkedDriver: v.linkedDriver ?? null,
-    source: 'ANGELLIRA',
-    alertType: 'EXPIRY',
-    severity: a.alertLevel === 'EXPIRED' ? 'crit' : 'warn',
-    daysUntilExpiry: a.daysUntilExpiry ?? null,
-    dueDate: a.validUntil ?? null,
-    message: expiryMessage('Angellira', a.alertLevel, a.daysUntilExpiry),
-    checkedAt: a.checkedAt ?? null,
-  })]
+    source: 'ANGELLIRA' as const,
+  }
+
+  // Com data de vigência: alerta de vencimento (vencido = crítico, vencendo = atenção).
+  if (a.alertLevel === 'EXPIRED' || a.alertLevel === 'EXPIRING_SOON') {
+    return [withId({
+      ...base,
+      alertType: 'EXPIRY',
+      severity: a.alertLevel === 'EXPIRED' ? 'crit' : 'warn',
+      daysUntilExpiry: a.daysUntilExpiry ?? null,
+      dueDate: a.validUntil ?? null,
+      message: expiryMessage('Angellira', a.alertLevel, a.daysUntilExpiry),
+      checkedAt: a.checkedAt ?? null,
+    })]
+  }
+
+  // Sem data: só vira alerta se o status textual for crítico. "found" sem data = ok.
+  // "não localizado na base" ganha alerta próprio (o painel destaca/pulsa em cima dele).
+  if (classifyAngellira(a) === 'critico') {
+    const notFound = isAngelliraNotFound(a.status)
+    return [withId({
+      ...base,
+      alertType: notFound ? 'NOT_FOUND' : 'STATE',
+      severity: 'crit',
+      daysUntilExpiry: null,
+      dueDate: null,
+      message: notFound ? 'Angellira: veículo não localizado na base' : 'Angellira não conforme',
+      checkedAt: a.checkedAt ?? null,
+    })]
+  }
+
+  return []
 }
 
 const SEV_RANK: Record<Severity, number> = { crit: 0, warn: 1 }
 
 function orderValue(a: GrAlert): number {
-  if (a.alertType === 'STATE') return -1e9
+  if (a.alertType === 'STATE') return -1e9 // "não conforme" (sem data) primeiro
+  if (a.alertType === 'NOT_FOUND') return 5e8 // "não localizado" depois dos vencidos, ainda no bloco crítico
   return typeof a.daysUntilExpiry === 'number' ? a.daysUntilExpiry : 1e9
 }
 

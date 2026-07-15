@@ -5,10 +5,10 @@
  *   GET  /api/gr/vehicles  → veículos + vigência Angellira por placa
  *   GET  /api/gr/alerts    → feed de alertas (vencimento/estado) por urgência
  *   POST /api/gr/sync      → materializa gr_vigencias do Cargas (admin|supervisor)
- *   GET    /api/gr/vault          → cofre: lista mascarada (admin|supervisor)
- *   PUT    /api/gr/vault          → cofre: upsert cifrado (admin)
- *   POST   /api/gr/vault/reveal   → cofre: decifra 1 placa + audita (admin)
- *   DELETE /api/gr/vault/:plate   → cofre: remove + audita (admin)
+ *   GET    /api/gr/vault          → cofre: lista mascarada (admin|supervisor|analyst)
+ *   PUT    /api/gr/vault          → cofre: upsert cifrado (admin|supervisor|analyst)
+ *   POST   /api/gr/vault/reveal   → cofre: decifra 1 placa + audita (admin|supervisor|analyst)
+ *   DELETE /api/gr/vault/:plate   → cofre: remove + audita (admin|supervisor)
  *
  * Módulo 'gr' (NÃO 'risk' — modules/risk é risco de ENTREGA). O dado de risco
  * cadastral vem do Cargas via gr.reads/gr.sync. Registrar ANTES do wsPlugin.
@@ -24,6 +24,12 @@ import {
   deleteVaultCredential,
   normalizePlate,
 } from './gr.vault'
+
+// Cofre operado pelos operadores do GR (analistas) + supervisão + admin: ver,
+// preencher/editar e revelar — toda revelação vai pra trilha de auditoria
+// (gr_vault_events). Excluir é destrutivo → restrito a supervisão + admin.
+const CAN_VAULT = new Set(['admin', 'supervisor', 'analyst'])
+const CAN_VAULT_DELETE = new Set(['admin', 'supervisor'])
 
 const vaultUpsertSchema = t.Object({
   plate: t.String(),
@@ -72,9 +78,9 @@ export const grPlugin = new Elysia({ name: 'gr' })
       .get(
         '/vault',
         ({ user, set }) => {
-          if (user.role !== 'admin' && user.role !== 'supervisor') {
+          if (!CAN_VAULT.has(user.role)) {
             set.status = 403
-            return { error: 'Forbidden: requires admin|supervisor' }
+            return { error: 'Forbidden: requires admin|supervisor|analyst' }
           }
           return listVaultCredentials()
         },
@@ -83,9 +89,9 @@ export const grPlugin = new Elysia({ name: 'gr' })
       .put(
         '/vault',
         async ({ user, body, set }) => {
-          if (user.role !== 'admin') {
+          if (!CAN_VAULT.has(user.role)) {
             set.status = 403
-            return { error: 'Forbidden: requires admin' }
+            return { error: 'Forbidden: requires admin|supervisor|analyst' }
           }
           if (!normalizePlate(body.plate)) {
             set.status = 422
@@ -101,9 +107,9 @@ export const grPlugin = new Elysia({ name: 'gr' })
       .post(
         '/vault/reveal',
         async ({ user, body, set }) => {
-          if (user.role !== 'admin') {
+          if (!CAN_VAULT.has(user.role)) {
             set.status = 403
-            return { error: 'Forbidden: requires admin' }
+            return { error: 'Forbidden: requires admin|supervisor|analyst' }
           }
           if (!normalizePlate(body.plate)) {
             set.status = 422
@@ -124,9 +130,9 @@ export const grPlugin = new Elysia({ name: 'gr' })
       .delete(
         '/vault/:plate',
         async ({ user, params, set }) => {
-          if (user.role !== 'admin') {
+          if (!CAN_VAULT_DELETE.has(user.role)) {
             set.status = 403
-            return { error: 'Forbidden: requires admin' }
+            return { error: 'Forbidden: requires admin|supervisor' }
           }
           if (!normalizePlate(params.plate)) {
             set.status = 422
