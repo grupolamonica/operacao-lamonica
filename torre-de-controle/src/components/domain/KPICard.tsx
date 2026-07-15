@@ -33,26 +33,47 @@ interface KPICardProps {
   progressValue?: number
   color?: KPIColor
   icon?: React.ElementType
+  /** Quando presente, o card vira um botão (acessível: role/tabIndex/teclado). */
+  onClick?: () => void
 }
 
 export function KPICard({
   title, value, subtitle, total, percent, trend,
-  sparklineData, progressValue, color = 'blue', icon: IconComponent,
+  sparklineData, progressValue, color = 'blue', icon: IconComponent, onClick,
 }: KPICardProps) {
   const TrendIcon = trend === 'up' ? TrendingUp : trend === 'down' ? TrendingDown : Minus
   const trendColor = trend === 'up' ? 'text-success' : trend === 'down' ? 'text-danger' : 'text-muted-foreground'
   const hex = colorMap[color]
   const gradient = gradientMap[color]
+  const interactive = typeof onClick === 'function'
 
   return (
     <div
-      className="bg-card relative"
+      className={cn(
+        'bg-card relative',
+        interactive &&
+          'cursor-pointer transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
+      )}
       style={{
         borderRadius: '1rem',
         boxShadow: '0 0 2rem 0 rgba(136, 152, 170, 0.15)',
         border: 'none',
         padding: '1rem',
       }}
+      {...(interactive
+        ? {
+            role: 'button',
+            tabIndex: 0,
+            onClick,
+            onKeyDown: (e: React.KeyboardEvent) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onClick?.()
+              }
+            },
+            'aria-label': `${title}: ${value}`,
+          }
+        : {})}
     >
       {/* Floating gradient icon box */}
       {IconComponent && (
