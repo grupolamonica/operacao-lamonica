@@ -1,0 +1,27 @@
+name: Runner Probe
+
+# Diagnóstico READ-ONLY do runner self-hosted da VPS.
+# Só imprime disco/RAM/CPU/versões/containers — não builda, não deploya, não
+# toca em nada de produção. Roda no runner self-hosted (não gasta minuto hospedado).
+on:
+  workflow_dispatch: {}
+
+jobs:
+  probe:
+    name: Probe self-hosted
+    runs-on: [self-hosted, torre]
+    steps:
+      - name: System info (read-only)
+        run: |
+          echo "===== DISCO (raiz) ====="; df -h /
+          echo "===== DISCO (/opt e docker) ====="; df -h /opt 2>/dev/null || true; df -h /var/lib/docker 2>/dev/null || true
+          echo "===== MEMORIA (MB) ====="; free -m || true
+          echo "===== CPU (nucleos) ====="; nproc || true
+          echo "===== LOAD ====="; uptime || true
+          echo "===== DOCKER ====="; docker version --format 'server={{.Server.Version}}' 2>/dev/null || echo "no docker"
+          echo "===== DOCKER DISK ====="; docker system df 2>/dev/null || true
+          echo "===== BUILDX ====="; docker buildx version 2>/dev/null || echo "no buildx"
+          echo "===== BUN ====="; bun --version 2>/dev/null || echo "no bun"
+          echo "===== NODE ====="; node --version 2>/dev/null || echo "no node"
+          echo "===== NPM ====="; npm --version 2>/dev/null || echo "no npm"
+          echo "===== CONTAINERS DE PROD RODANDO ====="; docker ps --format '{{.Names}}\t{{.Status}}' 2>/dev/null || true
