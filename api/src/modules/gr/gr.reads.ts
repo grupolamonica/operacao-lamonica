@@ -9,11 +9,13 @@ import type { CargasDriverRiskRow, CargasVehicleRiskRow } from './gr.types'
 
 const PAGE = 1000
 
+// SPX: o cargas de PROD só tem spx_registration_* (cadastro), NÃO spx_vigency_*
+// (situacional) — selecionar essas colunas quebrava o sync (coluna inexistente).
+// GR v1 = Angellira + BRK; SPX-vigência entra quando a integração nascer no cargas.
 const DRIVER_COLS =
   'user_id, full_name, document_number, ' +
   'angellira_status, angellira_valid_until, angellira_status_text, angellira_checked_at, ' +
-  'brk_status, brk_conjunto_apto, brk_valid_until, brk_status_text, brk_checked_at, ' +
-  'spx_vigency_status, spx_vigency_status_text, spx_vigency_encontrado, spx_vigency_checked_at'
+  'brk_status, brk_conjunto_apto, brk_valid_until, brk_status_text, brk_checked_at'
 
 const VEHICLE_COLS =
   'id, plate, plate_role, angellira_status, angellira_valid_until, ' +

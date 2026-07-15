@@ -50,13 +50,7 @@ export async function syncGr(nowMs: number = Date.now()): Promise<GrSyncResult> 
       })
     }
 
-    if (d.spx_vigency_status) {
-      rows.push({
-        entityType: 'driver', entityKey: cpf, displayName: d.full_name, provider: 'spx',
-        rawStatus: d.spx_vigency_status, statusText: d.spx_vigency_status_text, validUntil: null,
-        daysUntilExpiry: null, status: 'STATE', checkedAt: toDate(d.spx_vigency_checked_at), source: 'cargas',
-      })
-    }
+    // SPX-vigência: fora da v1 (coluna spx_vigency_* não existe no cargas de prod).
   }
 
   for (const v of vehicles) {

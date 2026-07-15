@@ -21,10 +21,7 @@ export interface CargasDriverRiskRow {
   brk_valid_until: string | null
   brk_status_text: string | null
   brk_checked_at: string | null
-  spx_vigency_status: string | null
-  spx_vigency_status_text: string | null
-  spx_vigency_encontrado: boolean | null
-  spx_vigency_checked_at: string | null
+  // SPX-vigência (spx_vigency_*) ainda não existe no cargas de prod — fora do pull da v1.
 }
 
 /** vehicles do Cargas — placa + vigência Angellira + vínculo. */
