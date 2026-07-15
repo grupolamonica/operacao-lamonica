@@ -80,10 +80,12 @@ function assemble(
   }
 }
 
-/** Monta as linhas da matriz para uma data (YYYY-MM-DD). */
-async function loadDay(date: string, nowMs: number): Promise<{ rows: SpxRow[]; syncedAt: string | null }> {
+/** Monta as linhas da matriz para uma data (YYYY-MM-DD). Retorna também o snapshot
+ *  (uma leitura só) para o overview reaproveitar sem refetch. */
+async function loadDay(date: string, nowMs: number) {
   const snap = await fetchShopeeSnapshot()
-  const dayRaw = snap.rows.filter((r) => clean(r.data) === date)
+  // descarta ruído de planilha (linha sem lh): dado inválido + evita key React duplicada
+  const dayRaw = snap.rows.filter((r) => clean(r.data) === date && !!r.lh?.trim())
   const [enriched, signals] = await Promise.all([
     fetchEnrichedByLh(dayRaw.map((r) => r.lh ?? '')),
     fetchLastSignalByPlate(),
@@ -99,7 +101,7 @@ async function loadDay(date: string, nowMs: number): Promise<{ rows: SpxRow[]; s
     if (sa !== sb) return sa - sb
     return String(a.horario ?? '').localeCompare(String(b.horario ?? ''))
   })
-  return { rows, syncedAt: snap.syncedAt }
+  return { rows, snap }
 }
 
 /** Matriz de operação (default: hoje). */
@@ -108,20 +110,17 @@ export async function getSpxRows(scope: 'today' | 'tomorrow' = 'today', nowMs: n
   return (await loadDay(date, nowMs)).rows
 }
 
-/** KPIs da operação (base = hoje BRT; programados = amanhã). */
+/** KPIs da operação (base = hoje BRT; programados = amanhã). Uma leitura de snapshot. */
 export async function getSpxOverview(nowMs: number = Date.now()): Promise<SpxOverview> {
   const today = brtDate(0)
   const tomorrow = brtDate(1)
-  const snap = await fetchShopeeSnapshot()
-
-  const assignedFor = (date: string) => snap.rows.filter((r) => clean(r.data) === date && r.hasDriver === true)
-  const { rows } = await loadDay(today, nowMs)
+  const { rows, snap } = await loadDay(today, nowMs)
   const escalados = rows.filter((r) => r.hasDriver)
 
   return {
     date: today,
     escaladosHoje: escalados.length,
-    programadosAmanha: assignedFor(tomorrow).length,
+    programadosAmanha: snap.rows.filter((r) => clean(r.data) === tomorrow && r.hasDriver === true && !!r.lh?.trim()).length,
     frotasConformes: escalados.filter((r) => r.conforme).length,
     naoConforme: escalados.filter((r) => r.pendencia).length,
     semEspelhamento: escalados.filter((r) => r.espelhamento.status === 'sem_sinal').length,
