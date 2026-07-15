@@ -23,6 +23,7 @@ const routeNames: Record<string, string> = {
   '/viagens': 'Viagens',
   '/motoristas': 'Motoristas',
   '/alertas': 'Alertas',
+  '/gr': 'Gerenciamento de Risco',
   '/geofences': 'Geofences',
   '/insights': 'Insights',
   '/configuracoes': 'Configurações',

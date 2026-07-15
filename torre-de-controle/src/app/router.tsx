@@ -43,6 +43,9 @@ const ConfiguracoesPage = lazy(() =>
 const AuditoriaPage = lazy(() =>
   import('./pages/auditoria/AuditoriaPage').then(m => ({ default: m.AuditoriaPage })),
 )
+const GRPage = lazy(() =>
+  import('./pages/gr/GRPage').then(m => ({ default: m.GRPage })),
+)
 
 /**
  * Suspense wrapper for lazy route chunks.
@@ -79,6 +82,7 @@ export const router = createBrowserRouter([
           { path: 'ranking',           element: <L><RankingPage /></L> },
           { path: 'configuracoes',     element: <L><ConfiguracoesPage /></L> },
           { path: 'auditoria',         element: <L><AuditoriaPage /></L> },
+          { path: 'gr',                element: <L><GRPage /></L> },
         ],
       },
     ],
