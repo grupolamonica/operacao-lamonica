@@ -3,7 +3,7 @@
  * banco (snapshot + enriched + driver_positions) e deriva os KPIs do dia.
  * Read-only. Espelhamento = última posição conhecida (não rastreador ao vivo).
  */
-import { fetchShopeeSnapshot, fetchEnrichedByLh, fetchLastSignalByPlate, type RawSnapRow } from './gr.spx.reads'
+import { fetchShopeeSnapshot, fetchEnrichedByLh, fetchLastSignalByPlate, type RawSnapRow, type EnrichedRow } from './gr.spx.reads'
 import type { SpxRow, SpxOverview, SpxEspelhamento } from './gr.spx.types'
 
 /** posição mais velha que isto (min) conta como "stale"; sem posição = sem_sinal. */
@@ -41,7 +41,7 @@ function espelhamento(cavalo: string | null, signals: Map<string, string>, nowMs
 
 function assemble(
   r: RawSnapRow,
-  enriched: Map<string, { aspx_cpf: string | null; cavalo_angellira_status_text: string | null; carreta_angellira_status_text: string | null }>,
+  enriched: Map<string, EnrichedRow>,
   signals: Map<string, string>,
   nowMs: number,
 ): SpxRow {
