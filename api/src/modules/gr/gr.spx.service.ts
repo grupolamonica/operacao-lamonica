@@ -112,9 +112,18 @@ function assemble(
   const cavalo = sanitize(r.cavalo)
   const carreta = sanitize(r.carreta)
 
-  const pm = derivePerfil(!!motorista, e?.angellira_driver_valid_until, null, e?.angellira_driver_found, todayBrt)
-  const pc = derivePerfil(!!cavalo, e?.cavalo_angellira_valid_until, e?.cavalo_angellira_status_text, null, todayBrt)
-  const pr = derivePerfil(!!carreta, e?.carreta_angellira_valid_until, e?.carreta_angellira_status_text, null, todayBrt)
+  // Entidade que É falha de lookup ('-' → "Não encontrado") não consulta o enriched:
+  // o perfil herda a falha (senão poderia sair "Apto" numa linha sem placa real).
+  const FAIL_PERFIL = { status: NAO_ENCONTRADO, dias: null }
+  const pm = motorista === NAO_ENCONTRADO
+    ? FAIL_PERFIL
+    : derivePerfil(!!motorista, e?.angellira_driver_valid_until, null, e?.angellira_driver_found, todayBrt)
+  const pc = cavalo === NAO_ENCONTRADO
+    ? FAIL_PERFIL
+    : derivePerfil(!!cavalo, e?.cavalo_angellira_valid_until, e?.cavalo_angellira_status_text, null, todayBrt)
+  const pr = carreta === NAO_ENCONTRADO
+    ? FAIL_PERFIL
+    : derivePerfil(!!carreta, e?.carreta_angellira_valid_until, e?.carreta_angellira_status_text, null, todayBrt)
 
   const checklistCavalo = cavalo ? canonStatus(sanitize(r.checklistCavalo)) : null
   const checklistCarreta = carreta ? canonStatus(sanitize(r.checklistCarreta)) : null
