@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils'
 import {
   useGROverview, useGRDrivers, useGRVehicles, useGRAlerts, useGRVault,
   useGRSync, useVaultUpsert, useVaultReveal, useVaultDelete,
-  useSpxOverview, useSpxRows,
+  useSpxOverview, useSpxRows, useSpxOverrideUpsert, useSpxOverrideDelete,
   type GrVerdict, type GrProviderStatus, type GrDriver, type GrVehicle,
   type VaultItem, type VaultUpsertInput, type SpxRow, type SpxSource,
 } from '@/hooks/useGR'
@@ -223,6 +223,7 @@ export function GRPage() {
           onSource={setSpxSource}
           filter={spxRowFilter}
           onFilter={setSpxRowFilter}
+          canOperate={canVault}
         />
       )}
     </div>
@@ -407,7 +408,7 @@ function EspelhamentoAlCell({ r }: { r: SpxRow }) {
 }
 
 function SpxTab({
-  rows, isLoading, scope, onScope, source, onSource, filter, onFilter,
+  rows, isLoading, scope, onScope, source, onSource, filter, onFilter, canOperate,
 }: {
   rows: SpxRow[]
   isLoading: boolean
@@ -417,7 +418,24 @@ function SpxTab({
   onSource: (s: SpxSource) => void
   filter: SpxRowFilter
   onFilter: (f: SpxRowFilter) => void
+  canOperate: boolean
 }) {
+  // Override manual + Observação (col AA do doc): editor inline, auditado no backend.
+  const upsertOv = useSpxOverrideUpsert()
+  const deleteOv = useSpxOverrideDelete()
+  const [editing, setEditing] = useState<{ lh: string; motorista: string | null; liberado: boolean; observacao: string } | null>(null)
+
+  async function saveOverride() {
+    if (!editing) return
+    await upsertOv.mutateAsync({ lh: editing.lh, liberado: editing.liberado, observacao: editing.observacao })
+    setEditing(null)
+  }
+  async function removeOverride() {
+    if (!editing) return
+    await deleteOv.mutateAsync(editing.lh)
+    setEditing(null)
+  }
+
   const assigned = rows.filter((r) => r.hasDriver)
   const counts = {
     all: rows.length,
@@ -492,6 +510,50 @@ function SpxTab({
         <ShieldAlert className="h-4 w-4" /> Matriz de Operação — Status de Segurança GR
       </h2>
 
+      {editing && (
+        <div className="bg-card border border-border rounded-lg p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-foreground">
+              Observação / liberação — <span className="font-mono">{editing.lh}</span>
+              {editing.motorista && <span className="text-muted-foreground font-normal"> · {editing.motorista}</span>}
+            </p>
+            <button onClick={() => setEditing(null)} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+          </div>
+          <label className="flex items-center gap-2 text-xs font-semibold text-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={editing.liberado}
+              onChange={(e) => setEditing({ ...editing, liberado: e.target.checked })}
+              className="h-3.5 w-3.5 accent-[#5e72e4]"
+            />
+            Liberar com ressalva (sobrepõe o gate calculado — fica auditado com seu usuário)
+          </label>
+          <textarea
+            value={editing.observacao}
+            onChange={(e) => setEditing({ ...editing, observacao: e.target.value })}
+            placeholder="Observação do operador (por que liberar / o que falta / quem foi contatado…)"
+            rows={2}
+            className={cn(inputCls, 'w-full h-auto py-2 resize-y')}
+          />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={saveOverride}
+              disabled={upsertOv.isPending}
+              className="h-8 rounded-md bg-primary text-primary-foreground px-4 text-xs font-semibold disabled:opacity-60"
+            >
+              {upsertOv.isPending ? 'Salvando…' : 'Salvar'}
+            </button>
+            <button
+              onClick={removeOverride}
+              disabled={deleteOv.isPending}
+              className="h-8 rounded-md bg-card border border-border px-3 text-xs font-semibold text-muted-foreground hover:text-danger disabled:opacity-60"
+            >
+              Remover override
+            </button>
+          </div>
+        </div>
+      )}
+
       {isLoading ? (
         <Empty text="Carregando matriz…" />
       ) : shown.length === 0 ? (
@@ -514,11 +576,12 @@ function SpxTab({
                 <th className={thCls}>Chk Carreta</th>
                 {hasEspelhamentoAl && <th className={thCls}>Espelhamento AL</th>}
                 <th className={thCls}>Sinal</th>
+                <th className={thCls}>Obs.</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {shown.map((r) => (
-                <tr key={r.lh} style={r.pendencia ? { background: 'rgba(245,54,92,0.05)' } : undefined}>
+                <tr key={r.lh} style={r.pendencia && !r.conforme ? { background: 'rgba(245,54,92,0.05)' } : undefined}>
                   <td className={cn(tdCls, 'whitespace-nowrap tabular-nums')}>
                     {r.horario ?? '—'}
                     {r.tipo && <span className="block text-[10px] text-muted-foreground">{r.tipo}</span>}
@@ -548,6 +611,29 @@ function SpxTab({
                   <td className={tdCls}>{checklistChip(r.checklistCarreta, r.checklistCarretaDias)}</td>
                   {hasEspelhamentoAl && <td className={tdCls}><EspelhamentoAlCell r={r} /></td>}
                   <td className={tdCls}><SinalCell s={r.sinal} /></td>
+                  <td className={cn(tdCls, 'max-w-[150px]')}>
+                    <div className="flex items-center gap-1.5">
+                      {r.override?.liberado && (
+                        <Chip label="Liberado" color="#11cdef" title={`Liberado com ressalva${r.override.observacao ? ` — ${r.override.observacao}` : ''}`} />
+                      )}
+                      {r.override?.observacao && !r.override.liberado && (
+                        <span className="text-[11px] text-muted-foreground truncate" title={r.override.observacao}>{r.override.observacao}</span>
+                      )}
+                      {canOperate && (
+                        <button
+                          onClick={() => setEditing({
+                            lh: r.lh, motorista: r.motorista,
+                            liberado: r.override?.liberado ?? false,
+                            observacao: r.override?.observacao ?? '',
+                          })}
+                          title="Observação / liberar com ressalva"
+                          className="text-muted-foreground hover:text-foreground shrink-0"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>

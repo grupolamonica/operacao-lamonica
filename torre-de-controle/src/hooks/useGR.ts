@@ -100,6 +100,7 @@ export interface SpxRow {
   sinal: SpxSinal
   hasDriver: boolean
   isAvailable: boolean
+  override: { liberado: boolean; observacao: string | null; updatedAt: string | null } | null
   pendencia: boolean
   conforme: boolean
 }
@@ -236,6 +237,39 @@ export function useSpxRows(scope: 'today' | 'tomorrow', source: SpxSource, enabl
     refetchInterval: 60_000,
   })
   return { data: q.data ?? [], isLoading: q.isLoading }
+}
+
+// ── Override manual + Observação (col AA) — invalida a matriz e os KPIs ──────
+const SPX_KEYS = [['spx-rows'], ['spx-overview']] as const
+
+export function useSpxOverrideUpsert() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: { lh: string; liberado?: boolean; observacao?: string }) => {
+      const { data, error } = await api.api.gr.spx.override.put(input)
+      if (error) throw error
+      return data as { lh: string; liberado: boolean; observacao: string | null; updatedAt: string | null }
+    },
+    onSuccess: () => {
+      for (const key of SPX_KEYS) qc.invalidateQueries({ queryKey: [...key] })
+    },
+  })
+}
+
+export function useSpxOverrideDelete() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (lh: string) => {
+      // Segmento dinâmico do treaty (bypass de tipo — padrão do projeto p/ :param)
+      const override = (api as unknown as { api: { gr: { spx: { override: Record<string, { delete: () => Promise<{ data: unknown; error: unknown }> }> } } } }).api.gr.spx.override
+      const { error } = await override[lh]!.delete()
+      if (error) throw error
+      return true
+    },
+    onSuccess: () => {
+      for (const key of SPX_KEYS) qc.invalidateQueries({ queryKey: [...key] })
+    },
+  })
 }
 
 export function useGRVault(enabled: boolean) {
