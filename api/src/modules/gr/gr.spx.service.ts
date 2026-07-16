@@ -34,14 +34,20 @@ const LOOKUP_FAIL = new Set(['-', '--', '#ref!', '#n/a', 'status', 'nao encontra
 
 const NAO_ENCONTRADO = 'Não encontrado'
 
-/** Normaliza um texto da planilha: vazio → null; falha de lookup → "Não encontrado"; senão capitaliza. */
+/** Normaliza um texto da planilha: vazio → null; falha de lookup → "Não encontrado"; senão preserva
+ *  (NUNCA muda casing aqui — placas e nomes ficam como vieram; o doc exige MAIÚSCULO). */
 function sanitize(t: string | null | undefined): string | null {
   const raw = String(t ?? '').trim()
   const n = norm(raw)
   if (EMPTY.has(n)) return null
   if (LOOKUP_FAIL.has(n)) return NAO_ENCONTRADO
-  // casing canônico p/ vocabulários (APROVADO → Aprovado), preservando multi-palavra
-  return raw === raw.toUpperCase() ? raw.charAt(0) + raw.slice(1).toLowerCase() : raw
+  return raw
+}
+
+/** Casing canônico SÓ p/ vocabulários de status (APROVADO → Aprovado). */
+function canonStatus(t: string | null): string | null {
+  if (!t || t === NAO_ENCONTRADO) return t
+  return t === t.toUpperCase() ? t.charAt(0) + t.slice(1).toLowerCase() : t
 }
 
 const PERFIL_OK = new Set(['apto', 'conforme'])
@@ -107,8 +113,8 @@ function assemble(
   const pc = derivePerfil(!!cavalo, e?.cavalo_angellira_valid_until, e?.cavalo_angellira_status_text, null, todayBrt)
   const pr = derivePerfil(!!carreta, e?.carreta_angellira_valid_until, e?.carreta_angellira_status_text, null, todayBrt)
 
-  const checklistCavalo = cavalo ? sanitize(r.checklistCavalo) : null
-  const checklistCarreta = carreta ? sanitize(r.checklistCarreta) : null
+  const checklistCavalo = cavalo ? canonStatus(sanitize(r.checklistCavalo)) : null
+  const checklistCarreta = carreta ? canonStatus(sanitize(r.checklistCarreta)) : null
 
   // Espelhamento AL (col M do doc): a regra está ligada; o dado depende da ingestão.
   const espelhamentoAlDate = r.espelhamentoAl ? String(r.espelhamentoAl).slice(0, 10) : null
