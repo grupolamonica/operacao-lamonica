@@ -18,6 +18,7 @@ import { authGuard } from '../../lib/rbac'
 import { getGrOverview, getGrDrivers, getGrVehicles, getGrAlerts } from './gr.service'
 import { syncGr } from './gr.sync'
 import { getSpxOverview, getSpxRows } from './gr.spx.service'
+import { upsertRowOverride, deleteRowOverride } from './gr.override'
 import {
   listVaultCredentials,
   upsertVaultCredential,
@@ -60,12 +61,16 @@ export const grPlugin = new Elysia({ name: 'gr' })
         detail: { tags: ['gr'], summary: 'Feed de alertas de vigência/estado (motoristas + veículos), ordenado por urgência' },
       })
       // ── SPX / Shopee: matriz de operação por viagem (dados no nosso banco) ──
-      .get('/spx/overview', () => getSpxOverview(), {
-        detail: { tags: ['gr'], summary: 'SPX/Shopee: KPIs (escalados hoje/amanhã, frotas conformes, sem espelhamento, não conforme)' },
+      .get('/spx/overview', ({ query }) => getSpxOverview(query.source ?? 'shopee'), {
+        query: t.Object({ source: t.Optional(t.Union([t.Literal('shopee'), t.Literal('nestle')])) }),
+        detail: { tags: ['gr'], summary: 'SPX: KPIs da operação (escalados hoje/amanhã, frotas conformes, sem sinal, não conforme)' },
       })
-      .get('/spx/rows', ({ query }) => getSpxRows(query.scope ?? 'today'), {
-        query: t.Object({ scope: t.Optional(t.Union([t.Literal('today'), t.Literal('tomorrow')])) }),
-        detail: { tags: ['gr'], summary: 'SPX/Shopee: matriz de operação por viagem (escala + perfil + checklist + espelhamento); default hoje' },
+      .get('/spx/rows', ({ query }) => getSpxRows(query.scope ?? 'today', query.source ?? 'shopee'), {
+        query: t.Object({
+          scope: t.Optional(t.Union([t.Literal('today'), t.Literal('tomorrow')])),
+          source: t.Optional(t.Union([t.Literal('shopee'), t.Literal('nestle')])),
+        }),
+        detail: { tags: ['gr'], summary: 'SPX: matriz de operação por viagem (escala + perfil 3D + checklist + espelhamento AL + sinal); default hoje/shopee' },
       })
       .post(
         '/sync',
@@ -82,6 +87,45 @@ export const grPlugin = new Elysia({ name: 'gr' })
             summary: 'Sync manual: materializa gr_vigencias a partir do Cargas (driver_profiles + vehicles)',
           },
         },
+      )
+      // ── Override manual + Observação (col AA do PainelGR; auditado) ──────────
+      .put(
+        '/spx/override',
+        async ({ user, body, set }) => {
+          if (!CAN_VAULT.has(user.role)) {
+            set.status = 403
+            return { error: 'Forbidden: requires admin|supervisor|analyst' }
+          }
+          if (!String(body.lh ?? '').trim()) {
+            set.status = 422
+            return { error: 'lh obrigatório.' }
+          }
+          return upsertRowOverride(body, user.id)
+        },
+        {
+          body: t.Object({
+            lh: t.String(),
+            liberado: t.Optional(t.Boolean()),
+            observacao: t.Optional(t.String()),
+          }),
+          detail: { tags: ['gr'], summary: 'SPX: anotar/liberar com ressalva uma viagem (override auditado em gr_override_events)' },
+        },
+      )
+      .delete(
+        '/spx/override/:lh',
+        async ({ user, params, set }) => {
+          if (!CAN_VAULT.has(user.role)) {
+            set.status = 403
+            return { error: 'Forbidden: requires admin|supervisor|analyst' }
+          }
+          const removed = await deleteRowOverride(params.lh, user.id)
+          if (!removed) {
+            set.status = 404
+            return { error: 'Override não encontrado para essa viagem.' }
+          }
+          return { ok: true }
+        },
+        { detail: { tags: ['gr'], summary: 'SPX: remove o override de uma viagem (auditado)' } },
       )
       // ── Cofre de credenciais do rastreador (senha CIFRADA; ver gr.vault.ts) ──
       .get(
