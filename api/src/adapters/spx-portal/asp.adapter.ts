@@ -65,6 +65,12 @@ function tsToBr(ep: unknown): string {
   return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`
 }
 
+/** epoch (s) preenchido de verdade (mesmo limiar de tsToBr). */
+function epochSet(ep: unknown): boolean {
+  const n = Number(ep)
+  return Number.isFinite(n) && n > 1_000_000_000
+}
+
 function stationLbl(s: any): string {
   return s?.station ? `[${s.station}]${s.station_name || ''}` : (s?.station_name || '')
 }
@@ -74,11 +80,23 @@ function flatten(t: any): AspRow {
   const o = stns[0] ?? {}
   const d = stns[stns.length - 1] ?? {}
   const status = TS[t.trip_status as number] ?? String(t.trip_status)
+  // "Arrived" no SPX é ambíguo: o portal usa o MESMO status quando o veículo chega
+  // na ORIGEM (aguardando CARREGAR) e quando chega no DESTINO (aguardando
+  // DESCARREGAR). O de-para fixo (Arrived → AGUARDANDO DESCARGA) trocava carreg↔desc
+  // pros que chegaram na origem. Desambigua pela viagem: se já partiu da origem
+  // (CPT ORIGEM REAL) ou já chegou no destino (ETA DESTINO REAL) → AGUARDANDO
+  // DESCARGA; senão está na origem → AGUARDANDO CARREGAMENTO.
+  const statusOperacional =
+    status === 'Arrived'
+      ? epochSet(o.atd) || epochSet(d.ata)
+        ? 'AGUARDANDO DESCARGA'
+        : 'AGUARDANDO CARREGAMENTO'
+      : OP[status] ?? ''
   return {
     'LH Trip Number': t.trip_number ?? '',
     'LH Trip Name': t.trip_name ?? '',
     'Status': status,
-    'Status Operacional': OP[status] ?? '',
+    'Status Operacional': statusOperacional,
     'Driver ID': t.driver ? `[${t.driver}]${t.driver_name || ''}` : '',
     'Vehicle': t.vehicle_type_name ?? '',
     'Vehicle Plate Number': (t.vehicle_plate_number_list ?? []).join(','),
