@@ -236,7 +236,7 @@ export function useSpxRows(scope: 'today' | 'tomorrow', source: SpxSource, enabl
     enabled,
     refetchInterval: 60_000,
   })
-  return { data: q.data ?? [], isLoading: q.isLoading }
+  return { data: q.data ?? [], isLoading: q.isLoading, isError: q.isError }
 }
 
 // ── Override manual + Observação (col AA) — invalida a matriz e os KPIs ──────
