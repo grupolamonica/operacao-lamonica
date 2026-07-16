@@ -1,0 +1,11 @@
+-- Prazo Final (trips.window_end) vira NULLABLE.
+--
+-- O closeStaleTrips() (monitoring.adapter.ts) zera o prazo-lixo das cargas em rota
+-- (window_end = DATA da carga à meia-noite, já vencida, sem GPS p/ corrigir) para não
+-- virar "atrasado" falso — mas a coluna nasceu NOT NULL (0000_deep_stardust.sql), então
+-- esse UPDATE falhava a cada ciclo (2x/5min: jobs 'monitoring' e 'close-stale') e
+-- derrubava o resto do sync (reconcile GPS→cargas e recomputeCanonicalKeys nunca rodavam).
+--
+-- Aplicar manualmente contra DATABASE_URL_DIRECT (schema NÃO é aplicado pelo CI — ver ci.yml).
+-- Reversível (enquanto não houver NULLs): ALTER TABLE trips ALTER COLUMN window_end SET NOT NULL;
+ALTER TABLE trips ALTER COLUMN window_end DROP NOT NULL;

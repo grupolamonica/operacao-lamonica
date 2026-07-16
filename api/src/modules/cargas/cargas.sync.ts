@@ -11,7 +11,7 @@
  * Cache (replace a cada run), não fonte de verdade. Idempotente.
  */
 
-import { sql } from 'drizzle-orm'
+import { sql, type SQL } from 'drizzle-orm'
 import { createHash } from 'node:crypto'
 import { db } from '../../db/client'
 import { cargasOpenLoads, cargasLoadCandidates } from '../../db/schema/cargas'
@@ -88,28 +88,48 @@ export async function upsertCargasAsTrips(): Promise<number> {
 
   let upserted = 0
   const B = 500
+  const cut = (s: string | null, n: number): string | null => { const v = (s ?? '').trim(); return v ? v.slice(0, n) : null }
+  const codeOf = (lh: string) => ('CRG-' + lh).slice(0, 20)
   for (let i = 0; i < list.length; i += B) {
     const batch = list.slice(i, i + B)
-    const cut = (s: string | null, n: number): string | null => { const v = (s ?? '').trim(); return v ? v.slice(0, n) : null }
-    const vals = batch.map(([lh, c]) => {
+    // trips_code_unique: o code (CRG-<LH>) deriva do LH, mas o id deriva do id da CARGA. Quando o
+    // Cargas recria o mesmo LH sob outro id (repost), o INSERT chegava com id NOVO e code EXISTENTE —
+    // o ON CONFLICT (id) não casava e a batch INTEIRA morria no trips_code_unique (recorrente no
+    // sync */15min; as ~500 viagens da batch eram perdidas e o resto do runCargasSync não rodava).
+    // Pré-resolve o dono de cada code e roteia: dono ausente/próprio → upsert por id (normal);
+    // dono é OUTRO id → upsert por code (reaproveita a linha — preserva FKs de alerts/trip_events —
+    // e regrava cargas_load_id p/ a carga atual).
+    const ownerRows = (await db.execute(sql`
+      SELECT id, code FROM trips WHERE code IN (${sql.join(batch.map(([lh]) => sql`${codeOf(lh)}`), sql`, `)})
+    `)) as unknown as Array<{ id: string; code: string }>
+    const ownerByCode = new Map(ownerRows.map((r) => [r.code, r.id]))
+    const byId: typeof batch = [], byCode: typeof batch = []
+    for (const e of batch) {
+      const owner = ownerByCode.get(codeOf(e[0]))
+      if (owner && owner !== uuid5('cargas|' + e[1].id)) byCode.push(e)
+      else byId.push(e)
+    }
+    const vals = (rows: typeof batch) => rows.map(([lh, c]) => {
       const id = uuid5('cargas|' + c.id)
       const ws = c.data ? new Date(c.data).toISOString() : new Date().toISOString()
       const clientId = c.cliente_id && torreClients.has(c.cliente_id) ? c.cliente_id : null
-      return sql`(${id}, ${('CRG-' + lh).slice(0, 20)}, 'cargas', 'media', ${clientId}, ${cut(c.origem, 200)}, ${cut(c.destino, 200)},
+      return sql`(${id}, ${codeOf(lh)}, 'cargas', 'media', ${clientId}, ${cut(c.origem, 200)}, ${cut(c.destino, 200)},
         ${ws}, ${ws}, ${tripStatusFromCarga(c)}, ${cut(lh, 50)}, ${cut(lh, 50)}, ${cut(c.sheet_status, 40)}, ${c.id},
         ${numStr(c.valor)}, ${numStr(c.bonus)}, ${c.sheet_motorista}, ${cut(c.sheet_cavalo, 12)}, ${cut(c.sheet_carreta, 12)}, now(), now())`
     })
-    await db.execute(sql`
+    const upsert = (rows: typeof batch, conflict: SQL) => rows.length === 0 ? Promise.resolve() : db.execute(sql`
       INSERT INTO trips (id, code, source, priority, client_id, origin, destination,
         window_start, window_end, status, sheet_lh, linked_lh, cargas_status, cargas_load_id,
         valor, bonus, sheet_motorista, sheet_cavalo, sheet_carreta, created_at, updated_at)
-      VALUES ${sql.join(vals, sql`, `)}
-      ON CONFLICT (id) DO UPDATE SET
+      VALUES ${sql.join(vals(rows), sql`, `)}
+      ON CONFLICT ${conflict} DO UPDATE SET
         status=EXCLUDED.status, client_id=EXCLUDED.client_id, origin=EXCLUDED.origin, destination=EXCLUDED.destination,
         cargas_status=EXCLUDED.cargas_status, cargas_load_id=EXCLUDED.cargas_load_id, linked_lh=EXCLUDED.linked_lh,
         valor=EXCLUDED.valor, bonus=EXCLUDED.bonus, sheet_motorista=EXCLUDED.sheet_motorista,
         sheet_cavalo=EXCLUDED.sheet_cavalo, sheet_carreta=EXCLUDED.sheet_carreta, updated_at=now()
     `)
+    await upsert(byId, sql`(id)`)
+    await upsert(byCode, sql`(code)`)
     upserted += batch.length
   }
   return upserted
