@@ -23,24 +23,36 @@ export interface OverrideUpsertInput {
 type Row = Record<string, unknown>
 const toIso = (v: unknown): string | null => (v ? new Date(v as string | Date).toISOString() : null)
 
-/** Overrides das viagens informadas (lh → override). */
+/**
+ * Overrides das viagens informadas (lh → override).
+ * IN com parâmetros individuais via sql.join — `= ANY(${array})` NÃO funciona
+ * neste caminho (drizzle stringifica o array JS → "op ANY/ALL requires array"
+ * em todo request; derrubou a matriz inteira em prod, 16/07).
+ * Leitura é RESILIENTE: se falhar, loga e devolve vazio — a matriz não morre
+ * por causa da camada de override (escritas continuam falhando alto).
+ */
 export async function fetchOverridesByLh(lhs: string[]): Promise<Map<string, RowOverride>> {
   const uniq = [...new Set(lhs.filter((v) => !!v))]
-  if (uniq.length === 0) return new Map()
-  // postgres-js binda o array JS direto no ANY($1) — sem concatenação de SQL.
-  const rows = (await db.execute(sql`
-    SELECT lh, liberado, observacao, updated_at
-    FROM gr_row_override
-    WHERE lh = ANY(${uniq})
-  `)) as unknown as Row[]
   const map = new Map<string, RowOverride>()
-  for (const r of rows) {
-    map.set(String(r.lh), {
-      lh: String(r.lh),
-      liberado: r.liberado === true,
-      observacao: (r.observacao as string | null) ?? null,
-      updatedAt: toIso(r.updated_at),
-    })
+  if (uniq.length === 0) return map
+  try {
+    const params = sql.join(uniq.map((l) => sql`${l}`), sql`, `)
+    const rows = (await db.execute(sql`
+      SELECT lh, liberado, observacao, updated_at
+      FROM gr_row_override
+      WHERE lh IN (${params})
+    `)) as unknown as Row[]
+    for (const r of rows) {
+      map.set(String(r.lh), {
+        lh: String(r.lh),
+        liberado: r.liberado === true,
+        observacao: (r.observacao as string | null) ?? null,
+        updatedAt: toIso(r.updated_at),
+      })
+    }
+  } catch (err) {
+    // Sem PII: só o tipo do erro. A matriz segue sem overrides neste request.
+    console.error('[gr.override] fetchOverridesByLh falhou:', err instanceof Error ? err.message : 'erro')
   }
   return map
 }

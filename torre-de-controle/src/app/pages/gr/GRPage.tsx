@@ -224,6 +224,7 @@ export function GRPage() {
           filter={spxRowFilter}
           onFilter={setSpxRowFilter}
           canOperate={canVault}
+          isError={spxRows.isError}
         />
       )}
     </div>
@@ -408,7 +409,7 @@ function EspelhamentoAlCell({ r }: { r: SpxRow }) {
 }
 
 function SpxTab({
-  rows, isLoading, scope, onScope, source, onSource, filter, onFilter, canOperate,
+  rows, isLoading, scope, onScope, source, onSource, filter, onFilter, canOperate, isError,
 }: {
   rows: SpxRow[]
   isLoading: boolean
@@ -419,6 +420,7 @@ function SpxTab({
   filter: SpxRowFilter
   onFilter: (f: SpxRowFilter) => void
   canOperate: boolean
+  isError: boolean
 }) {
   // Override manual + Observação (col AA do doc): editor inline, auditado no backend.
   const upsertOv = useSpxOverrideUpsert()
@@ -554,7 +556,9 @@ function SpxTab({
         </div>
       )}
 
-      {isLoading ? (
+      {isError ? (
+        <Empty text="Erro ao carregar a matriz — a API retornou falha. Recarregue a página; se persistir, avise o suporte." />
+      ) : isLoading ? (
         <Empty text="Carregando matriz…" />
       ) : shown.length === 0 ? (
         <Empty text={scope === 'today' ? 'Nenhuma viagem escalada para hoje.' : 'Nenhuma viagem programada para amanhã.'} />
