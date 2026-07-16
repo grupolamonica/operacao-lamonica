@@ -7,8 +7,9 @@
 import { cargasSupabase } from '../cargas/cargas.supabase'
 import { db } from '../../db/client'
 import { sql } from 'drizzle-orm'
+import type { SpxSource } from './gr.spx.types'
 
-/** Objeto bruto de uma viagem dentro de rows_json (source='shopee'). */
+/** Objeto bruto de uma viagem dentro de rows_json. */
 export interface RawSnapRow {
   lh?: string
   data?: string
@@ -25,9 +26,11 @@ export interface RawSnapRow {
   checklistCarreta?: string
   hasDriver?: boolean
   isAvailable?: boolean
-  // futuros (quando a ingestão carregar o vencimento do checklist):
+  // futuros (quando a ingestão carregar — a tela é tolerante e liga sozinha):
   checklistCavaloVenc?: number
   checklistCarretaVenc?: number
+  /** data do espelhamento AL por cavalo (col M do doc, BaseCheckL!AB) — gap de ingestão. */
+  espelhamentoAl?: string
 }
 
 export interface ShopeeSnapshot {
@@ -35,12 +38,12 @@ export interface ShopeeSnapshot {
   syncedAt: string | null
 }
 
-/** Snapshot mais recente da operação Shopee (matriz por viagem). */
-export async function fetchShopeeSnapshot(): Promise<ShopeeSnapshot> {
+/** Snapshot mais recente da operação (matriz por viagem). */
+export async function fetchShopeeSnapshot(source: SpxSource = 'shopee'): Promise<ShopeeSnapshot> {
   const { data, error } = await cargasSupabase
     .from('sheet_monitor_snapshot')
     .select('rows_json, synced_at')
-    .eq('source', 'shopee')
+    .eq('source', source)
     .order('synced_at', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -52,11 +55,22 @@ export async function fetchShopeeSnapshot(): Promise<ShopeeSnapshot> {
 export interface EnrichedRow {
   lh: string
   aspx_cpf: string | null
+  /** motorista (col N do doc): found + validade — o status Apto/Vencido é DERIVADO da validade
+   *  (angellira_driver_status_text existe mas está ~5% populado; a validade está ~85%). */
+  angellira_driver_found: boolean | null
+  angellira_driver_valid_until: string | null
   cavalo_angellira_status_text: string | null
+  cavalo_angellira_valid_until: string | null
   carreta_angellira_status_text: string | null
+  carreta_angellira_valid_until: string | null
 }
 
-/** Perfil Angellira (conforme/vencido) + CPF por viagem (lh), em lotes. */
+const ENRICHED_COLS =
+  'lh, aspx_cpf, angellira_driver_found, angellira_driver_valid_until, ' +
+  'cavalo_angellira_status_text, cavalo_angellira_valid_until, ' +
+  'carreta_angellira_status_text, carreta_angellira_valid_until'
+
+/** Perfil Angellira (motorista/cavalo/carreta) + CPF por viagem (lh), em lotes. */
 export async function fetchEnrichedByLh(lhs: string[]): Promise<Map<string, EnrichedRow>> {
   const out = new Map<string, EnrichedRow>()
   const uniq = [...new Set(lhs.filter((v): v is string => !!v))]
@@ -65,7 +79,7 @@ export async function fetchEnrichedByLh(lhs: string[]): Promise<Map<string, Enri
     const chunk = uniq.slice(i, i + CHUNK)
     const { data, error } = await cargasSupabase
       .from('sheet_monitor_enriched')
-      .select('lh, aspx_cpf, cavalo_angellira_status_text, carreta_angellira_status_text')
+      .select(ENRICHED_COLS)
       .in('lh', chunk)
     if (error) throw error
     for (const r of (data ?? []) as unknown as EnrichedRow[]) out.set(r.lh, r)
@@ -74,8 +88,8 @@ export async function fetchEnrichedByLh(lhs: string[]): Promise<Map<string, Enri
 }
 
 /**
- * Última posição conhecida por placa (normalizada), dos últimos 30 dias.
- * driver_positions.veiculo = placa; data_posicao = timestamp da posição.
+ * Última posição conhecida por placa (normalizada), dos últimos 30 dias — o SINAL
+ * (telemetria) da matriz. driver_positions.veiculo = placa; data_posicao = timestamp.
  * É "última posição" (importada), não sinal do rastreador em tempo real.
  */
 export async function fetchLastSignalByPlate(): Promise<Map<string, string>> {

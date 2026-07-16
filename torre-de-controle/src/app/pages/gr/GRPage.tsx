@@ -16,9 +16,9 @@ import { cn } from '@/lib/utils'
 import {
   useGROverview, useGRDrivers, useGRVehicles, useGRAlerts, useGRVault,
   useGRSync, useVaultUpsert, useVaultReveal, useVaultDelete,
-  useSpxOverview, useSpxRows,
+  useSpxOverview, useSpxRows, useSpxOverrideUpsert, useSpxOverrideDelete,
   type GrVerdict, type GrProviderStatus, type GrDriver, type GrVehicle,
-  type VaultItem, type VaultUpsertInput, type SpxRow,
+  type VaultItem, type VaultUpsertInput, type SpxRow, type SpxSource,
 } from '@/hooks/useGR'
 
 // ── Metadados visuais (hex Argon, mesmo vocabulário das outras telas) ─────────
@@ -48,7 +48,7 @@ function Chip({ label, color, title, pulse }: { label: string; color: string; ti
       title={title}
       className={cn(
         'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold whitespace-nowrap',
-        pulse && 'animate-pulse',
+        pulse && 'animate-pulse motion-reduce:animate-none',
       )}
       style={{ background: `${color}22`, color, ...(pulse ? { boxShadow: `0 0 0 1px ${color}` } : null) }}
     >
@@ -106,6 +106,7 @@ export function GRPage() {
   const [search, setSearch] = useState('')
   const [alertFilter, setAlertFilter] = useState<'all' | 'crit' | 'warn'>('all')
   const [spxScope, setSpxScope] = useState<SpxScope>('today')
+  const [spxSource, setSpxSource] = useState<SpxSource>('shopee')
   const [spxRowFilter, setSpxRowFilter] = useState<SpxRowFilter>('all')
 
   const overview = useGROverview()
@@ -114,8 +115,8 @@ export function GRPage() {
   const alerts = useGRAlerts()
   const vault = useGRVault(canVault && tab === 'credenciais')
   const syncMut = useGRSync()
-  const spxOverview = useSpxOverview(true) // sempre: alimenta o contador da aba
-  const spxRows = useSpxRows(spxScope, tab === 'spx')
+  const spxOverview = useSpxOverview(spxSource, true) // sempre: alimenta o contador da aba
+  const spxRows = useSpxRows(spxScope, spxSource, tab === 'spx')
 
   const tabs: Array<{ key: Tab; label: string; count: number; hidden?: boolean }> = [
     { key: 'alertas', label: 'Alertas', count: alerts.data.length },
@@ -170,7 +171,7 @@ export function GRPage() {
           <KPICard title="Escalados hoje" value={spxOverview.data.escaladosHoje} color="blue" icon={CalendarDays} onClick={() => { setSpxScope('today'); setSpxRowFilter('all') }} />
           <KPICard title="Programados amanhã" value={spxOverview.data.programadosAmanha} color="purple" icon={CalendarPlus} onClick={() => { setSpxScope('tomorrow'); setSpxRowFilter('all') }} />
           <KPICard title="Frotas conformes" value={spxOverview.data.frotasConformes} color="green" icon={ShieldCheck} onClick={() => { setSpxScope('today'); setSpxRowFilter('conforme') }} />
-          <KPICard title="Sem espelhamento" value={spxOverview.data.semEspelhamento} color="orange" icon={WifiOff} onClick={() => { setSpxScope('today'); setSpxRowFilter('semsinal') }} />
+          <KPICard title="Sem sinal" value={spxOverview.data.semSinal} subtitle="telemetria: última posição ausente" color="orange" icon={WifiOff} onClick={() => { setSpxScope('today'); setSpxRowFilter('semsinal') }} />
           <KPICard title="Não conforme" value={spxOverview.data.naoConforme} color="red" icon={AlertTriangle} onClick={() => { setSpxScope('today'); setSpxRowFilter('pendencia') }} />
         </div>
       ) : (
@@ -218,8 +219,11 @@ export function GRPage() {
           isLoading={spxRows.isLoading}
           scope={spxScope}
           onScope={setSpxScope}
+          source={spxSource}
+          onSource={setSpxSource}
           filter={spxRowFilter}
           onFilter={setSpxRowFilter}
+          canOperate={canVault}
         />
       )}
     </div>
@@ -279,7 +283,7 @@ function AlertsTab({
                 style={notFound ? { background: 'rgba(245,54,92,0.06)' } : undefined}
               >
                 <span
-                  className={cn('w-1 self-stretch rounded-full shrink-0', notFound && 'animate-pulse')}
+                  className={cn('w-1 self-stretch rounded-full shrink-0', notFound && 'animate-pulse motion-reduce:animate-none')}
                   style={{ background: sev }}
                 />
                 <div className="min-w-0 flex-1">
@@ -319,21 +323,57 @@ function tripStatusChip(s: string | null) {
   return <Chip label={s ?? 'Sem status'} color={color} />
 }
 
-function perfilChip(t: string | null) {
-  if (!t) return <span className="text-xs text-muted-foreground">—</span>
-  return <Chip label={t} color={normTxt(t) === 'conforme' ? '#2dce89' : '#f5365c'} />
+/** Badge de dias (validade − hoje): negativo = vencido há Nd. */
+function DiasBadge({ dias }: { dias: number | null }) {
+  if (dias == null) return null
+  return (
+    <span
+      className={cn('text-[9px] font-bold tabular-nums', dias < 0 ? 'text-danger' : 'text-muted-foreground')}
+      title={dias < 0 ? `vencido há ${Math.abs(dias)} dia(s)` : `vence em ${dias} dia(s)`}
+    >
+      {dias}d
+    </span>
+  )
 }
 
-function checklistChip(t: string | null, dias: number | null) {
+/** Perfil (vocabulário do doc): Apto|Conforme verde · Vencido vermelho · Não encontrado vermelho pulsante. */
+function perfilChip(t: string | null, dias: number | null = null) {
   if (!t) return <span className="text-xs text-muted-foreground">—</span>
   const n = normTxt(t)
-  const color = n === 'aprovado' ? '#2dce89' : n === 'em andamento' ? '#fb6340' : '#f5365c'
+  if (n === 'nao encontrado') return <Chip label={t} color="#f5365c" pulse title="Lookup falhou — a base não conhece esta entidade" />
+  const color = n === 'apto' || n === 'conforme' ? '#2dce89' : '#f5365c'
   return (
     <span className="inline-flex items-center gap-1.5">
       <Chip label={t} color={color} />
-      {dias != null && <span className="text-[9px] font-bold text-muted-foreground tabular-nums">{dias}d</span>}
+      <DiasBadge dias={dias} />
     </span>
   )
+}
+
+/** Checklist (vocabulário do doc): Aprovado verde · Urgente/Em andamento laranja ·
+ *  Reprovado/Vencido vermelho · Não encontrado vermelho pulsante (falha de lookup). */
+function checklistChip(t: string | null, dias: number | null) {
+  if (!t) return <span className="text-xs text-muted-foreground">—</span>
+  const n = normTxt(t)
+  if (n === 'nao encontrado') return <Chip label={t} color="#f5365c" pulse title="Lookup falhou — a base não conhece esta placa" />
+  const color = n === 'aprovado' ? '#2dce89' : n === 'em andamento' || n === 'urgente' ? '#fb6340' : '#f5365c'
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Chip label={t} color={color} />
+      <DiasBadge dias={dias} />
+    </span>
+  )
+}
+
+/** VINCULO (cores nativas do doc): FROTA verde · AGREGADO* laranja · PME azul-claro · TERCEIRO* azul · demais cinza. */
+function vinculoChip(v: string) {
+  const n = normTxt(v)
+  const color = n.startsWith('frota') ? '#2dce89'
+    : n.startsWith('agregado') ? '#fb6340'
+    : n.startsWith('pme') ? '#11cdef'
+    : n.startsWith('terceiro') ? '#5e72e4'
+    : '#8392ab'
+  return <Chip label={v} color={color} />
 }
 
 function fmtSignalTime(iso: string | null): string {
@@ -345,42 +385,72 @@ function fmtSignalTime(iso: string | null): string {
   }
 }
 
-function EspelhamentoCell({ e }: { e: SpxRow['espelhamento'] }) {
-  if (e.status === 'sem_sinal') {
-    return <Chip label="Sem sinal" color="#f5365c" pulse title="Sem posição recente do rastreador" />
+function SinalCell({ s }: { s: SpxRow['sinal'] }) {
+  if (s.status === 'sem_sinal') {
+    return <Chip label="Sem sinal" color="#f5365c" pulse title="Telemetria: sem posição recente" />
   }
-  const color = e.status === 'stale' ? '#fb6340' : '#2dce89'
+  const color = s.status === 'stale' ? '#fb6340' : '#2dce89'
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs font-semibold tabular-nums" style={{ color }}>
+    <span className="inline-flex items-center gap-1.5 text-xs font-semibold tabular-nums" style={{ color }} title="Telemetria: última posição conhecida">
       <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: color }} />
-      {fmtSignalTime(e.lastAt)}
+      {fmtSignalTime(s.lastAt)}
     </span>
   )
 }
 
+/** Espelhamento AL (col M do doc): data, vermelho pulsante se < hoje. Coluna só aparece quando a ingestão carregar a data. */
+function EspelhamentoAlCell({ r }: { r: SpxRow }) {
+  if (!r.espelhamentoAlDate) return <span className="text-xs text-muted-foreground">—</span>
+  if (r.espelhamentoAlVencido) {
+    return <Chip label={`Vencido ${fmtDay(r.espelhamentoAlDate)}`} color="#f5365c" pulse title="Espelhamento AL vencido — refazer espelhamento" />
+  }
+  return <Chip label={fmtDay(r.espelhamentoAlDate)} color="#2dce89" title="Espelhamento AL vigente" />
+}
+
 function SpxTab({
-  rows, isLoading, scope, onScope, filter, onFilter,
+  rows, isLoading, scope, onScope, source, onSource, filter, onFilter, canOperate,
 }: {
   rows: SpxRow[]
   isLoading: boolean
   scope: SpxScope
   onScope: (s: SpxScope) => void
+  source: SpxSource
+  onSource: (s: SpxSource) => void
   filter: SpxRowFilter
   onFilter: (f: SpxRowFilter) => void
+  canOperate: boolean
 }) {
+  // Override manual + Observação (col AA do doc): editor inline, auditado no backend.
+  const upsertOv = useSpxOverrideUpsert()
+  const deleteOv = useSpxOverrideDelete()
+  const [editing, setEditing] = useState<{ lh: string; motorista: string | null; liberado: boolean; observacao: string } | null>(null)
+
+  async function saveOverride() {
+    if (!editing) return
+    await upsertOv.mutateAsync({ lh: editing.lh, liberado: editing.liberado, observacao: editing.observacao })
+    setEditing(null)
+  }
+  async function removeOverride() {
+    if (!editing) return
+    await deleteOv.mutateAsync(editing.lh)
+    setEditing(null)
+  }
+
   const assigned = rows.filter((r) => r.hasDriver)
   const counts = {
     all: rows.length,
     conforme: assigned.filter((r) => r.conforme).length,
     pendencia: assigned.filter((r) => r.pendencia).length,
-    semsinal: assigned.filter((r) => r.espelhamento.status === 'sem_sinal').length,
+    semsinal: assigned.filter((r) => r.sinal.status === 'sem_sinal').length,
   }
   const shown = rows.filter((r) => {
     if (filter === 'conforme') return r.hasDriver && r.conforme
     if (filter === 'pendencia') return r.hasDriver && r.pendencia
-    if (filter === 'semsinal') return r.hasDriver && r.espelhamento.status === 'sem_sinal'
+    if (filter === 'semsinal') return r.hasDriver && r.sinal.status === 'sem_sinal'
     return true
   })
+  // Espelhamento AL (col M do doc): a coluna só aparece quando a ingestão carregar a data
+  const hasEspelhamentoAl = rows.some((r) => r.espelhamentoAlDate != null)
 
   const chips: Array<{ key: SpxRowFilter; label: string; n: number; color: string }> = [
     { key: 'all', label: 'Todos', n: counts.all, color: '#5e72e4' },
@@ -407,7 +477,20 @@ function SpxTab({
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {(['shopee', 'nestle'] as SpxSource[]).map((s) => (
+            <button
+              key={s}
+              onClick={() => onSource(s)}
+              className={cn(
+                'h-7 rounded-full px-3 text-xs font-semibold transition-colors',
+                source === s ? 'bg-primary text-primary-foreground' : 'bg-card border border-border text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {s === 'shopee' ? 'Shopee' : 'Nestlé'}
+            </button>
+          ))}
+          <span className="w-px h-5 bg-border mx-0.5" />
           {(['today', 'tomorrow'] as SpxScope[]).map((s) => (
             <button
               key={s}
@@ -427,29 +510,78 @@ function SpxTab({
         <ShieldAlert className="h-4 w-4" /> Matriz de Operação — Status de Segurança GR
       </h2>
 
+      {editing && (
+        <div className="bg-card border border-border rounded-lg p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-foreground">
+              Observação / liberação — <span className="font-mono">{editing.lh}</span>
+              {editing.motorista && <span className="text-muted-foreground font-normal"> · {editing.motorista}</span>}
+            </p>
+            <button onClick={() => setEditing(null)} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+          </div>
+          <label className="flex items-center gap-2 text-xs font-semibold text-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={editing.liberado}
+              onChange={(e) => setEditing({ ...editing, liberado: e.target.checked })}
+              className="h-3.5 w-3.5 accent-[#5e72e4]"
+            />
+            Liberar com ressalva (sobrepõe o gate calculado — fica auditado com seu usuário)
+          </label>
+          <textarea
+            value={editing.observacao}
+            onChange={(e) => setEditing({ ...editing, observacao: e.target.value })}
+            placeholder="Observação do operador (por que liberar / o que falta / quem foi contatado…)"
+            rows={2}
+            className={cn(inputCls, 'w-full h-auto py-2 resize-y')}
+          />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={saveOverride}
+              disabled={upsertOv.isPending}
+              className="h-8 rounded-md bg-primary text-primary-foreground px-4 text-xs font-semibold disabled:opacity-60"
+            >
+              {upsertOv.isPending ? 'Salvando…' : 'Salvar'}
+            </button>
+            <button
+              onClick={removeOverride}
+              disabled={deleteOv.isPending}
+              className="h-8 rounded-md bg-card border border-border px-3 text-xs font-semibold text-muted-foreground hover:text-danger disabled:opacity-60"
+            >
+              Remover override
+            </button>
+          </div>
+        </div>
+      )}
+
       {isLoading ? (
         <Empty text="Carregando matriz…" />
       ) : shown.length === 0 ? (
         <Empty text={scope === 'today' ? 'Nenhuma viagem escalada para hoje.' : 'Nenhuma viagem programada para amanhã.'} />
       ) : (
         <div className="bg-card border border-border rounded-lg overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-[1240px]">
             <thead className="border-b border-border">
               <tr>
                 <th className={thCls}>Horário</th>
                 <th className={thCls}>Motorista</th>
+                <th className={thCls}>Vínculo</th>
                 <th className={thCls}>Equipamento</th>
+                <th className={thCls}>Rota</th>
                 <th className={thCls}>Status Viagem</th>
+                <th className={thCls}>Perfil Mot.</th>
                 <th className={thCls}>Perfil Cav.</th>
                 <th className={thCls}>Perfil Car.</th>
                 <th className={thCls}>Chk Cavalo</th>
                 <th className={thCls}>Chk Carreta</th>
-                <th className={thCls}>Espelhamento</th>
+                {hasEspelhamentoAl && <th className={thCls}>Espelhamento AL</th>}
+                <th className={thCls}>Sinal</th>
+                <th className={thCls}>Obs.</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {shown.map((r) => (
-                <tr key={r.lh} style={r.pendencia ? { background: 'rgba(245,54,92,0.05)' } : undefined}>
+                <tr key={r.lh} style={r.pendencia && !r.conforme ? { background: 'rgba(245,54,92,0.05)' } : undefined}>
                   <td className={cn(tdCls, 'whitespace-nowrap tabular-nums')}>
                     {r.horario ?? '—'}
                     {r.tipo && <span className="block text-[10px] text-muted-foreground">{r.tipo}</span>}
@@ -458,18 +590,50 @@ function SpxTab({
                     <p className="font-semibold">{r.motorista ?? (r.isAvailable ? 'Disponível' : '—')}</p>
                     {r.cpf && <p className="text-xs text-muted-foreground tabular-nums">{r.cpf}</p>}
                   </td>
+                  <td className={tdCls}>{vinculoChip(r.vinculo)}</td>
                   <td className={tdCls}>
                     <div className="flex flex-col gap-0.5 font-mono text-xs">
                       <span>{r.cavalo ?? '—'} <span className="text-[9px] text-muted-foreground uppercase">cav</span></span>
                       {r.carreta && <span>{r.carreta} <span className="text-[9px] text-muted-foreground uppercase">car</span></span>}
                     </div>
                   </td>
+                  <td className={cn(tdCls, 'max-w-[160px]')}>
+                    <p className="text-xs truncate" title={`${r.origem ?? '—'} → ${r.destino ?? '—'}`}>
+                      {r.origem ?? '—'}
+                      <span className="block text-muted-foreground truncate">→ {r.destino ?? '—'}</span>
+                    </p>
+                  </td>
                   <td className={tdCls}>{tripStatusChip(r.statusViagem)}</td>
-                  <td className={tdCls}>{perfilChip(r.perfilCavalo)}</td>
-                  <td className={tdCls}>{perfilChip(r.perfilCarreta)}</td>
+                  <td className={tdCls}>{perfilChip(r.perfilMotorista, r.perfilMotoristaDias)}</td>
+                  <td className={tdCls}>{perfilChip(r.perfilCavalo, r.perfilCavaloDias)}</td>
+                  <td className={tdCls}>{perfilChip(r.perfilCarreta, r.perfilCarretaDias)}</td>
                   <td className={tdCls}>{checklistChip(r.checklistCavalo, r.checklistCavaloDias)}</td>
                   <td className={tdCls}>{checklistChip(r.checklistCarreta, r.checklistCarretaDias)}</td>
-                  <td className={tdCls}><EspelhamentoCell e={r.espelhamento} /></td>
+                  {hasEspelhamentoAl && <td className={tdCls}><EspelhamentoAlCell r={r} /></td>}
+                  <td className={tdCls}><SinalCell s={r.sinal} /></td>
+                  <td className={cn(tdCls, 'max-w-[150px]')}>
+                    <div className="flex items-center gap-1.5">
+                      {r.override?.liberado && (
+                        <Chip label="Liberado" color="#11cdef" title={`Liberado com ressalva${r.override.observacao ? ` — ${r.override.observacao}` : ''}`} />
+                      )}
+                      {r.override?.observacao && !r.override.liberado && (
+                        <span className="text-[11px] text-muted-foreground truncate" title={r.override.observacao}>{r.override.observacao}</span>
+                      )}
+                      {canOperate && (
+                        <button
+                          onClick={() => setEditing({
+                            lh: r.lh, motorista: r.motorista,
+                            liberado: r.override?.liberado ?? false,
+                            observacao: r.override?.observacao ?? '',
+                          })}
+                          title="Observação / liberar com ressalva"
+                          className="text-muted-foreground hover:text-foreground shrink-0"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
