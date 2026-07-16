@@ -18,6 +18,7 @@ import { authGuard } from '../../lib/rbac'
 import { getGrOverview, getGrDrivers, getGrVehicles, getGrAlerts } from './gr.service'
 import { syncGr } from './gr.sync'
 import { getSpxOverview, getSpxRows } from './gr.spx.service'
+import { upsertRowOverride, deleteRowOverride } from './gr.override'
 import {
   listVaultCredentials,
   upsertVaultCredential,
@@ -86,6 +87,45 @@ export const grPlugin = new Elysia({ name: 'gr' })
             summary: 'Sync manual: materializa gr_vigencias a partir do Cargas (driver_profiles + vehicles)',
           },
         },
+      )
+      // ── Override manual + Observação (col AA do PainelGR; auditado) ──────────
+      .put(
+        '/spx/override',
+        async ({ user, body, set }) => {
+          if (!CAN_VAULT.has(user.role)) {
+            set.status = 403
+            return { error: 'Forbidden: requires admin|supervisor|analyst' }
+          }
+          if (!String(body.lh ?? '').trim()) {
+            set.status = 422
+            return { error: 'lh obrigatório.' }
+          }
+          return upsertRowOverride(body, user.id)
+        },
+        {
+          body: t.Object({
+            lh: t.String(),
+            liberado: t.Optional(t.Boolean()),
+            observacao: t.Optional(t.String()),
+          }),
+          detail: { tags: ['gr'], summary: 'SPX: anotar/liberar com ressalva uma viagem (override auditado em gr_override_events)' },
+        },
+      )
+      .delete(
+        '/spx/override/:lh',
+        async ({ user, params, set }) => {
+          if (!CAN_VAULT.has(user.role)) {
+            set.status = 403
+            return { error: 'Forbidden: requires admin|supervisor|analyst' }
+          }
+          const removed = await deleteRowOverride(params.lh, user.id)
+          if (!removed) {
+            set.status = 404
+            return { error: 'Override não encontrado para essa viagem.' }
+          }
+          return { ok: true }
+        },
+        { detail: { tags: ['gr'], summary: 'SPX: remove o override de uma viagem (auditado)' } },
       )
       // ── Cofre de credenciais do rastreador (senha CIFRADA; ver gr.vault.ts) ──
       .get(

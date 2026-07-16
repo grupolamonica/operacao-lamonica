@@ -63,8 +63,13 @@ export interface SpxRow {
 
   hasDriver: boolean
   isAvailable: boolean
-  /** pendência GR = perfil (3 dimensões) OU checklist não conformes OU espelhamento AL vencido. */
+
+  /** Override manual do operador (col AA + dropdowns do doc): anotação e/ou liberação com ressalva. */
+  override: { liberado: boolean; observacao: string | null; updatedAt: string | null } | null
+
+  /** pendência GR CALCULADA = perfil (3 dimensões) OU checklist não conformes OU espelhamento AL vencido. */
   pendencia: boolean
+  /** conforme EFETIVO = sem pendência OU liberado manualmente (com trilha). */
   conforme: boolean
 }
 

@@ -15,6 +15,7 @@
  *    métrica informativa e NÃO entra na pendência.
  */
 import { fetchShopeeSnapshot, fetchEnrichedByLh, fetchLastSignalByPlate, type RawSnapRow, type EnrichedRow } from './gr.spx.reads'
+import { fetchOverridesByLh, type RowOverride } from './gr.override'
 import type { SpxRow, SpxOverview, SpxSinal, SpxSource } from './gr.spx.types'
 
 /** posição mais velha que isto (min) conta como "stale"; sem posição = sem_sinal. */
@@ -101,10 +102,12 @@ function assemble(
   r: RawSnapRow,
   enriched: Map<string, EnrichedRow>,
   signals: Map<string, string>,
+  overrides: Map<string, RowOverride>,
   nowMs: number,
   todayBrt: string,
 ): SpxRow {
   const e = r.lh ? enriched.get(r.lh) : undefined
+  const ov = r.lh ? overrides.get(r.lh) : undefined
   const motorista = sanitize(r.motoristas)
   const cavalo = sanitize(r.cavalo)
   const carreta = sanitize(r.carreta)
@@ -154,8 +157,11 @@ function assemble(
     sinal: sinalDe(cavalo, signals, nowMs),
     hasDriver: r.hasDriver === true,
     isAvailable: r.isAvailable === true,
+    override: ov ? { liberado: ov.liberado, observacao: ov.observacao, updatedAt: ov.updatedAt } : null,
     pendencia,
-    conforme: !pendencia,
+    // conforme EFETIVO: liberação manual (auditada) sobrepõe o gate calculado — como
+    // os dropdowns editáveis da planilha.
+    conforme: ov?.liberado === true ? true : !pendencia,
   }
 }
 
@@ -166,15 +172,16 @@ async function loadDay(source: SpxSource, date: string, nowMs: number) {
   const todayBrt = brtDate(0)
   // descarta ruído de planilha (linha sem lh): dado inválido + evita key React duplicada
   const dayRaw = snap.rows.filter((r) => sanitize(r.data) === date && !!r.lh?.trim())
-  const [enriched, signals] = await Promise.all([
+  const [enriched, signals, overrides] = await Promise.all([
     fetchEnrichedByLh(dayRaw.map((r) => r.lh ?? '')),
     fetchLastSignalByPlate(),
+    fetchOverridesByLh(dayRaw.map((r) => r.lh ?? '')),
   ])
-  const rows = dayRaw.map((r) => assemble(r, enriched, signals, nowMs, todayBrt))
-  // ordena: pendência primeiro, depois sem sinal, depois por horário
+  const rows = dayRaw.map((r) => assemble(r, enriched, signals, overrides, nowMs, todayBrt))
+  // ordena: não-conforme EFETIVO primeiro (liberado manual desce), depois sem sinal, depois horário
   rows.sort((a, b) => {
-    const pa = a.pendencia ? 0 : 1
-    const pb = b.pendencia ? 0 : 1
+    const pa = a.conforme ? 1 : 0
+    const pb = b.conforme ? 1 : 0
     if (pa !== pb) return pa - pb
     const sa = a.sinal.status === 'sem_sinal' ? 0 : 1
     const sb = b.sinal.status === 'sem_sinal' ? 0 : 1
@@ -207,7 +214,7 @@ export async function getSpxOverview(source: SpxSource = 'shopee', nowMs: number
     escaladosHoje: escalados.length,
     programadosAmanha: snap.rows.filter((r) => sanitize(r.data) === tomorrow && r.hasDriver === true && !!r.lh?.trim()).length,
     frotasConformes: escalados.filter((r) => r.conforme).length,
-    naoConforme: escalados.filter((r) => r.pendencia).length,
+    naoConforme: escalados.filter((r) => !r.conforme).length,
     semSinal: escalados.filter((r) => r.sinal.status === 'sem_sinal').length,
     lastSyncAt: snap.syncedAt,
   }
