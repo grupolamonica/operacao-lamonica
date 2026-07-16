@@ -20,7 +20,9 @@ export const trips = pgTable('trips', {
   destLat:        decimal('dest_lat', { precision: 10, scale: 8 }),
   destLng:        decimal('dest_lng', { precision: 11, scale: 8 }),
   windowStart:    timestamp('window_start', { withTimezone: true }).notNull(),
-  windowEnd:      timestamp('window_end', { withTimezone: true }).notNull(),
+  // Prazo Final. NULLABLE (trips-window-end-nullable.sql): closeStaleTrips() zera o prazo-lixo
+  // das cargas (data da carga à meia-noite, vencida, sem GPS); o reconcile repõe o prazo real.
+  windowEnd:      timestamp('window_end', { withTimezone: true }),
   eta:            timestamp('eta', { withTimezone: true }),
   status:         varchar('status', { length: 20 }).default('planned').notNull(),         // planned|in_progress|completed|delayed|cancelled
   slaStatus:      varchar('sla_status', { length: 20 }),                                  // no_prazo|em_risco|atrasado|sem_sinal

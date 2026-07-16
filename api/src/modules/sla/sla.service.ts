@@ -48,6 +48,7 @@ const STATUS_TO_SEVERITY: Record<string, 'baixo' | 'medio' | 'critico'> = {
 export async function evaluateTripSla(tripId: string, opts: { autoAlert?: boolean } = {}) {
   const trip = await db.query.trips.findFirst({ where: eq(trips.id, tripId) })
   if (!trip) return null
+  if (!trip.windowEnd) return null // sem Prazo Final (zerado pelo closeStaleTrips) → SLA não aferível
   const rules = await loadRules()
   const rule = resolveRule({ clientId: trip.clientId }, rules as any)
   if (!rule) return null
@@ -119,6 +120,7 @@ export async function evaluateAllActiveTrips() {
   })
   const counts: Record<string, number> = { no_prazo: 0, em_risco: 0, quebrado: 0, multa: 0 }
   for (const trip of active) {
+    if (!trip.windowEnd) continue // sem Prazo Final → SLA não aferível
     const rule = resolveRule({ clientId: trip.clientId }, rules as any)
     if (!rule) continue
     const ev = evaluateSla({
@@ -149,7 +151,7 @@ export async function getSlaDashboard(period: 'today' | '7d' | '30d') {
     ),
   })
   const total  = completed.length
-  const onTime = completed.filter((t) => t.arrivedAt && t.arrivedAt <= t.windowEnd).length
+  const onTime = completed.filter((t) => t.arrivedAt && t.windowEnd && t.arrivedAt <= t.windowEnd).length
   const pct    = total > 0 ? Math.round((onTime / total) * 100) : 100
 
   // Per-client breakdown
@@ -163,7 +165,7 @@ export async function getSlaDashboard(period: 'today' | '7d' | '30d') {
     if (!t.clientId) continue
     const cur = byClient.get(t.clientId) ?? { total: 0, onTime: 0, clientName: clientNameById.get(t.clientId) ?? '—' }
     cur.total++
-    if (t.arrivedAt && t.arrivedAt <= t.windowEnd) cur.onTime++
+    if (t.arrivedAt && t.windowEnd && t.arrivedAt <= t.windowEnd) cur.onTime++
     byClient.set(t.clientId, cur)
   }
 
@@ -174,6 +176,7 @@ export async function getSlaDashboard(period: 'today' | '7d' | '30d') {
   })
   const liveCounts: Record<string, number> = { no_prazo: 0, em_risco: 0, quebrado: 0, multa: 0 }
   for (const t of live) {
+    if (!t.windowEnd) continue // sem Prazo Final → SLA não aferível
     const rule = resolveRule({ clientId: t.clientId }, rules as any)
     if (!rule) continue
     const ev = evaluateSla({ windowStart: t.windowStart, windowEnd: t.windowEnd, now: new Date(), arrivedAt: t.arrivedAt, status: t.status }, rule)

@@ -19,9 +19,9 @@ export interface BiDateRange {
 
 // Atraso em minutos — adiantamento_horas: + = ATRASADO (adapter grava -calcularAdiantamentoHoras,
 // ver painel-sync.ts:131). Fallback p/ arrivedAt - windowEnd quando NULL (histórico importado).
-function delayMinutes(t: { adiantamentoHoras: string | null; arrivedAt: Date | null; windowEnd: Date }): number | null {
+function delayMinutes(t: { adiantamentoHoras: string | null; arrivedAt: Date | null; windowEnd: Date | null }): number | null {
   if (t.adiantamentoHoras != null) return Math.max(0, Number(t.adiantamentoHoras) * 60)
-  if (t.arrivedAt) return Math.max(0, (t.arrivedAt.getTime() - t.windowEnd.getTime()) / 60_000)
+  if (t.arrivedAt && t.windowEnd) return Math.max(0, (t.arrivedAt.getTime() - t.windowEnd.getTime()) / 60_000)
   return null
 }
 
@@ -222,6 +222,7 @@ export async function getTrendSeries(metric: BiMetric, { inicio, fim, clientId }
   // group by date(windowEnd)
   const buckets = new Map<string, { total: number; completed: number; onTime: number; noPrazo: number; atrasadas: number; delaySum: number; delayCount: number }>()
   for (const t of tripsRows) {
+    if (!t.windowEnd) continue // sem Prazo Final (zerado pelo closeStaleTrips) → sem bucket de data
     const d = t.windowEnd.toISOString().substring(0, 10)
     const b = buckets.get(d) ?? { total: 0, completed: 0, onTime: 0, noPrazo: 0, atrasadas: 0, delaySum: 0, delayCount: 0 }
     b.total++
