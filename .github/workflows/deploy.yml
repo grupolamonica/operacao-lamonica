@@ -14,7 +14,7 @@ jobs:
   # ── Gate: lint + typecheck + build must pass before any image is built ──────
   test:
     name: Lint + Typecheck + Build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, torre]  # billing do Actions bloqueado → build na VPS (unzip instalado 16/07; deploy verde no run 29446710572)
     steps:
       - uses: actions/checkout@v4
 
@@ -48,7 +48,7 @@ jobs:
   build-backend:
     name: Build Backend Image
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, torre]  # billing do Actions bloqueado → build na VPS (unzip instalado 16/07; deploy verde no run 29446710572)
     permissions:
       contents: read
       packages: write
@@ -83,7 +83,7 @@ jobs:
   build-frontend:
     name: Build Frontend Image
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, torre]  # billing do Actions bloqueado → build na VPS (unzip instalado 16/07; deploy verde no run 29446710572)
     permissions:
       contents: read
       packages: write
