@@ -60,12 +60,16 @@ export const grPlugin = new Elysia({ name: 'gr' })
         detail: { tags: ['gr'], summary: 'Feed de alertas de vigência/estado (motoristas + veículos), ordenado por urgência' },
       })
       // ── SPX / Shopee: matriz de operação por viagem (dados no nosso banco) ──
-      .get('/spx/overview', () => getSpxOverview(), {
-        detail: { tags: ['gr'], summary: 'SPX/Shopee: KPIs (escalados hoje/amanhã, frotas conformes, sem espelhamento, não conforme)' },
+      .get('/spx/overview', ({ query }) => getSpxOverview(query.source ?? 'shopee'), {
+        query: t.Object({ source: t.Optional(t.Union([t.Literal('shopee'), t.Literal('nestle')])) }),
+        detail: { tags: ['gr'], summary: 'SPX: KPIs da operação (escalados hoje/amanhã, frotas conformes, sem sinal, não conforme)' },
       })
-      .get('/spx/rows', ({ query }) => getSpxRows(query.scope ?? 'today'), {
-        query: t.Object({ scope: t.Optional(t.Union([t.Literal('today'), t.Literal('tomorrow')])) }),
-        detail: { tags: ['gr'], summary: 'SPX/Shopee: matriz de operação por viagem (escala + perfil + checklist + espelhamento); default hoje' },
+      .get('/spx/rows', ({ query }) => getSpxRows(query.scope ?? 'today', query.source ?? 'shopee'), {
+        query: t.Object({
+          scope: t.Optional(t.Union([t.Literal('today'), t.Literal('tomorrow')])),
+          source: t.Optional(t.Union([t.Literal('shopee'), t.Literal('nestle')])),
+        }),
+        detail: { tags: ['gr'], summary: 'SPX: matriz de operação por viagem (escala + perfil 3D + checklist + espelhamento AL + sinal); default hoje/shopee' },
       })
       .post(
         '/sync',

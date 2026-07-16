@@ -67,7 +67,8 @@ export interface GrOverview {
 }
 
 // ── SPX / Shopee (espelham api/src/modules/gr/gr.spx.types.ts) ────────────────
-export interface SpxEspelhamento {
+export type SpxSource = 'shopee' | 'nestle'
+export interface SpxSinal {
   lastAt: string | null
   status: 'ok' | 'stale' | 'sem_sinal'
 }
@@ -76,7 +77,7 @@ export interface SpxRow {
   data: string | null
   horario: string | null
   tipo: string | null
-  vinculo: string | null
+  vinculo: string
   motorista: string | null
   cpf: string | null
   cavalo: string | null
@@ -84,24 +85,31 @@ export interface SpxRow {
   origem: string | null
   destino: string | null
   statusViagem: string | null
+  perfilMotorista: string | null
+  perfilMotoristaDias: number | null
   perfilCavalo: string | null
+  perfilCavaloDias: number | null
   perfilCarreta: string | null
+  perfilCarretaDias: number | null
   checklistCavalo: string | null
   checklistCarreta: string | null
   checklistCavaloDias: number | null
   checklistCarretaDias: number | null
-  espelhamento: SpxEspelhamento
+  espelhamentoAlDate: string | null
+  espelhamentoAlVencido: boolean
+  sinal: SpxSinal
   hasDriver: boolean
   isAvailable: boolean
   pendencia: boolean
   conforme: boolean
 }
 export interface SpxOverview {
+  source: SpxSource
   date: string
   escaladosHoje: number
   programadosAmanha: number
   frotasConformes: number
-  semEspelhamento: number
+  semSinal: number
   naoConforme: number
   lastSyncAt: string | null
 }
@@ -199,14 +207,14 @@ export function useGRAlerts() {
 }
 
 const EMPTY_SPX_OVERVIEW: SpxOverview = {
-  date: '', escaladosHoje: 0, programadosAmanha: 0, frotasConformes: 0, semEspelhamento: 0, naoConforme: 0, lastSyncAt: null,
+  source: 'shopee', date: '', escaladosHoje: 0, programadosAmanha: 0, frotasConformes: 0, semSinal: 0, naoConforme: 0, lastSyncAt: null,
 }
 
-export function useSpxOverview(enabled: boolean) {
+export function useSpxOverview(source: SpxSource, enabled: boolean) {
   const q = useQuery({
-    queryKey: ['spx-overview'],
+    queryKey: ['spx-overview', source],
     queryFn: async () => {
-      const { data, error } = await api.api.gr.spx.overview.get()
+      const { data, error } = await api.api.gr.spx.overview.get({ query: { source } })
       if (error) throw error
       return (data ?? EMPTY_SPX_OVERVIEW) as SpxOverview
     },
@@ -216,11 +224,11 @@ export function useSpxOverview(enabled: boolean) {
   return { data: q.data ?? EMPTY_SPX_OVERVIEW, isLoading: q.isLoading }
 }
 
-export function useSpxRows(scope: 'today' | 'tomorrow', enabled: boolean) {
+export function useSpxRows(scope: 'today' | 'tomorrow', source: SpxSource, enabled: boolean) {
   const q = useQuery({
-    queryKey: ['spx-rows', scope],
+    queryKey: ['spx-rows', scope, source],
     queryFn: async () => {
-      const { data, error } = await api.api.gr.spx.rows.get({ query: { scope } })
+      const { data, error } = await api.api.gr.spx.rows.get({ query: { scope, source } })
       if (error) throw error
       return (data ?? []) as SpxRow[]
     },
