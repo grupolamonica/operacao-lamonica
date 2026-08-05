@@ -33,6 +33,9 @@ const roleSchema = t.Union([
   t.Literal('supervisor'),
   t.Literal('analyst'),
   t.Literal('viewer'),
+  // Papel restrito: operador enxerga SÓ a tela Baixa de Manifesto (gate no front;
+  // coluna users.role é varchar livre, sem migração)
+  t.Literal('manifesto'),
 ])
 
 const notificationPrefsSchema = t.Object({

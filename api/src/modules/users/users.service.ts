@@ -19,7 +19,7 @@ import { users } from '../../db/schema/users'
  */
 const BCRYPT_COST = 10
 
-type Role = 'admin' | 'supervisor' | 'analyst' | 'viewer'
+type Role = 'admin' | 'supervisor' | 'analyst' | 'viewer' | 'manifesto'
 
 export type NotificationPreferences = {
   critico?: boolean

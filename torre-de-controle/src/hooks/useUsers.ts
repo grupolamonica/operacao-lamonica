@@ -14,7 +14,7 @@ import { api } from '@/lib/api'
  * RBAC enforcement happens server-side via authGuard + requireRole('admin').
  * Client-side UI hides admin controls but server is source of truth.
  */
-export type UserRole = 'admin' | 'supervisor' | 'analyst' | 'viewer'
+export type UserRole = 'admin' | 'supervisor' | 'analyst' | 'viewer' | 'manifesto'
 
 export type NotificationPreferences = {
   critico?: boolean

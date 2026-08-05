@@ -12,7 +12,7 @@ export const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN ?? '24h'
 
 export const jwtPayloadSchema = t.Object({
   sub:  t.String(),
-  role: t.Union([t.Literal('admin'), t.Literal('supervisor'), t.Literal('analyst'), t.Literal('viewer')]),
+  role: t.Union([t.Literal('admin'), t.Literal('supervisor'), t.Literal('analyst'), t.Literal('viewer'), t.Literal('manifesto')]),
   jti:  t.String(),
 })
 
