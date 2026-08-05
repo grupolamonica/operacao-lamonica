@@ -252,12 +252,22 @@ export function BaixaManifestoPage() {
                           )}
                         </td>
                         <td className="px-3 py-2">
-                          <span
-                            className="inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold"
-                            style={{ background: tone.bg, color: tone.fg }}
-                          >
-                            {tone.label}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className="inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold"
+                              style={{ background: tone.bg, color: tone.fg }}
+                            >
+                              {tone.label}
+                            </span>
+                            {p.posicao_diverge && (
+                              <span
+                                className="text-sm"
+                                title="⚠ Posição do caminhão no momento da macro NÃO bate com o destino da viagem — confirme antes de baixar (macro pode ter sido apertada por engano)"
+                              >
+                                ⚠️
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-3 py-2 font-mono">{p.placa}</td>
                         <td className="px-3 py-2 font-medium">{p.motorista || '—'}</td>
@@ -375,6 +385,15 @@ function ManifestoDetailPanel({ pendencia, now, onClose }: { pendencia: Pendenci
         {/* Sascar */}
         <div>
           <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Sascar — última posição</h4>
+          {pendencia.posicao_diverge && (
+            <div className="mb-2 flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 px-2.5 py-2 text-[11px] text-warning">
+              <span>⚠️</span>
+              <span>
+                A posição do caminhão no momento da macro <b>não bate com o destino da viagem</b> —
+                a macro pode ter sido apertada por engano. Confirme com a operação antes de baixar.
+              </span>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3 text-xs">
             <Metric label="Cidade/UF" value={pendencia.posicao ? `${pendencia.posicao.cidade || '—'}/${pendencia.posicao.uf || '—'}` : '—'} />
             <Metric
