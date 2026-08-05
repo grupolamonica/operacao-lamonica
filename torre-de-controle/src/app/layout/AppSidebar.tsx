@@ -32,8 +32,12 @@ export function AppSidebar() {
   const newAlertCount = usePositionsStore(s => s.newAlertCount)
   const clearAlerts   = usePositionsStore(s => s.clearAlerts)
   const isAdmin       = useAuthStore(s => s.user?.role === 'admin')
+  const isManifesto   = useAuthStore(s => s.user?.role === 'manifesto')
   // Itens admin-only (ex.: Auditoria) só aparecem para administradores.
-  const visibleItems  = navItems.filter(i => !i.adminOnly || isAdmin)
+  // Papel 'manifesto' é restrito: enxerga apenas a Baixa de Manifesto.
+  const visibleItems  = isManifesto
+    ? navItems.filter(i => i.to === '/baixa-manifesto')
+    : navItems.filter(i => !i.adminOnly || isAdmin)
 
   return (
     <nav

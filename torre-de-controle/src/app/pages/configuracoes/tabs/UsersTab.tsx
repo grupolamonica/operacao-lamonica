@@ -36,13 +36,13 @@ import { useAuthStore } from '@/stores/useAuthStore'
 const createSchema = z.object({
   name:     z.string().min(1, 'Nome obrigatório').max(100),
   email:    z.string().email('Email inválido'),
-  role:     z.enum(['admin', 'supervisor', 'analyst', 'viewer']),
+  role:     z.enum(['admin', 'supervisor', 'analyst', 'viewer', 'manifesto']),
   password: z.string().min(6, 'Mínimo 6 caracteres'),
 })
 type CreateFormData = z.infer<typeof createSchema>
 
 const editSchema = z.object({
-  role:     z.enum(['admin', 'supervisor', 'analyst', 'viewer']),
+  role:     z.enum(['admin', 'supervisor', 'analyst', 'viewer', 'manifesto']),
   isActive: z.boolean(),
 })
 type EditFormData = z.infer<typeof editSchema>
@@ -52,6 +52,7 @@ const roleLabel: Record<UserRole, string> = {
   supervisor: 'Supervisor',
   analyst:    'Analista',
   viewer:     'Visualizador',
+  manifesto:  'Manifesto (só baixa)',
 }
 
 export function UsersTab() {

@@ -2,7 +2,7 @@ import { Elysia } from 'elysia'
 import { jwtPlugin } from './jwt'
 import { redis } from '../redis/client'
 
-export type AuthUser = { id: string; role: 'admin' | 'supervisor' | 'analyst' | 'viewer'; jti: string }
+export type AuthUser = { id: string; role: 'admin' | 'supervisor' | 'analyst' | 'viewer' | 'manifesto'; jti: string }
 
 export const authGuard = new Elysia({ name: 'auth-guard' })
   .use(jwtPlugin)
