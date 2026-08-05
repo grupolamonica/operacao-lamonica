@@ -153,6 +153,8 @@ jobs:
           SPX_ASP_API_KEY: ${{ secrets.SPX_ASP_API_KEY }}
           # API de integração — GET /api/integrations/drivers/:cpf (consumo máquina-a-máquina)
           INTEGRATION_API_KEY: ${{ secrets.INTEGRATION_API_KEY }}
+          # F3 alerta-manifesto — POST /api/manifesto/pendencias (coletor Sascar+Rodopar)
+          MANIFESTO_API_KEY: ${{ secrets.MANIFESTO_API_KEY }}
         run: |
           set -euo pipefail
           # Compose files vêm do checkout do runner; copia p/ o diretório de deploy
@@ -167,7 +169,8 @@ jobs:
                     "CARGAS_API_URL=${CARGAS_API_URL}" "CARGAS_OPERATOR_EMAIL=${CARGAS_OPERATOR_EMAIL}" \
                     "CARGAS_OPERATOR_PASSWORD=${CARGAS_OPERATOR_PASSWORD}" "CARGAS_WRITE_ENABLED=false" \
                     "SPX_ASP_API_KEY=${SPX_ASP_API_KEY}" \
-                    "INTEGRATION_API_KEY=${INTEGRATION_API_KEY}"; do
+                    "INTEGRATION_API_KEY=${INTEGRATION_API_KEY}" \
+                    "MANIFESTO_API_KEY=${MANIFESTO_API_KEY}"; do
             key="${kv%%=*}"
             if grep -q "^${key}=" .env; then
               sed -i "s|^${key}=.*|${kv}|" .env
