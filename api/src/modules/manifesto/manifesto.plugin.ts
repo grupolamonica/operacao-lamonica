@@ -61,6 +61,24 @@ const PendenciaSchema = t.Object({
   fim_local: t.Nullable(t.String()),
   idPacote: t.Nullable(t.String()),
   detectada_em: t.String(),
+  // Ficha do painel de detalhes (aditivos/opcionais — coletor antigo não envia)
+  viagem: t.Optional(t.Nullable(t.Object({
+    origem: t.String(),
+    saida_local: t.Nullable(t.String()),
+    previsao_local: t.Nullable(t.String()),
+    carreta: t.String(),
+    motorista2: t.String(),
+  }))),
+  digitado: t.Optional(t.Nullable(t.String())),
+  posicao: t.Optional(t.Nullable(t.Object({
+    lat: t.Nullable(t.String()),
+    lng: t.Nullable(t.String()),
+    cidade: t.String(),
+    uf: t.String(),
+    ponto_referencia: t.String(),
+    distancia_m: t.Nullable(t.Number()),
+    quando_local: t.Nullable(t.String()),
+  }))),
 })
 
 const ingestPlugin = new Elysia({ name: 'manifesto-ingest' }).group('/api/manifesto', (app) =>
