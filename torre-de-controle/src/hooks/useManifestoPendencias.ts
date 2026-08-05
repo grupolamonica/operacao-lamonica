@@ -18,6 +18,26 @@ export interface PendenciaManifesto {
   fim_local: string | null
   idPacote: string | null
   detectada_em: string
+  // Campos enriquecidos pelo coletor (viagem/Rodopar, digitado/Sascar, posição/Sascar) —
+  // opcionais/anuláveis: snapshot antigo (pré-enriquecimento) continua válido, painel
+  // de detalhes renderiza "—" quando ausentes.
+  viagem?: {
+    origem: string
+    saida_local: string | null
+    previsao_local: string | null
+    carreta: string
+    motorista2: string
+  } | null
+  digitado?: string | null
+  posicao?: {
+    lat: string | null
+    lng: string | null
+    cidade: string
+    uf: string
+    ponto_referencia: string
+    distancia_m: number | null
+    quando_local: string | null
+  } | null
 }
 
 export interface ManifestoPendenciasSnapshot {

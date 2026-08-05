@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { PackageCheck, Volume2, VolumeX } from 'lucide-react'
 import { PanelCard } from '@/components/domain/PanelCard'
+import { SidePanelLayout } from '@/components/domain/SidePanelLayout'
+import { FixedPanel } from '@/components/domain/FixedPanel'
 import { Button } from '@/components/ui/button'
 import { useManifestoPendencias, type PendenciaManifesto } from '@/hooks/useManifestoPendencias'
 import { useNow } from '@/hooks/useNow'
@@ -48,6 +50,27 @@ function elapsedMinutes(p: PendenciaManifesto, now: Date): number | null {
   return Math.max(0, Math.round((now.getTime() - base.getTime()) / 60_000))
 }
 
+// posicao.quando_local (Sascar) é literal wall-clock igual chegada_local/fim_local —
+// constrói o Date a partir dos MESMOS componentes no relógio local do navegador
+// (sem `new Date(str)` direto, que reinterpretaria pelo fuso do navegador) para
+// poder subtrair de `now` e ter "transmitiu há X min".
+function minutesSinceLocal(iso: string | null | undefined, now: Date): number | null {
+  if (!iso) return null
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/)
+  if (!m) return null
+  const [, y, mo, d, h, mi, s] = m
+  const base = new Date(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s ?? '0'))
+  return Math.max(0, Math.round((now.getTime() - base.getTime()) / 60_000))
+}
+
+// Distância Sascar (ponto de referência) chega em metros — exibe em km com 1
+// decimal a partir de 1000m, senão em metros inteiros.
+function fmtDistancia(m: number | null | undefined): string {
+  if (m == null) return '—'
+  if (m >= 1000) return `${(m / 1000).toFixed(1)} km`
+  return `${Math.round(m)} m`
+}
+
 // Dois beeps em sequência (🔴 descarregado) — aguarda o 1º terminar antes do 2º.
 async function beepUrgente() {
   await beep(1175)
@@ -60,6 +83,10 @@ export function BaixaManifestoPage() {
   const now = useNow(30_000)
   const [soundOn, setSoundOn] = useState(true)
   const seenEvents = useRef<Set<string> | null>(null)
+  // Painel de detalhes: guarda só o codlpr, não o objeto — a cada render re-deriva
+  // do array (fresco a cada polling de 30s); some sozinho da lista (baixada) = null = painel fecha.
+  const [selectedCodlpr, setSelectedCodlpr] = useState<number | null>(null)
+  const selected = pendencias.find((p) => p.codlpr === selectedCodlpr) ?? null
 
   // Desbloqueia áudio + voz no 1º gesto do usuário (autoplay policy do navegador).
   useEffect(() => {
@@ -177,81 +204,195 @@ export function BaixaManifestoPage() {
         </div>
       </div>
 
-      {/* Tabela */}
-      <PanelCard
-        title={<span className="flex items-center gap-2 text-sm"><PackageCheck className="h-4 w-4 text-primary" /> Pendências de baixa</span>}
-        subtitle={`${rows.length} pendência(s)`}
-        noPadding
-      >
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b text-left text-[10px] uppercase tracking-wider text-muted-foreground" style={{ borderColor: 'var(--border)' }}>
-                <th className="px-3 py-2.5 font-medium">Manifesto(s)</th>
-                <th className="px-3 py-2.5 font-medium">Estágio</th>
-                <th className="px-3 py-2.5 font-medium">Placa</th>
-                <th className="px-3 py-2.5 font-medium">Motorista</th>
-                <th className="px-3 py-2.5 font-medium">Cliente/Destino</th>
-                <th className="px-3 py-2.5 font-medium">Chegada</th>
-                <th className="px-3 py-2.5 font-medium">Fim</th>
-                <th className="px-3 py-2.5 font-medium">Tempo decorrido</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((p) => {
-                const tone = statusTone(p.estagio)
-                const elapsed = elapsedMinutes(p, now)
-                return (
-                  <tr key={p.codlpr} className="border-b hover:bg-muted/30" style={{ borderColor: 'var(--border)' }}>
-                    <td className="px-3 py-2">
-                      {p.manifestos.length === 0 ? (
-                        <span className="text-muted-foreground italic">aguardando emissão</span>
-                      ) : (
-                        <div className="flex flex-wrap items-center gap-1">
-                          {p.manifestos.map((m) => (
-                            <span key={m.codman} className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5">
-                              <span className="font-mono font-bold">{m.codman}</span>
-                              <span className="text-[9px] text-muted-foreground">f{m.filial}</span>
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      <span
-                        className="inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold"
-                        style={{ background: tone.bg, color: tone.fg }}
-                      >
-                        {tone.label}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 font-mono">{p.placa}</td>
-                    <td className="px-3 py-2 font-medium">{p.motorista || '—'}</td>
-                    <td className="px-3 py-2">
-                      <div className="text-foreground">{p.cliente || '—'}</div>
-                      <div className="text-[10px] text-muted-foreground">{p.destino || '—'}</div>
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{fmtLocal(p.chegada_local)}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{fmtLocal(p.fim_local)}</td>
-                    <td className="px-3 py-2">
-                      {elapsed == null ? (
-                        <span className="text-muted-foreground">—</span>
-                      ) : (
-                        <span className={elapsed > 60 ? 'font-semibold' : undefined} style={elapsed > 60 ? { color: 'var(--status-atrasado-fg)' } : undefined}>
-                          {formatDuration(elapsed)}
-                        </span>
-                      )}
-                    </td>
+      {/* Tabela + painel de detalhes (clique na linha) */}
+      <div className="flex gap-4 items-start">
+        <div className="flex-1 min-w-0">
+          <PanelCard
+            title={<span className="flex items-center gap-2 text-sm"><PackageCheck className="h-4 w-4 text-primary" /> Pendências de baixa</span>}
+            subtitle={`${rows.length} pendência(s)`}
+            noPadding
+          >
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b text-left text-[10px] uppercase tracking-wider text-muted-foreground" style={{ borderColor: 'var(--border)' }}>
+                    <th className="px-3 py-2.5 font-medium">Manifesto(s)</th>
+                    <th className="px-3 py-2.5 font-medium">Estágio</th>
+                    <th className="px-3 py-2.5 font-medium">Placa</th>
+                    <th className="px-3 py-2.5 font-medium">Motorista</th>
+                    <th className="px-3 py-2.5 font-medium">Cliente/Destino</th>
+                    <th className="px-3 py-2.5 font-medium">Chegada</th>
+                    <th className="px-3 py-2.5 font-medium">Fim</th>
+                    <th className="px-3 py-2.5 font-medium">Tempo decorrido</th>
                   </tr>
-                )
-              })}
-              {rows.length === 0 && (
-                <tr><td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">{isLoading ? 'Carregando pendências…' : 'Nenhuma pendência de baixa de manifesto.'}</td></tr>
-              )}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {rows.map((p) => {
+                    const tone = statusTone(p.estagio)
+                    const elapsed = elapsedMinutes(p, now)
+                    return (
+                      <tr
+                        key={p.codlpr}
+                        className="cursor-pointer border-b hover:bg-muted/30"
+                        style={{ borderColor: 'var(--border)', background: p.codlpr === selectedCodlpr ? 'rgba(26,79,196,0.08)' : undefined }}
+                        onClick={() => setSelectedCodlpr(p.codlpr)}
+                      >
+                        <td className="px-3 py-2">
+                          {p.manifestos.length === 0 ? (
+                            <span className="text-muted-foreground italic">aguardando emissão</span>
+                          ) : (
+                            <div className="flex flex-wrap items-center gap-1">
+                              {p.manifestos.map((m) => (
+                                <span key={m.codman} className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5">
+                                  <span className="font-mono font-bold">{m.codman}</span>
+                                  <span className="text-[9px] text-muted-foreground">f{m.filial}</span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          <span
+                            className="inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold"
+                            style={{ background: tone.bg, color: tone.fg }}
+                          >
+                            {tone.label}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 font-mono">{p.placa}</td>
+                        <td className="px-3 py-2 font-medium">{p.motorista || '—'}</td>
+                        <td className="px-3 py-2">
+                          <div className="text-foreground">{p.cliente || '—'}</div>
+                          <div className="text-[10px] text-muted-foreground">{p.destino || '—'}</div>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{fmtLocal(p.chegada_local)}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{fmtLocal(p.fim_local)}</td>
+                        <td className="px-3 py-2">
+                          {elapsed == null ? (
+                            <span className="text-muted-foreground">—</span>
+                          ) : (
+                            <span className={elapsed > 60 ? 'font-semibold' : undefined} style={elapsed > 60 ? { color: 'var(--status-atrasado-fg)' } : undefined}>
+                              {formatDuration(elapsed)}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                  {rows.length === 0 && (
+                    <tr><td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">{isLoading ? 'Carregando pendências…' : 'Nenhuma pendência de baixa de manifesto.'}</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </PanelCard>
         </div>
-      </PanelCard>
+
+        {selected && (
+          <FixedPanel>
+            <ManifestoDetailPanel pendencia={selected} now={now} onClose={() => setSelectedCodlpr(null)} />
+          </FixedPanel>
+        )}
+      </div>
     </div>
+  )
+}
+
+// ── Painel de detalhes (clique na linha) ────────────────────────────────────
+// Só leitura — a baixa continua no Rodopar. Ficha label+valor no estilo do
+// TripDetailPanel (viagens): grid 2 colunas, seções com header uppercase.
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</p>
+      <p className="text-sm font-medium text-foreground truncate">{value}</p>
+    </div>
+  )
+}
+
+function ManifestoDetailPanel({ pendencia, now, onClose }: { pendencia: PendenciaManifesto; now: Date; onClose: () => void }) {
+  const tone = statusTone(pendencia.estagio)
+  const title = pendencia.manifestos.length > 0
+    ? `Manifesto(s) ${pendencia.manifestos.map((m) => m.codman).join(', ')}`
+    : `Pendência ${pendencia.placa}`
+  const elapsed = elapsedMinutes(pendencia, now)
+  const posMin = minutesSinceLocal(pendencia.posicao?.quando_local, now)
+  const motoristas = [pendencia.motorista, pendencia.viagem?.motorista2].filter(Boolean).join(' + ')
+
+  return (
+    <SidePanelLayout title={title} subtitle={pendencia.cliente || undefined} onClose={onClose}>
+      <div className="space-y-4">
+        {/* Cabeçalho */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {pendencia.manifestos.length === 0 ? (
+              <span className="text-sm text-muted-foreground italic">aguardando emissão</span>
+            ) : (
+              pendencia.manifestos.map((m) => (
+                <span key={m.codman} className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1">
+                  <span className="font-mono font-bold text-sm">{m.codman}</span>
+                  <span className="text-[10px] text-muted-foreground">f{m.filial}</span>
+                </span>
+              ))
+            )}
+          </div>
+          <span
+            className="inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold"
+            style={{ background: tone.bg, color: tone.fg }}
+          >
+            {tone.label}
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Programação nº <span className="font-mono text-foreground">{pendencia.codlpr}</span>
+        </p>
+
+        {/* Viagem */}
+        <div>
+          <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Viagem</h4>
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <Metric label="Origem → Destino" value={`${pendencia.viagem?.origem || '—'} → ${pendencia.destino || '—'}`} />
+            <Metric label="Saída" value={fmtLocal(pendencia.viagem?.saida_local ?? null)} />
+            <Metric label="Previsão de chegada" value={fmtLocal(pendencia.viagem?.previsao_local ?? null)} />
+            <Metric label="Placa / Carreta" value={`${pendencia.placa || '—'} / ${pendencia.viagem?.carreta || '—'}`} />
+            <Metric label="Motorista(s)" value={motoristas || '—'} />
+            <Metric label="Cliente" value={pendencia.cliente || '—'} />
+          </div>
+        </div>
+
+        {/* Descarga */}
+        <div>
+          <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Descarga</h4>
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <Metric label="Chegada" value={fmtLocal(pendencia.chegada_local)} />
+            <Metric label="Fim de viagem" value={fmtLocal(pendencia.fim_local)} />
+            <Metric label="Tempo decorrido" value={elapsed == null ? '—' : formatDuration(elapsed)} />
+            <Metric label="Detectada em" value={fmtLocal(pendencia.detectada_em)} />
+          </div>
+        </div>
+
+        {/* Sascar */}
+        <div>
+          <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Sascar — última posição</h4>
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <Metric label="Cidade/UF" value={pendencia.posicao ? `${pendencia.posicao.cidade || '—'}/${pendencia.posicao.uf || '—'}` : '—'} />
+            <Metric
+              label="Ponto de referência"
+              value={pendencia.posicao?.ponto_referencia
+                ? `${pendencia.posicao.ponto_referencia}${pendencia.posicao.distancia_m != null ? ` · ${fmtDistancia(pendencia.posicao.distancia_m)}` : ''}`
+                : '—'}
+            />
+            <Metric label="Transmitiu" value={posMin == null ? '—' : `há ${formatDuration(posMin)}`} />
+          </div>
+
+          <div className="mt-3 rounded-md border p-2.5" style={{ borderColor: 'var(--border)' }}>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">O que o motorista digitou</p>
+            <p className="whitespace-pre-wrap font-mono text-xs text-foreground">{pendencia.digitado || '—'}</p>
+            <p className="mt-1 text-[10px] italic text-muted-foreground">campo livre digitado na boleia — apenas referência</p>
+          </div>
+        </div>
+      </div>
+    </SidePanelLayout>
   )
 }
