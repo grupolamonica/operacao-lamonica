@@ -29,6 +29,8 @@ export interface PendenciaManifesto {
     motorista2: string
   } | null
   digitado?: string | null
+  // selo ⚠: posição no momento da macro não bate com o destino (possível macro por engano)
+  posicao_diverge?: boolean
   posicao?: {
     lat: string | null
     lng: string | null
