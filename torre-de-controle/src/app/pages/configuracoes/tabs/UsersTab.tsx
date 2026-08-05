@@ -250,6 +250,7 @@ function CreateUserDialog({
                       <SelectItem value="supervisor">Supervisor</SelectItem>
                       <SelectItem value="analyst">Analista</SelectItem>
                       <SelectItem value="viewer">Visualizador</SelectItem>
+                      <SelectItem value="manifesto">Manifesto (só baixa)</SelectItem>
                     </SelectContent>
                   </Select>
                 </FormControl>
@@ -316,6 +317,7 @@ function EditUserDialog({
                       <SelectItem value="supervisor">Supervisor</SelectItem>
                       <SelectItem value="analyst">Analista</SelectItem>
                       <SelectItem value="viewer">Visualizador</SelectItem>
+                      <SelectItem value="manifesto">Manifesto (só baixa)</SelectItem>
                     </SelectContent>
                   </Select>
                 </FormControl>
