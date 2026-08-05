@@ -62,6 +62,8 @@ import { integrationsPlugin } from './modules/integrations/integrations.plugin'
 import { spxAllocPlugin } from './modules/spx/spx-alloc.plugin'
 // Alocação de motorista em viagem SPX (via sidecar spx-bot; dry-run por padrão)
 import { allocacaoPlugin } from './modules/allocacao/allocacao.plugin'
+// Fase F3 — baixa de manifesto (snapshot Redis do coletor Sascar; POST x-api-key, GET authGuard)
+import { manifestoPlugin } from './modules/manifesto/manifesto.plugin'
 
 import { operacionalPlugin } from './modules/operacional/operacional.plugin'
 import { auditPlugin } from './modules/audit/audit.plugin'
@@ -162,6 +164,8 @@ export const app = new Elysia()
         // API de integração (consumo server-to-server)
         { name: 'integrations', description: 'Dados completos do motorista por CPF (ranking + torre + cargas), gate x-api-key' },
         { name: 'gr',           description: 'Gerenciamento de Risco: vigências Angellira/BRK/SPX por motorista/veículo (cache do Cargas)' },
+        // Fase F3 tag
+        { name: 'manifesto',    description: 'Baixa de manifesto: snapshot Redis do coletor Sascar (POST x-api-key) + leitura autenticada' },
       ],
     },
   }))
@@ -242,6 +246,8 @@ export const app = new Elysia()
   .use(spxAllocPlugin)
   // Alocação de motorista em viagem SPX (BEFORE wsPlugin: Elysia 1.4 plugin-last rule)
   .use(allocacaoPlugin)
+  // Fase F3 — baixa de manifesto (BEFORE wsPlugin: Elysia 1.4 plugin-last rule)
+  .use(manifestoPlugin)
   .use(wsPlugin)
   // Telemetry inlined to avoid Elysia 1.4.28 plugin-composition issue with body schema
   .post('/api/telemetry/ingest', async ({ body, headers, set }) => {

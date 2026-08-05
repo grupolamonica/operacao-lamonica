@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Radio, Truck, Users, MapPin,
   AlertTriangle, BarChart3, Trophy, Settings, Antenna, LineChart, TrendingUp, ClipboardList, ScrollText, ShieldAlert,
+  PackageCheck,
   type LucideIcon,
 } from 'lucide-react'
 import { usePositionsStore } from '@/hooks/useVehiclePositions'
@@ -14,6 +15,7 @@ const navItems: NavItem[] = [
   { to: '/torre-de-controle', label: 'Torre de Controle',  icon: Radio },
   { to: '/viagens',           label: 'Viagens',            icon: Truck },
   { to: '/controle-operacional', label: 'Controle Operacional', icon: ClipboardList },
+  { to: '/baixa-manifesto',   label: 'Baixa de Manifesto',   icon: PackageCheck },
   { to: '/motoristas',        label: 'Motoristas',         icon: Users },
   { to: '/geofences',         label: 'Geofences',          icon: MapPin },
   { to: '/alertas',           label: 'Ocorrências',        icon: AlertTriangle },

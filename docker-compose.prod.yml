@@ -90,6 +90,8 @@ services:
       SPX_ASP_API_KEY: ${SPX_ASP_API_KEY:-}
       # API de integração — GET /api/integrations/drivers/:cpf (consumo máquina-a-máquina)
       INTEGRATION_API_KEY: ${INTEGRATION_API_KEY:-}
+      # F3 alerta-manifesto — POST /api/manifesto/pendencias (coletor Sascar+Rodopar, máquina-a-máquina)
+      MANIFESTO_API_KEY: ${MANIFESTO_API_KEY:-}
       TZ: America/Sao_Paulo
     depends_on:
       redis:

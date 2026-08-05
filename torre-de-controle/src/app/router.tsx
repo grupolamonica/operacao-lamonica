@@ -46,6 +46,9 @@ const AuditoriaPage = lazy(() =>
 const GRPage = lazy(() =>
   import('./pages/gr/GRPage').then(m => ({ default: m.GRPage })),
 )
+const BaixaManifestoPage = lazy(() =>
+  import('./pages/baixa-manifesto/BaixaManifestoPage').then(m => ({ default: m.BaixaManifestoPage })),
+)
 
 /**
  * Suspense wrapper for lazy route chunks.
@@ -73,6 +76,7 @@ export const router = createBrowserRouter([
           { path: 'torre-de-controle', element: <L><TorreDeControlePage /></L> },
           { path: 'viagens',           element: <L><ViagensPage /></L> },
           { path: 'controle-operacional', element: <L><ControleOperacionalPage /></L> },
+          { path: 'baixa-manifesto',   element: <L><BaixaManifestoPage /></L> },
           { path: 'motoristas',        element: <L><MotoristasPage /></L> },
           { path: 'geofences',         element: <L><GeofencesPage /></L> },
           { path: 'alertas',           element: <L><AlertasPage /></L> },
