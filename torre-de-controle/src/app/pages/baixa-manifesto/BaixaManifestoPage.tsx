@@ -411,6 +411,52 @@ function ManifestoDetailPanel({ pendencia, now, onClose }: { pendencia: Pendenci
             <p className="mt-1 text-[10px] italic text-muted-foreground">campo livre digitado na boleia — apenas referência</p>
           </div>
         </div>
+
+        {/* Evidências — fase de observação (não altera regras) */}
+        {pendencia.evidencias && (
+          <div>
+            <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Evidências físicas</h4>
+            <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+              <span className="text-muted-foreground">Confirmado por:</span>
+              {(['macro', 'posicao', 'bau'] as const).map((fonte) => {
+                const ok = pendencia.evidencias!.confirmado_por.includes(fonte)
+                const rotulo = fonte === 'macro' ? 'Macro' : fonte === 'posicao' ? 'Posição' : 'Baú'
+                return (
+                  <span
+                    key={fonte}
+                    className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold"
+                    style={ok
+                      ? { background: 'var(--status-no-prazo-bg, rgba(34,197,94,.12))', color: 'var(--status-no-prazo-fg, #16a34a)' }
+                      : { background: 'var(--muted)', color: 'var(--muted-foreground)' }}
+                  >
+                    {ok ? '✓' : '—'} {rotulo}
+                  </span>
+                )
+              })}
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <Metric
+                label="Na cidade do destino"
+                value={pendencia.evidencias.na_cidade_destino
+                  ? `sim${pendencia.evidencias.cerca_desde_local ? ` · desde ${fmtLocal(pendencia.evidencias.cerca_desde_local).slice(11)}` : ''}`
+                  : 'não'}
+              />
+              <Metric label="Parado" value={pendencia.evidencias.parado ? 'sim' : 'não'} />
+              <Metric
+                label="Sensor do baú"
+                value={pendencia.evidencias.bau_sensor_presente === null || pendencia.evidencias.bau_sensor_presente === false
+                  ? 'sem sensor'
+                  : pendencia.evidencias.bau_ativo_sustentado
+                    ? `sinal ativo${pendencia.evidencias.bau_ativo_desde_local ? ` desde ${fmtLocal(pendencia.evidencias.bau_ativo_desde_local).slice(11)}` : ''}`
+                    : pendencia.evidencias.bau_ativo ? 'ativo (1ª leitura — aguardando confirmação)' : 'inativo'}
+              />
+              <Metric label="Ruído do sensor no destino" value={`${pendencia.evidencias.bau_transicoes_no_destino} transição(ões)`} />
+            </div>
+            <p className="mt-2 text-[10px] italic text-muted-foreground">
+              fase de observação — semântica do sensor em validação; estas evidências ainda não mudam o estágio
+            </p>
+          </div>
+        )}
       </div>
     </SidePanelLayout>
   )
