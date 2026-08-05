@@ -27,6 +27,20 @@ export interface PendenciaManifesto {
     previsao_local: string | null
     carreta: string
     motorista2: string
+    destino_uf?: string
+  } | null
+  // fase de observação — evidências físicas (não alteram estágio)
+  evidencias?: {
+    na_cidade_destino: boolean
+    cerca_desde_local: string | null
+    parado: boolean
+    bau_sensor_presente: boolean | null
+    bau_ativo: boolean
+    bau_ativo_desde_local: string | null
+    bau_ativo_sustentado: boolean
+    bau_leituras_ativas: number
+    bau_transicoes_no_destino: number
+    confirmado_por: string[]
   } | null
   digitado?: string | null
   // selo ⚠: posição no momento da macro não bate com o destino (possível macro por engano)

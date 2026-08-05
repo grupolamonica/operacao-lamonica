@@ -68,7 +68,23 @@ const PendenciaSchema = t.Object({
     previsao_local: t.Nullable(t.String()),
     carreta: t.String(),
     motorista2: t.String(),
+    destino_uf: t.Optional(t.String()),
   }))),
+  // Fase de observação (05/08): evidências físicas (cerca do destino + sensor de baú
+  // com debounce) — só exibição/calibração; NÃO altera estágio. Campos podem evoluir
+  // durante a observação, por isso additionalProperties.
+  evidencias: t.Optional(t.Nullable(t.Object({
+    na_cidade_destino: t.Boolean(),
+    cerca_desde_local: t.Nullable(t.String()),
+    parado: t.Boolean(),
+    bau_sensor_presente: t.Nullable(t.Boolean()),
+    bau_ativo: t.Boolean(),
+    bau_ativo_desde_local: t.Nullable(t.String()),
+    bau_ativo_sustentado: t.Boolean(),
+    bau_leituras_ativas: t.Number(),
+    bau_transicoes_no_destino: t.Number(),
+    confirmado_por: t.Array(t.String()),
+  }, { additionalProperties: true }))),
   digitado: t.Optional(t.Nullable(t.String())),
   // selo ⚠: posição no momento da macro não bate com o destino (macro por engano)
   posicao_diverge: t.Optional(t.Boolean()),
