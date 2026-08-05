@@ -321,6 +321,24 @@ function Metric({ label, value }: { label: string; value: string }) {
   )
 }
 
+// Motorista com celular clicável (tel:) — fone vem do RODMOT.TELCEL via coletor.
+function MotoristaLinha({ nome, fone }: { nome: string; fone?: string }) {
+  const digitos = (fone ?? '').replace(/\D/g, '')
+  return (
+    <span className="block truncate">
+      {nome}
+      {fone && digitos && (
+        <>
+          {' · '}
+          <a href={`tel:+55${digitos}`} className="font-mono text-primary hover:underline" onClick={(e) => e.stopPropagation()}>
+            {fone}
+          </a>
+        </>
+      )}
+    </span>
+  )
+}
+
 function ManifestoDetailPanel({ pendencia, now, onClose }: { pendencia: PendenciaManifesto; now: Date; onClose: () => void }) {
   const tone = statusTone(pendencia.estagio)
   const title = pendencia.manifestos.length > 0
@@ -328,7 +346,6 @@ function ManifestoDetailPanel({ pendencia, now, onClose }: { pendencia: Pendenci
     : `Pendência ${pendencia.placa}`
   const elapsed = elapsedMinutes(pendencia, now)
   const posMin = minutesSinceLocal(pendencia.posicao?.quando_local, now)
-  const motoristas = [pendencia.motorista, pendencia.viagem?.motorista2].filter(Boolean).join(' + ')
 
   return (
     <SidePanelLayout title={title} subtitle={pendencia.cliente || undefined} onClose={onClose}>
@@ -366,7 +383,17 @@ function ManifestoDetailPanel({ pendencia, now, onClose }: { pendencia: Pendenci
             <Metric label="Saída" value={fmtLocal(pendencia.viagem?.saida_local ?? null)} />
             <Metric label="Previsão de chegada" value={fmtLocal(pendencia.viagem?.previsao_local ?? null)} />
             <Metric label="Placa / Carreta" value={`${pendencia.placa || '—'} / ${pendencia.viagem?.carreta || '—'}`} />
-            <Metric label="Motorista(s)" value={motoristas || '—'} />
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Motorista(s)</p>
+              <div className="text-sm font-medium text-foreground">
+                {pendencia.motorista
+                  ? <MotoristaLinha nome={pendencia.motorista} fone={pendencia.viagem?.motorista_fone} />
+                  : <span>—</span>}
+                {pendencia.viagem?.motorista2 && (
+                  <MotoristaLinha nome={pendencia.viagem.motorista2} fone={pendencia.viagem?.motorista2_fone} />
+                )}
+              </div>
+            </div>
             <Metric label="Cliente" value={pendencia.cliente || '—'} />
           </div>
         </div>

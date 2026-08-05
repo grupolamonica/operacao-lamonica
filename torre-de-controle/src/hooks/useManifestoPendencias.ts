@@ -28,6 +28,8 @@ export interface PendenciaManifesto {
     carreta: string
     motorista2: string
     destino_uf?: string
+    motorista_fone?: string
+    motorista2_fone?: string
   } | null
   // fase de observação — evidências físicas (não alteram estágio)
   evidencias?: {
