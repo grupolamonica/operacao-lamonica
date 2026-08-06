@@ -92,6 +92,8 @@ const PendenciaSchema = t.Object({
   digitado: t.Optional(t.Nullable(t.String())),
   // selo ⚠: posição no momento da macro não bate com o destino (macro por engano)
   posicao_diverge: t.Optional(t.Boolean()),
+  // 'macro' (motorista acionou) | 'gps' (permanência no destino detectada sem macro)
+  origem_deteccao: t.Optional(t.String()),
   posicao: t.Optional(t.Nullable(t.Object({
     lat: t.Nullable(t.String()),
     lng: t.Nullable(t.String()),

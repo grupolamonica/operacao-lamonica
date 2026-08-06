@@ -269,9 +269,18 @@ export function BaixaManifestoPage() {
                             {p.posicao_diverge && (
                               <span
                                 className="text-sm"
-                                title="⚠ Posição do caminhão no momento da macro NÃO bate com o destino da viagem — confirme antes de baixar (macro pode ter sido apertada por engano)"
+                                title="⚠ Posição do caminhão no momento da macro está a mais de 60 km do destino da viagem — confirme antes de baixar (macro pode ter sido apertada por engano)"
                               >
                                 ⚠️
+                              </span>
+                            )}
+                            {p.origem_deteccao === 'gps' && (
+                              <span
+                                className="rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide"
+                                style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
+                                title="Chegada detectada por GPS (veículo parado na área do destino) — o motorista não acionou macro"
+                              >
+                                GPS
                               </span>
                             )}
                           </div>
@@ -492,7 +501,10 @@ function ManifestoDetailPanel({ pendencia, now, onClose }: { pendencia: Pendenci
         <div>
           <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Descarga</h4>
           <div className="grid grid-cols-2 gap-3 text-xs">
-            <Metric label="Chegada" value={fmtLocal(pendencia.chegada_local)} />
+            <Metric
+              label={pendencia.origem_deteccao === 'gps' ? 'Chegada (detectada por GPS)' : 'Chegada'}
+              value={fmtLocal(pendencia.chegada_local)}
+            />
             <Metric label="Fim de viagem" value={fmtLocal(pendencia.fim_local)} />
             <Metric label="Tempo decorrido" value={elapsed == null ? '—' : formatDuration(elapsed)} />
             <Metric label="Detectada em" value={fmtLocal(pendencia.detectada_em)} />
