@@ -51,6 +51,8 @@ export interface PendenciaManifesto {
   digitado?: string | null
   // selo ⚠: posição no momento da macro não bate com o destino (possível macro por engano)
   posicao_diverge?: boolean
+  // como a pendência nasceu: 'macro' (motorista) ou 'gps' (parado no destino, sem macro)
+  origem_deteccao?: 'macro' | 'gps'
   posicao?: {
     lat: string | null
     lng: string | null
