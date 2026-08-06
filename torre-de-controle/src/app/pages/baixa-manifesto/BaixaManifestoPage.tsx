@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { PackageCheck, Volume2, VolumeX } from 'lucide-react'
+import { PackageCheck, Phone, Volume2, VolumeX } from 'lucide-react'
 import { PanelCard } from '@/components/domain/PanelCard'
 import { SidePanelLayout } from '@/components/domain/SidePanelLayout'
 import { FixedPanel } from '@/components/domain/FixedPanel'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu'
 import { useManifestoPendencias, type PendenciaManifesto } from '@/hooks/useManifestoPendencias'
 import { useNow } from '@/hooks/useNow'
 import { formatDuration } from '@/lib/formatters'
@@ -270,7 +276,12 @@ export function BaixaManifestoPage() {
                           </div>
                         </td>
                         <td className="px-3 py-2 font-mono">{p.placa}</td>
-                        <td className="px-3 py-2 font-medium">{p.motorista || '—'}</td>
+                        <td className="px-3 py-2 font-medium">
+                          <div className="flex items-center gap-1">
+                            <span className="truncate">{p.motorista || '—'}</span>
+                            <FoneDropdown pendencia={p} />
+                          </div>
+                        </td>
                         <td className="px-3 py-2">
                           <div className="text-foreground">{p.cliente || '—'}</div>
                           <div className="text-[10px] text-muted-foreground">{p.destino || '—'}</div>
@@ -318,6 +329,43 @@ function Metric({ label, value }: { label: string; value: string }) {
       <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</p>
       <p className="text-sm font-medium text-foreground truncate">{value}</p>
     </div>
+  )
+}
+
+// Ícone 📞 na linha da tabela: clique abre os telefones cadastrados (motorista e
+// 2º motorista) sem precisar abrir o painel de detalhes. stopPropagation em tudo
+// pra não disparar o onClick da linha (que abre o painel).
+function FoneDropdown({ pendencia }: { pendencia: PendenciaManifesto }) {
+  const contatos = [
+    { nome: pendencia.motorista, fone: pendencia.viagem?.motorista_fone },
+    { nome: pendencia.viagem?.motorista2 ?? '', fone: pendencia.viagem?.motorista2_fone },
+  ].filter((c) => c.nome && c.fone && c.fone.replace(/\D/g, '').replace(/0/g, ''))
+  if (contatos.length === 0) return null
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="shrink-0 rounded-md p-1 text-primary hover:bg-muted"
+          title="Telefones cadastrados"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Phone className="h-3.5 w-3.5" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" onClick={(e) => e.stopPropagation()}>
+        {contatos.map((c) => (
+          <DropdownMenuItem key={`${c.nome}-${c.fone}`} asChild>
+            <a href={`tel:+55${c.fone!.replace(/\D/g, '')}`} className="cursor-pointer">
+              <span className="flex flex-col">
+                <span className="text-xs font-medium">{c.nome}</span>
+                <span className="font-mono text-xs text-primary">📞 {c.fone}</span>
+              </span>
+            </a>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
