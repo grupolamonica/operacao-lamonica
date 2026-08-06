@@ -322,18 +322,20 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 // Motorista com celular clicável (tel:) — fone vem do RODMOT.TELCEL via coletor.
+// Fone em linha PRÓPRIA (não inline): nome comprido truncava e engolia o número.
 function MotoristaLinha({ nome, fone }: { nome: string; fone?: string }) {
   const digitos = (fone ?? '').replace(/\D/g, '')
   return (
-    <span className="block truncate">
-      {nome}
+    <span className="block">
+      <span className="block truncate" title={nome}>{nome}</span>
       {fone && digitos && (
-        <>
-          {' · '}
-          <a href={`tel:+55${digitos}`} className="font-mono text-primary hover:underline" onClick={(e) => e.stopPropagation()}>
-            {fone}
-          </a>
-        </>
+        <a
+          href={`tel:+55${digitos}`}
+          className="block font-mono text-primary hover:underline"
+          onClick={(e) => e.stopPropagation()}
+        >
+          📞 {fone}
+        </a>
       )}
     </span>
   )
