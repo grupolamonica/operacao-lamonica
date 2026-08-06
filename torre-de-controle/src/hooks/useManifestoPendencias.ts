@@ -30,6 +30,10 @@ export interface PendenciaManifesto {
     destino_uf?: string
     motorista_fone?: string
     motorista2_fone?: string
+    // cadastro do Rodopar guarda celular e telefone separados (994 motoristas têm
+    // os dois diferentes) — o operador escolhe qual chamar
+    motorista_fones?: { rotulo: string; numero: string }[]
+    motorista2_fones?: { rotulo: string; numero: string }[]
   } | null
   // fase de observação — evidências físicas (não alteram estágio)
   evidencias?: {

@@ -71,6 +71,8 @@ const PendenciaSchema = t.Object({
     destino_uf: t.Optional(t.String()),
     motorista_fone: t.Optional(t.String()),
     motorista2_fone: t.Optional(t.String()),
+    motorista_fones: t.Optional(t.Array(t.Object({ rotulo: t.String(), numero: t.String() }))),
+    motorista2_fones: t.Optional(t.Array(t.Object({ rotulo: t.String(), numero: t.String() }))),
   }))),
   // Fase de observação (05/08): evidências físicas (cerca do destino + sensor de baú
   // com debounce) — só exibição/calibração; NÃO altera estágio. Campos podem evoluir

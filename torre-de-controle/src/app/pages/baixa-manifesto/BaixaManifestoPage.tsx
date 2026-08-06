@@ -4,12 +4,7 @@ import { PanelCard } from '@/components/domain/PanelCard'
 import { SidePanelLayout } from '@/components/domain/SidePanelLayout'
 import { FixedPanel } from '@/components/domain/FixedPanel'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from '@/components/ui/dropdown-menu'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useManifestoPendencias, type PendenciaManifesto } from '@/hooks/useManifestoPendencias'
 import { useNow } from '@/hooks/useNow'
 import { formatDuration } from '@/lib/formatters'
@@ -93,6 +88,9 @@ export function BaixaManifestoPage() {
   // do array (fresco a cada polling de 30s); some sozinho da lista (baixada) = null = painel fecha.
   const [selectedCodlpr, setSelectedCodlpr] = useState<number | null>(null)
   const selected = pendencias.find((p) => p.codlpr === selectedCodlpr) ?? null
+  // modal de contatos (ícone 📞 da tabela) — mesmo padrão: guarda o codlpr e re-deriva
+  const [contatosDe, setContatosDe] = useState<number | null>(null)
+  const pendenciaContatos = pendencias.find((p) => p.codlpr === contatosDe) ?? null
 
   // Desbloqueia áudio + voz no 1º gesto do usuário (autoplay policy do navegador).
   useEffect(() => {
@@ -226,6 +224,9 @@ export function BaixaManifestoPage() {
                     <th className="px-3 py-2.5 font-medium">Estágio</th>
                     <th className="px-3 py-2.5 font-medium">Placa</th>
                     <th className="px-3 py-2.5 font-medium">Motorista</th>
+                    <th className="w-10 px-2 py-2.5 text-center font-medium" title="Contatos">
+                      <Phone className="mx-auto h-3.5 w-3.5" />
+                    </th>
                     <th className="px-3 py-2.5 font-medium">Cliente/Destino</th>
                     <th className="px-3 py-2.5 font-medium">Chegada</th>
                     <th className="px-3 py-2.5 font-medium">Fim</th>
@@ -276,11 +277,19 @@ export function BaixaManifestoPage() {
                           </div>
                         </td>
                         <td className="px-3 py-2 font-mono">{p.placa}</td>
-                        <td className="px-3 py-2 font-medium">
-                          <div className="flex items-center gap-1">
-                            <span className="truncate">{p.motorista || '—'}</span>
-                            <FoneDropdown pendencia={p} />
-                          </div>
+                        <td className="px-3 py-2 font-medium">{p.motorista || '—'}</td>
+                        {/* coluna própria: ícone sempre alinhado, independente do tamanho do nome */}
+                        <td className="w-10 px-2 py-2 text-center">
+                          {contatosDaPendencia(p).length > 0 && (
+                            <button
+                              type="button"
+                              className="rounded-md p-1 text-primary hover:bg-muted"
+                              title="Ver telefones cadastrados"
+                              onClick={(e) => { e.stopPropagation(); setContatosDe(p.codlpr) }}
+                            >
+                              <Phone className="h-4 w-4" />
+                            </button>
+                          )}
                         </td>
                         <td className="px-3 py-2">
                           <div className="text-foreground">{p.cliente || '—'}</div>
@@ -301,7 +310,7 @@ export function BaixaManifestoPage() {
                     )
                   })}
                   {rows.length === 0 && (
-                    <tr><td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">{isLoading ? 'Carregando pendências…' : 'Nenhuma pendência de baixa de manifesto.'}</td></tr>
+                    <tr><td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">{isLoading ? 'Carregando pendências…' : 'Nenhuma pendência de baixa de manifesto.'}</td></tr>
                   )}
                 </tbody>
               </table>
@@ -315,6 +324,8 @@ export function BaixaManifestoPage() {
           </FixedPanel>
         )}
       </div>
+
+      <ContatosDialog pendencia={pendenciaContatos} onClose={() => setContatosDe(null)} />
     </div>
   )
 }
@@ -332,59 +343,85 @@ function Metric({ label, value }: { label: string; value: string }) {
   )
 }
 
-// Ícone 📞 na linha da tabela: clique abre os telefones cadastrados (motorista e
-// 2º motorista) sem precisar abrir o painel de detalhes. stopPropagation em tudo
-// pra não disparar o onClick da linha (que abre o painel).
-function FoneDropdown({ pendencia }: { pendencia: PendenciaManifesto }) {
-  const contatos = [
-    { nome: pendencia.motorista, fone: pendencia.viagem?.motorista_fone },
-    { nome: pendencia.viagem?.motorista2 ?? '', fone: pendencia.viagem?.motorista2_fone },
-  ].filter((c) => c.nome && c.fone && c.fone.replace(/\D/g, '').replace(/0/g, ''))
-  if (contatos.length === 0) return null
+// Contatos de uma pendência: motorista (e 2º) com TODOS os números cadastrados
+// (celular e telefone do Rodopar, deduplicados pelo coletor). Retorna [] quando
+// não há nenhum — a coluna do ícone fica vazia nesse caso.
+function contatosDaPendencia(p: PendenciaManifesto) {
+  const legado = (fone?: string) => (fone ? [{ rotulo: 'Telefone', numero: fone }] : [])
+  return [
+    { nome: p.motorista, fones: p.viagem?.motorista_fones ?? legado(p.viagem?.motorista_fone) },
+    { nome: p.viagem?.motorista2 ?? '', fones: p.viagem?.motorista2_fones ?? legado(p.viagem?.motorista2_fone) },
+  ].filter((c) => c.nome && c.fones.length > 0)
+}
+
+// Modal de contatos: aberto pelo ícone 📞 da tabela. Lista um botão por número
+// (o motorista pode ter celular E telefone diferentes) — clique disca via tel:.
+function ContatosDialog({
+  pendencia, onClose,
+}: { pendencia: PendenciaManifesto | null; onClose: () => void }) {
+  const contatos = pendencia ? contatosDaPendencia(pendencia) : []
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="shrink-0 rounded-md p-1 text-primary hover:bg-muted"
-          title="Telefones cadastrados"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <Phone className="h-3.5 w-3.5" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" onClick={(e) => e.stopPropagation()}>
-        {contatos.map((c) => (
-          <DropdownMenuItem key={`${c.nome}-${c.fone}`} asChild>
-            <a href={`tel:+55${c.fone!.replace(/\D/g, '')}`} className="cursor-pointer">
-              <span className="flex flex-col">
-                <span className="text-xs font-medium">{c.nome}</span>
-                <span className="font-mono text-xs text-primary">📞 {c.fone}</span>
-              </span>
-            </a>
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <Dialog open={!!pendencia} onOpenChange={(aberto) => { if (!aberto) onClose() }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-base">Contatos do motorista</DialogTitle>
+        </DialogHeader>
+        {pendencia && (
+          <p className="-mt-2 text-xs text-muted-foreground">
+            Placa <span className="font-mono">{pendencia.placa}</span>
+            {pendencia.manifestos.length > 0 && (
+              <> · manifesto <span className="font-mono">{pendencia.manifestos.map((m) => m.codman).join(', ')}</span></>
+            )}
+          </p>
+        )}
+        <div className="space-y-4">
+          {contatos.map((c) => (
+            <div key={c.nome}>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{c.nome}</p>
+              <div className="space-y-1.5">
+                {c.fones.map((f) => (
+                  <a
+                    key={f.numero}
+                    href={`tel:+55${f.numero.replace(/\D/g, '')}`}
+                    className="flex items-center justify-between rounded-md border px-3 py-2 hover:bg-muted"
+                    style={{ borderColor: 'var(--border)' }}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Phone className="h-4 w-4 text-primary" />
+                      <span className="font-mono text-sm font-medium text-foreground">{f.numero}</span>
+                    </span>
+                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{f.rotulo}</span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          ))}
+          {contatos.length === 0 && (
+            <p className="text-sm text-muted-foreground">Nenhum telefone cadastrado para esta viagem.</p>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
-// Motorista com celular clicável (tel:) — fone vem do RODMOT.TELCEL via coletor.
-// Fone em linha PRÓPRIA (não inline): nome comprido truncava e engolia o número.
-function MotoristaLinha({ nome, fone }: { nome: string; fone?: string }) {
-  const digitos = (fone ?? '').replace(/\D/g, '')
+// Motorista no painel de detalhes: nome + TODOS os números cadastrados, cada um
+// em linha própria e clicável (nome comprido não engole mais o telefone).
+function MotoristaLinha({ nome, fones }: { nome: string; fones?: { rotulo: string; numero: string }[] }) {
   return (
     <span className="block">
       <span className="block truncate" title={nome}>{nome}</span>
-      {fone && digitos && (
+      {(fones ?? []).map((f) => (
         <a
-          href={`tel:+55${digitos}`}
+          key={f.numero}
+          href={`tel:+55${f.numero.replace(/\D/g, '')}`}
           className="block font-mono text-primary hover:underline"
           onClick={(e) => e.stopPropagation()}
+          title={f.rotulo}
         >
-          📞 {fone}
+          📞 {f.numero}
         </a>
-      )}
+      ))}
     </span>
   )
 }
@@ -437,10 +474,13 @@ function ManifestoDetailPanel({ pendencia, now, onClose }: { pendencia: Pendenci
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Motorista(s)</p>
               <div className="text-sm font-medium text-foreground">
                 {pendencia.motorista
-                  ? <MotoristaLinha nome={pendencia.motorista} fone={pendencia.viagem?.motorista_fone} />
+                  ? <MotoristaLinha nome={pendencia.motorista} fones={contatosDaPendencia(pendencia)[0]?.fones} />
                   : <span>—</span>}
                 {pendencia.viagem?.motorista2 && (
-                  <MotoristaLinha nome={pendencia.viagem.motorista2} fone={pendencia.viagem?.motorista2_fone} />
+                  <MotoristaLinha
+                    nome={pendencia.viagem.motorista2}
+                    fones={contatosDaPendencia(pendencia).find((c) => c.nome === pendencia.viagem?.motorista2)?.fones}
+                  />
                 )}
               </div>
             </div>
