@@ -18,23 +18,117 @@ export interface ManifestoRef {
   filial: number
 }
 
+export interface Telefone {
+  rotulo: string
+  numero: string
+}
+
+// Bloco da SM da Angellira (v2, sinal principal do estado) — ver V2-CONTRATO.md.
+// additionalProperties na origem (schema TypeBox): campos podem evoluir na fase
+// de rodagem, por isso a interface aqui também fica só com os campos conhecidos
+// + índice aberto.
+export interface ManifestoSm {
+  codigo?: string
+  status_viagem?: string
+  status_entrega?: string
+  cliente?: string
+  chegada_local?: string | null
+  saida_local?: string | null
+  tempo_descarga?: string | null
+  atraso?: string | null
+  km_faltante?: number | null
+  previsao_chegada_local?: string | null
+  grade_inicio_local?: string | null
+  grade_fim_local?: string | null
+  [key: string]: unknown
+}
+
+export interface ManifestoTravaBau {
+  estado?: string
+  destravou_no_destino_local?: string | null
+  [key: string]: unknown
+}
+
+export interface ManifestoMacro {
+  ultima?: string
+  quando_local?: string | null
+  digitado?: string | null
+  [key: string]: unknown
+}
+
+/**
+ * v1 e v2 coexistem no mesmo snapshot armazenado (Redis) — ver manifesto.plugin.ts
+ * para o detalhe de por que TODOS os campos são opcionais (o coletor.py v1 e o
+ * coletor_v2.py enviam formatos diferentes no mesmo endpoint, ver V2-CONTRATO.md).
+ */
 export interface ManifestoPendencia {
-  codlpr: number
-  placa: string
-  motorista: string
-  cliente: string
-  destino: string
-  estagio: 'descarregando' | 'descarregado'
-  manifestos: ManifestoRef[]
-  chegada_gmt: string | null
-  chegada_local: string | null
-  fim_gmt: string | null
-  fim_local: string | null
-  idPacote: string | null
-  detectada_em: string
+  // v1
+  codlpr?: number
+  placa?: string
+  estagio?: 'descarregando' | 'descarregado'
+  manifestos?: ManifestoRef[]
+  chegada_gmt?: string | null
+  chegada_local?: string | null
+  fim_gmt?: string | null
+  fim_local?: string | null
+  idPacote?: string | null
+  detectada_em?: string
+  viagem?: {
+    origem: string
+    saida_local: string | null
+    previsao_local: string | null
+    carreta: string
+    motorista2: string
+    destino_uf?: string
+    motorista_fone?: string
+    motorista2_fone?: string
+    motorista_fones?: Telefone[]
+    motorista2_fones?: Telefone[]
+  } | null
+  digitado?: string | null
+  posicao_diverge?: boolean
+  origem_deteccao?: string
+
+  // comuns aos dois formatos
+  motorista?: string
+  cliente?: string
+  destino?: string
+  // v1: objeto de evidências físicas (fase de observação) · v2: array de códigos
+  evidencias?: Record<string, unknown> | string[] | null
+  posicao?: {
+    lat?: string | null
+    lng?: string | null
+    cidade?: string
+    uf?: string
+    ponto_referencia?: string
+    distancia_m?: number | null
+    quando_local?: string | null
+    km_destino?: number | null
+    parado?: boolean
+    [key: string]: unknown
+  } | null
+
+  // v2 — ver V2-CONTRATO.md
+  codman?: number
+  filial?: number
+  serie?: string
+  emissao_local?: string | null
+  prazo_entrega_local?: string | null
+  horas_aberto?: number
+  horas_atraso?: number
+  cavalo?: string
+  carreta?: string
+  motorista_fones?: Telefone[]
+  destino_uf?: string
+  estado?: 'descarregado' | 'descarregando' | 'aguardando_descarga' | 'em_transito' | 'sem_rastreio'
+  origem_estado?: 'sm' | 'sascar' | 'macro'
+  sm?: ManifestoSm | null
+  trava_bau?: ManifestoTravaBau | null
+  macro?: ManifestoMacro | null
 }
 
 export interface ManifestoSnapshotInput {
+  versao?: number
   gerado_em: string
   pendencias: ManifestoPendencia[]
 }
