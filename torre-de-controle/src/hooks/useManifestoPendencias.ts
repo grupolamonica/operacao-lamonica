@@ -122,6 +122,9 @@ export interface PendenciaManifesto {
   carreta?: string
   motorista_fones?: Telefone[]
   destino_uf?: string
+  // abas da tela FROTA × DEMAIS (decisão Danilo 11/08 — ver V2-CONTRATO.md)
+  na_frota_sascar?: boolean
+  comprovacao_trava?: boolean | null
   estado?: EstadoManifesto
   origem_estado?: 'sm' | 'sascar' | 'macro'
   sm?: ManifestoSm | null

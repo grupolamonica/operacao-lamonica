@@ -28,10 +28,11 @@ export interface Telefone {
 // de rodagem, por isso a interface aqui também fica só com os campos conhecidos
 // + índice aberto.
 export interface ManifestoSm {
-  codigo?: string
-  status_viagem?: string
-  status_entrega?: string
-  cliente?: string
+  // nullable: coletor manda null quando a SM não tem o dado (ver manifesto.plugin.ts)
+  codigo?: string | null
+  status_viagem?: string | null
+  status_entrega?: string | null
+  cliente?: string | null
   chegada_local?: string | null
   saida_local?: string | null
   tempo_descarga?: string | null
@@ -114,12 +115,15 @@ export interface ManifestoPendencia {
   serie?: string
   emissao_local?: string | null
   prazo_entrega_local?: string | null
-  horas_aberto?: number
+  horas_aberto?: number | null
   horas_atraso?: number
   cavalo?: string
   carreta?: string
   motorista_fones?: Telefone[]
   destino_uf?: string
+  // abas da tela FROTA × DEMAIS (decisão Danilo 11/08 — ver V2-CONTRATO.md)
+  na_frota_sascar?: boolean
+  comprovacao_trava?: boolean | null
   estado?: 'descarregado' | 'descarregando' | 'aguardando_descarga' | 'em_transito' | 'sem_rastreio'
   origem_estado?: 'sm' | 'sascar' | 'macro'
   sm?: ManifestoSm | null
