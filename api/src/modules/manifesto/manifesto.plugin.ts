@@ -101,6 +101,18 @@ const MacroSchema = t.Object({
   digitado: t.Optional(t.Nullable(t.String())),
 }, { additionalProperties: true })
 
+// v2 (11/08, furo real): caminhão descarrega e vai embora, mas o manifesto
+// continua aberto por morosidade do operador — antes o item voltava pra
+// "em trânsito" (saía do radar); agora o coletor mantém o estado com base no
+// histórico de permanência no destino. Todos os campos nullable: cada marco só
+// existe depois que acontece.
+const DestinoHistoricoSchema = t.Object({
+  chegou_local: t.Optional(t.Nullable(t.String())),
+  saiu_local: t.Optional(t.Nullable(t.String())),
+  parado_min_descarga_local: t.Optional(t.Nullable(t.String())),
+  macro_fim_no_destino_local: t.Optional(t.Nullable(t.String())),
+}, { additionalProperties: true })
+
 /**
  * v1 e v2 coexistem no MESMO endpoint enquanto o coletor_v2.py não substitui o
  * coletor.py em produção (ver V2-CONTRATO.md). Por isso TODOS os campos — dos
@@ -194,6 +206,7 @@ const PendenciaSchema = t.Object({
   sm: t.Optional(t.Nullable(SmSchema)),
   trava_bau: t.Optional(t.Nullable(TravaBauSchema)),
   macro: t.Optional(t.Nullable(MacroSchema)),
+  destino_historico: t.Optional(t.Nullable(DestinoHistoricoSchema)),
 })
 
 const ingestPlugin = new Elysia({ name: 'manifesto-ingest' }).group('/api/manifesto', (app) =>

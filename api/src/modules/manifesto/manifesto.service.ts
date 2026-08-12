@@ -57,6 +57,16 @@ export interface ManifestoMacro {
   [key: string]: unknown
 }
 
+// v2 (11/08, furo real): caminhão descarrega e vai embora, mas o manifesto
+// continua aberto por morosidade do operador — ver manifesto.plugin.ts.
+export interface ManifestoDestinoHistorico {
+  chegou_local?: string | null
+  saiu_local?: string | null
+  parado_min_descarga_local?: string | null
+  macro_fim_no_destino_local?: string | null
+  [key: string]: unknown
+}
+
 /**
  * v1 e v2 coexistem no mesmo snapshot armazenado (Redis) — ver manifesto.plugin.ts
  * para o detalhe de por que TODOS os campos são opcionais (o coletor.py v1 e o
@@ -129,6 +139,7 @@ export interface ManifestoPendencia {
   sm?: ManifestoSm | null
   trava_bau?: ManifestoTravaBau | null
   macro?: ManifestoMacro | null
+  destino_historico?: ManifestoDestinoHistorico | null
 }
 
 export interface ManifestoSnapshotInput {
