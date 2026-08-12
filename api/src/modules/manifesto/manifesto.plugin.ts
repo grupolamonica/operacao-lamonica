@@ -44,23 +44,82 @@ const ManifestoRefSchema = t.Object({
   filial: t.Number(),
 })
 
-// chegada_gmt/chegada_local/fim_gmt/fim_local chegam null explícito quando a
-// pendência nasce do outro lado do ciclo (ex.: fim de viagem ainda sem chegada
-// registrada) — ver pendencias.json real. t.Nullable é obrigatório aqui.
+const TelefoneSchema = t.Object({ rotulo: t.String(), numero: t.String() })
+
+// v1 (fase de observação, 05/08): evidências físicas (cerca do destino + sensor
+// de baú com debounce) — objeto. v2 reusa a MESMA chave `evidencias` para outra
+// coisa (array de strings, ver EvidenciasV2 abaixo) — por isso a chave no
+// PendenciaSchema é uma t.Union dos dois formatos, nunca dois campos.
+const EvidenciasV1Schema = t.Object({
+  na_cidade_destino: t.Boolean(),
+  cerca_desde_local: t.Nullable(t.String()),
+  parado: t.Boolean(),
+  bau_sensor_presente: t.Nullable(t.Boolean()),
+  bau_ativo: t.Boolean(),
+  bau_ativo_desde_local: t.Nullable(t.String()),
+  bau_ativo_sustentado: t.Boolean(),
+  bau_leituras_ativas: t.Number(),
+  bau_transicoes_no_destino: t.Number(),
+  confirmado_por: t.Array(t.String()),
+}, { additionalProperties: true })
+
+// v2: código(s) da(s) evidência(s) que fundamentaram o `estado` calculado
+// (ex.: "sm_entrega_realizada", "trava_destravou_destino") — ver V2-CONTRATO.md.
+const EvidenciasV2Schema = t.Array(t.String())
+
+// v2: bloco da SM da Angellira (sinal principal do estado) — null quando a
+// viagem não tem SM vinculada. additionalProperties: campos podem evoluir
+// durante a fase de rodagem (ver V2-CONTRATO.md).
+const SmSchema = t.Object({
+  codigo: t.Optional(t.String()),
+  status_viagem: t.Optional(t.String()),
+  status_entrega: t.Optional(t.String()),
+  cliente: t.Optional(t.String()),
+  chegada_local: t.Optional(t.Nullable(t.String())),
+  saida_local: t.Optional(t.Nullable(t.String())),
+  tempo_descarga: t.Optional(t.Nullable(t.String())),
+  atraso: t.Optional(t.Nullable(t.String())),
+  km_faltante: t.Optional(t.Nullable(t.Number())),
+  previsao_chegada_local: t.Optional(t.Nullable(t.String())),
+  grade_inicio_local: t.Optional(t.Nullable(t.String())),
+  grade_fim_local: t.Optional(t.Nullable(t.String())),
+}, { additionalProperties: true })
+
+const TravaBauSchema = t.Object({
+  estado: t.Optional(t.String()),
+  destravou_no_destino_local: t.Optional(t.Nullable(t.String())),
+}, { additionalProperties: true })
+
+const MacroSchema = t.Object({
+  ultima: t.Optional(t.String()),
+  quando_local: t.Optional(t.Nullable(t.String())),
+  digitado: t.Optional(t.Nullable(t.String())),
+}, { additionalProperties: true })
+
+/**
+ * v1 e v2 coexistem no MESMO endpoint enquanto o coletor_v2.py não substitui o
+ * coletor.py em produção (ver V2-CONTRATO.md). Por isso TODOS os campos — dos
+ * dois formatos — são t.Optional aqui: um snapshot v1 não traz os campos v2
+ * (codman, estado, sm, posicao.km_destino, ...) e um snapshot v2 não traz os
+ * campos v1 (codlpr, estagio, manifestos, idPacote, detectada_em, ...). Cada
+ * POST chega inteiro em um formato ou outro, nunca misturado dentro do mesmo
+ * item — mas o schema precisa aceitar qualquer um dos dois.
+ *
+ * ⚠️ CRÍTICO: Elysia/TypeBox REMOVE campo não declarado do body — se um campo
+ * não estiver aqui, ele nunca chega na tela (mesmo que o coletor o envie).
+ */
 const PendenciaSchema = t.Object({
-  codlpr: t.Number(),
-  placa: t.String(),
-  motorista: t.String(),
-  cliente: t.String(),
-  destino: t.String(),
-  estagio: t.Union([t.Literal('descarregando'), t.Literal('descarregado')]),
-  manifestos: t.Array(ManifestoRefSchema),
-  chegada_gmt: t.Nullable(t.String()),
-  chegada_local: t.Nullable(t.String()),
-  fim_gmt: t.Nullable(t.String()),
-  fim_local: t.Nullable(t.String()),
-  idPacote: t.Nullable(t.String()),
-  detectada_em: t.String(),
+  // ── v1 ──────────────────────────────────────────────────────────────────
+  codlpr: t.Optional(t.Number()),
+  placa: t.Optional(t.String()),
+  estagio: t.Optional(t.Union([t.Literal('descarregando'), t.Literal('descarregado')])),
+  manifestos: t.Optional(t.Array(ManifestoRefSchema)),
+  chegada_gmt: t.Optional(t.Nullable(t.String())),
+  chegada_local: t.Optional(t.Nullable(t.String())),
+  fim_gmt: t.Optional(t.Nullable(t.String())),
+  fim_local: t.Optional(t.Nullable(t.String())),
+  idPacote: t.Optional(t.Nullable(t.String())),
+  detectada_em: t.Optional(t.String()),
   // Ficha do painel de detalhes (aditivos/opcionais — coletor antigo não envia)
   viagem: t.Optional(t.Nullable(t.Object({
     origem: t.String(),
@@ -71,38 +130,59 @@ const PendenciaSchema = t.Object({
     destino_uf: t.Optional(t.String()),
     motorista_fone: t.Optional(t.String()),
     motorista2_fone: t.Optional(t.String()),
-    motorista_fones: t.Optional(t.Array(t.Object({ rotulo: t.String(), numero: t.String() }))),
-    motorista2_fones: t.Optional(t.Array(t.Object({ rotulo: t.String(), numero: t.String() }))),
+    motorista_fones: t.Optional(t.Array(TelefoneSchema)),
+    motorista2_fones: t.Optional(t.Array(TelefoneSchema)),
   }))),
-  // Fase de observação (05/08): evidências físicas (cerca do destino + sensor de baú
-  // com debounce) — só exibição/calibração; NÃO altera estágio. Campos podem evoluir
-  // durante a observação, por isso additionalProperties.
-  evidencias: t.Optional(t.Nullable(t.Object({
-    na_cidade_destino: t.Boolean(),
-    cerca_desde_local: t.Nullable(t.String()),
-    parado: t.Boolean(),
-    bau_sensor_presente: t.Nullable(t.Boolean()),
-    bau_ativo: t.Boolean(),
-    bau_ativo_desde_local: t.Nullable(t.String()),
-    bau_ativo_sustentado: t.Boolean(),
-    bau_leituras_ativas: t.Number(),
-    bau_transicoes_no_destino: t.Number(),
-    confirmado_por: t.Array(t.String()),
-  }, { additionalProperties: true }))),
   digitado: t.Optional(t.Nullable(t.String())),
   // selo ⚠: posição no momento da macro não bate com o destino (macro por engano)
   posicao_diverge: t.Optional(t.Boolean()),
   // 'macro' (motorista acionou) | 'gps' (permanência no destino detectada sem macro)
   origem_deteccao: t.Optional(t.String()),
+
+  // ── campos comuns aos dois formatos ─────────────────────────────────────
+  motorista: t.Optional(t.String()),
+  cliente: t.Optional(t.String()),
+  destino: t.Optional(t.String()),
+  // mesma chave, dois formatos possíveis (ver EvidenciasV1Schema/V2 acima)
+  evidencias: t.Optional(t.Nullable(t.Union([EvidenciasV1Schema, EvidenciasV2Schema]))),
+  // v1: {lat,lng,cidade,uf,ponto_referencia,distancia_m,quando_local}
+  // v2 acrescenta km_destino/parado ao MESMO bloco — por isso os campos de
+  // ambos os formatos ficam juntos aqui (não é uma união, é o mesmo objeto).
   posicao: t.Optional(t.Nullable(t.Object({
-    lat: t.Nullable(t.String()),
-    lng: t.Nullable(t.String()),
-    cidade: t.String(),
-    uf: t.String(),
-    ponto_referencia: t.String(),
-    distancia_m: t.Nullable(t.Number()),
-    quando_local: t.Nullable(t.String()),
-  }))),
+    lat: t.Optional(t.Nullable(t.String())),
+    lng: t.Optional(t.Nullable(t.String())),
+    cidade: t.Optional(t.String()),
+    uf: t.Optional(t.String()),
+    ponto_referencia: t.Optional(t.String()),
+    distancia_m: t.Optional(t.Nullable(t.Number())),
+    quando_local: t.Optional(t.Nullable(t.String())),
+    km_destino: t.Optional(t.Nullable(t.Number())),
+    parado: t.Optional(t.Boolean()),
+  }, { additionalProperties: true }))),
+
+  // ── v2 (ver V2-CONTRATO.md) ──────────────────────────────────────────────
+  codman: t.Optional(t.Number()),
+  filial: t.Optional(t.Number()),
+  serie: t.Optional(t.String()),
+  emissao_local: t.Optional(t.Nullable(t.String())),
+  prazo_entrega_local: t.Optional(t.Nullable(t.String())),
+  horas_aberto: t.Optional(t.Number()),
+  horas_atraso: t.Optional(t.Number()),
+  cavalo: t.Optional(t.String()),
+  carreta: t.Optional(t.String()),
+  motorista_fones: t.Optional(t.Array(TelefoneSchema)),
+  destino_uf: t.Optional(t.String()),
+  estado: t.Optional(t.Union([
+    t.Literal('descarregado'),
+    t.Literal('descarregando'),
+    t.Literal('aguardando_descarga'),
+    t.Literal('em_transito'),
+    t.Literal('sem_rastreio'),
+  ])),
+  origem_estado: t.Optional(t.Union([t.Literal('sm'), t.Literal('sascar'), t.Literal('macro')])),
+  sm: t.Optional(t.Nullable(SmSchema)),
+  trava_bau: t.Optional(t.Nullable(TravaBauSchema)),
+  macro: t.Optional(t.Nullable(MacroSchema)),
 })
 
 const ingestPlugin = new Elysia({ name: 'manifesto-ingest' }).group('/api/manifesto', (app) =>
@@ -122,6 +202,8 @@ const ingestPlugin = new Elysia({ name: 'manifesto-ingest' }).group('/api/manife
     },
     {
       body: t.Object({
+        // ausente no v1 (coletor.py); coletor_v2.py envia `versao: 2` — ver V2-CONTRATO.md.
+        versao: t.Optional(t.Number()),
         gerado_em: t.String(),
         pendencias: t.Array(PendenciaSchema),
       }),
