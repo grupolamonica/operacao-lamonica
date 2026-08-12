@@ -4,6 +4,7 @@ import { PanelCard } from '@/components/domain/PanelCard'
 import { SidePanelLayout } from '@/components/domain/SidePanelLayout'
 import { FixedPanel } from '@/components/domain/FixedPanel'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useManifestoPendencias, type EstadoManifesto, type PendenciaManifesto, type Telefone } from '@/hooks/useManifestoPendencias'
 import { useNow } from '@/hooks/useNow'
@@ -19,6 +20,10 @@ import { unlockAudio, beep, speak, primeSpeech } from '@/lib/audioAlert'
  * aprovar a troca da task — por isso esta tela precisa renderizar os dois
  * formatos sem quebrar (ver deriveEstado/estagio abaixo).
  *
+ *   • Duas abas (decisão Danilo 11/08): FROTA (`na_frota_sascar`, tem SM +
+ *     posição + trava do baú + macro) × DEMAIS (agregados/terceiros, só SM).
+ *     KPIs/filtro/tabela operam dentro da aba selecionada; o som (abaixo) é
+ *     independente da aba.
  *   • KPIs por estado + "prazo vencido"
  *   • Filtro rápido por estado + toggle "só prazo vencido" (85 itens é demais
  *     para rolar sem filtro)
@@ -52,6 +57,29 @@ function deriveEstado(p: PendenciaManifesto): EstadoManifesto {
 function vencido(p: PendenciaManifesto): boolean {
   return (p.horas_atraso ?? 0) > 0
 }
+
+// FROTA × DEMAIS (decisão Danilo 11/08, ver V2-CONTRATO.md): FROTA tem
+// rastreador Sascar nosso (SM + posição + trava do baú + macro); DEMAIS são
+// agregados/terceiros — só a SM. Snapshot antigo sem o campo: aproxima pela
+// presença de posição (era o universo único de antes das abas).
+function naFrota(p: PendenciaManifesto): boolean {
+  if (p.na_frota_sascar != null) return p.na_frota_sascar
+  return p.posicao != null
+}
+
+// Selo de comprovação da trava (coluna Estado, só relevante na FROTA — ver
+// V2-CONTRATO.md "Regra da comprovação pela trava"). null (DEMAIS/sem
+// rastreador) não mostra selo nenhum.
+const TRAVA_CHIP = {
+  sim: {
+    label: 'TRAVA ✓', bg: 'var(--status-no-prazo-bg)', fg: 'var(--status-no-prazo-fg)',
+    title: 'A trava do baú comprovou a descarga no destino',
+  },
+  nao: {
+    label: 'SEM TRAVA', bg: 'var(--status-em-risco-bg)', fg: 'var(--status-em-risco-fg)',
+    title: 'A SM confirmou a entrega, mas a trava do baú não comprovou descarga no destino — confirme antes de baixar',
+  },
+} as const
 
 // *_local é literal "wall-clock" (já em horário local) — nunca reinterpretar via
 // `new Date(str)` (o fuso do navegador pode não bater com o do servidor). Extrai
@@ -175,6 +203,7 @@ export function BaixaManifestoPage() {
   const now = useNow(30_000)
   const [soundOn, setSoundOn] = useState(true)
   const seenKeys = useRef<Set<string> | null>(null)
+  const [aba, setAba] = useState<'frota' | 'demais'>('frota')
   const [estadoFiltro, setEstadoFiltro] = useState<EstadoManifesto | 'todos'>('todos')
   const [soVencido, setSoVencido] = useState(false)
   // Painel de detalhes: guarda só a chave, não o objeto — a cada render re-deriva
@@ -219,17 +248,28 @@ export function BaixaManifestoPage() {
     }
   }, [pendencias, soundOn])
 
-  const total = pendencias.length
+  // Abas FROTA × DEMAIS — contagem sempre nas duas (rótulo do botão), KPIs/
+  // filtro/tabela abaixo operam só dentro da aba selecionada.
+  const contagemAbas = useMemo(() => {
+    const frota = pendencias.filter(naFrota).length
+    return { frota, demais: pendencias.length - frota }
+  }, [pendencias])
+  const pendenciasAba = useMemo(
+    () => pendencias.filter((p) => naFrota(p) === (aba === 'frota')),
+    [pendencias, aba],
+  )
+
+  const total = pendenciasAba.length
   const contagemPorEstado = useMemo(() => {
     const c: Record<EstadoManifesto, number> = { descarregado: 0, descarregando: 0, aguardando_descarga: 0, em_transito: 0, sem_rastreio: 0 }
-    for (const p of pendencias) c[deriveEstado(p)]++
+    for (const p of pendenciasAba) c[deriveEstado(p)]++
     return c
-  }, [pendencias])
-  const vencidoCount = useMemo(() => pendencias.filter(vencido).length, [pendencias])
+  }, [pendenciasAba])
+  const vencidoCount = useMemo(() => pendenciasAba.filter(vencido).length, [pendenciasAba])
 
   // Ordenação + filtro.
   const rows = useMemo(() => {
-    const filtradas = pendencias.filter((p) => {
+    const filtradas = pendenciasAba.filter((p) => {
       if (estadoFiltro !== 'todos' && deriveEstado(p) !== estadoFiltro) return false
       if (soVencido && !vencido(p)) return false
       return true
@@ -243,7 +283,7 @@ export function BaixaManifestoPage() {
       const hb = horasAbertoDe(b, now) ?? -1
       return hb - ha
     })
-  }, [pendencias, estadoFiltro, soVencido, now])
+  }, [pendenciasAba, estadoFiltro, soVencido, now])
 
   const stale = (snapshot?.idade_min ?? 0) > 15
 
@@ -290,6 +330,18 @@ export function BaixaManifestoPage() {
           <span>⚠ Coletor sem enviar há {Math.round(snapshot?.idade_min ?? 0)} min</span>
         </div>
       )}
+
+      {/* Abas FROTA × DEMAIS (decisão Danilo 11/08, ver V2-CONTRATO.md) */}
+      <Tabs value={aba} onValueChange={(v) => setAba(v as 'frota' | 'demais')}>
+        <TabsList className="bg-card border border-border">
+          <TabsTrigger value="frota" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            Frota <span className="ml-2 text-xs opacity-80 tabular-nums">({contagemAbas.frota})</span>
+          </TabsTrigger>
+          <TabsTrigger value="demais" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            Demais (agregados) <span className="ml-2 text-xs opacity-80 tabular-nums">({contagemAbas.demais})</span>
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
@@ -418,6 +470,18 @@ export function BaixaManifestoPage() {
                                 title="Origem do veredito do estado"
                               >
                                 {ORIGEM_LABEL[p.origem_estado]}
+                              </span>
+                            )}
+                            {p.comprovacao_trava != null && (
+                              <span
+                                className="rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide whitespace-nowrap"
+                                style={{
+                                  background: p.comprovacao_trava ? TRAVA_CHIP.sim.bg : TRAVA_CHIP.nao.bg,
+                                  color: p.comprovacao_trava ? TRAVA_CHIP.sim.fg : TRAVA_CHIP.nao.fg,
+                                }}
+                                title={p.comprovacao_trava ? TRAVA_CHIP.sim.title : TRAVA_CHIP.nao.title}
+                              >
+                                {p.comprovacao_trava ? TRAVA_CHIP.sim.label : TRAVA_CHIP.nao.label}
                               </span>
                             )}
                           </div>
@@ -671,6 +735,10 @@ function ManifestoDetailPanel({ pendencia: p, now, onClose }: { pendencia: Pende
           <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
             <Metric label="Trava do baú" value={p.trava_bau?.estado || '—'} />
             <Metric label="Destravou no destino" value={fmtLocal(p.trava_bau?.destravou_no_destino_local)} />
+            <Metric
+              label="Comprovação da trava"
+              value={p.comprovacao_trava == null ? 'Não aplicável (agregado)' : p.comprovacao_trava ? 'Comprovada' : 'Não comprovada'}
+            />
           </div>
 
           <div className="mt-3 rounded-md border p-2.5" style={{ borderColor: 'var(--border)' }}>

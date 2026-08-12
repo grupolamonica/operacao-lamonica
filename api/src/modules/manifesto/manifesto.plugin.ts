@@ -71,10 +71,15 @@ const EvidenciasV2Schema = t.Array(t.String())
 // viagem não tem SM vinculada. additionalProperties: campos podem evoluir
 // durante a fase de rodagem (ver V2-CONTRATO.md).
 const SmSchema = t.Object({
-  codigo: t.Optional(t.String()),
-  status_viagem: t.Optional(t.String()),
-  status_entrega: t.Optional(t.String()),
-  cliente: t.Optional(t.String()),
+  // ⚠️ 2ª vez que este padrão causa 422 real em produção (11/08): o coletor
+  // manda `null` nestes 4 campos quando a SM não tem o dado (a chave chega,
+  // só que com valor null) — `t.Optional` sozinho não aceita null, só chave
+  // ausente. Qualquer campo string/number novo aqui que o coletor possa
+  // mandar null precisa do mesmo `t.Optional(t.Nullable(...))`.
+  codigo: t.Optional(t.Nullable(t.String())),
+  status_viagem: t.Optional(t.Nullable(t.String())),
+  status_entrega: t.Optional(t.Nullable(t.String())),
+  cliente: t.Optional(t.Nullable(t.String())),
   chegada_local: t.Optional(t.Nullable(t.String())),
   saida_local: t.Optional(t.Nullable(t.String())),
   tempo_descarga: t.Optional(t.Nullable(t.String())),
@@ -166,12 +171,18 @@ const PendenciaSchema = t.Object({
   serie: t.Optional(t.String()),
   emissao_local: t.Optional(t.Nullable(t.String())),
   prazo_entrega_local: t.Optional(t.Nullable(t.String())),
-  horas_aberto: t.Optional(t.Number()),
+  // nullable defensivo: coletor manda null quando o manifesto não tem
+  // `emissao` (mesmo padrão do bug do sm.* acima — ver montar_item em coletor_v2.py)
+  horas_aberto: t.Optional(t.Nullable(t.Number())),
   horas_atraso: t.Optional(t.Number()),
   cavalo: t.Optional(t.String()),
   carreta: t.Optional(t.String()),
   motorista_fones: t.Optional(t.Array(TelefoneSchema)),
   destino_uf: t.Optional(t.String()),
+  // abas da tela FROTA × DEMAIS (decisão Danilo 11/08 — ver V2-CONTRATO.md)
+  na_frota_sascar: t.Optional(t.Boolean()),
+  // comprovação física da trava do baú (só faz sentido na FROTA); null = não aplicável (DEMAIS)
+  comprovacao_trava: t.Optional(t.Nullable(t.Boolean())),
   estado: t.Optional(t.Union([
     t.Literal('descarregado'),
     t.Literal('descarregando'),
