@@ -45,6 +45,18 @@ export interface ManifestoMacro {
   digitado?: string | null
 }
 
+// v2 (11/08, furo real): caminhão descarrega e vai embora, mas o manifesto
+// continua aberto por morosidade do operador — antes o item voltava pra
+// "em trânsito" (saía do radar); agora o coletor mantém o estado com base no
+// histórico de permanência no destino. Cada marco é nullable (só existe depois
+// que acontece).
+export interface ManifestoDestinoHistorico {
+  chegou_local?: string | null
+  saiu_local?: string | null
+  parado_min_descarga_local?: string | null
+  macro_fim_no_destino_local?: string | null
+}
+
 export interface PendenciaManifesto {
   // ── v1 ──────────────────────────────────────────────────────────────────
   codlpr?: number
@@ -130,6 +142,7 @@ export interface PendenciaManifesto {
   sm?: ManifestoSm | null
   trava_bau?: ManifestoTravaBau | null
   macro?: ManifestoMacro | null
+  destino_historico?: ManifestoDestinoHistorico | null
 }
 
 export interface ManifestoPendenciasSnapshot {

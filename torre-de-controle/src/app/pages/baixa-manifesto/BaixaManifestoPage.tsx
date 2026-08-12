@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { PackageCheck, Phone, Volume2, VolumeX } from 'lucide-react'
 import { PanelCard } from '@/components/domain/PanelCard'
 import { SidePanelLayout } from '@/components/domain/SidePanelLayout'
@@ -79,6 +80,23 @@ const TRAVA_CHIP = {
     label: 'SEM TRAVA', bg: 'var(--status-em-risco-bg)', fg: 'var(--status-em-risco-fg)',
     title: 'A SM confirmou a entrega, mas a trava do baú não comprovou descarga no destino — confirme antes de baixar',
   },
+} as const
+
+// Furo real (11/08): caminhão chega no cliente, descarrega, fecha o baú e vai
+// embora — mas o manifesto continua aberto por morosidade do operador. Antes o
+// sistema devolvia o item pra "em trânsito" (saía do radar); agora o coletor
+// mantém o estado com base no histórico do destino (`destino_historico`) e esse
+// caso precisa saltar aos olhos do operador.
+function jaSaiuDoCliente(p: PendenciaManifesto): boolean {
+  const estado = deriveEstado(p)
+  return !!p.destino_historico?.saiu_local && (estado === 'descarregado' || estado === 'descarregando')
+}
+
+const JA_SAIU_CHIP = {
+  label: 'JÁ SAIU',
+  bg: 'var(--status-atrasado-bg)',
+  fg: 'var(--status-atrasado-fg)',
+  title: 'O caminhão já descarregou e deixou o cliente — o manifesto continua aberto',
 } as const
 
 // *_local é literal "wall-clock" (já em horário local) — nunca reinterpretar via
@@ -206,6 +224,7 @@ export function BaixaManifestoPage() {
   const [aba, setAba] = useState<'frota' | 'demais'>('frota')
   const [estadoFiltro, setEstadoFiltro] = useState<EstadoManifesto | 'todos'>('todos')
   const [soVencido, setSoVencido] = useState(false)
+  const [soJaSaiu, setSoJaSaiu] = useState(false)
   // Painel de detalhes: guarda só a chave, não o objeto — a cada render re-deriva
   // do array (fresco a cada polling de 30s); some sozinho da lista (baixada) = painel fecha.
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
@@ -266,12 +285,14 @@ export function BaixaManifestoPage() {
     return c
   }, [pendenciasAba])
   const vencidoCount = useMemo(() => pendenciasAba.filter(vencido).length, [pendenciasAba])
+  const jaSaiuCount = useMemo(() => pendenciasAba.filter(jaSaiuDoCliente).length, [pendenciasAba])
 
   // Ordenação + filtro.
   const rows = useMemo(() => {
     const filtradas = pendenciasAba.filter((p) => {
       if (estadoFiltro !== 'todos' && deriveEstado(p) !== estadoFiltro) return false
       if (soVencido && !vencido(p)) return false
+      if (soJaSaiu && !jaSaiuDoCliente(p)) return false
       return true
     })
     return [...filtradas].sort((a, b) => {
@@ -283,7 +304,7 @@ export function BaixaManifestoPage() {
       const hb = horasAbertoDe(b, now) ?? -1
       return hb - ha
     })
-  }, [pendenciasAba, estadoFiltro, soVencido, now])
+  }, [pendenciasAba, estadoFiltro, soVencido, soJaSaiu, now])
 
   const stale = (snapshot?.idade_min ?? 0) > 15
 
@@ -359,6 +380,10 @@ export function BaixaManifestoPage() {
           <div className="text-3xl font-bold tabular-nums" style={{ color: 'var(--status-atrasado-fg)' }}>{vencidoCount}</div>
           <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">PRAZO VENCIDO</div>
         </div>
+        <div className="rounded-xl bg-card px-4 py-3" style={{ border: '1px solid var(--border)' }}>
+          <div className="text-3xl font-bold tabular-nums" style={{ color: 'var(--status-atrasado-fg)' }}>{jaSaiuCount}</div>
+          <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">JÁ SAIU DO CLIENTE</div>
+        </div>
       </div>
 
       {/* Filtro rápido — 85 itens não rola sem filtro */}
@@ -393,6 +418,16 @@ export function BaixaManifestoPage() {
             : { background: 'var(--muted)', color: 'var(--muted-foreground)' }}
         >
           ⏰ Só prazo vencido
+        </button>
+        <button
+          type="button"
+          onClick={() => setSoJaSaiu((v) => !v)}
+          className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
+          style={soJaSaiu
+            ? { background: 'var(--status-atrasado-fg)', color: 'white' }
+            : { background: 'var(--muted)', color: 'var(--muted-foreground)' }}
+        >
+          🚪 Já saiu do cliente ({jaSaiuCount})
         </button>
       </div>
 
@@ -484,6 +519,15 @@ export function BaixaManifestoPage() {
                                 {p.comprovacao_trava ? TRAVA_CHIP.sim.label : TRAVA_CHIP.nao.label}
                               </span>
                             )}
+                            {jaSaiuDoCliente(p) && (
+                              <span
+                                className="rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide whitespace-nowrap"
+                                style={{ background: JA_SAIU_CHIP.bg, color: JA_SAIU_CHIP.fg }}
+                                title={JA_SAIU_CHIP.title}
+                              >
+                                {JA_SAIU_CHIP.label}
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="whitespace-nowrap px-3 py-2">
@@ -554,11 +598,11 @@ export function BaixaManifestoPage() {
 // Só leitura — a baixa continua no Rodopar. Ficha label+valor no estilo do
 // TripDetailPanel (viagens): grid 2 colunas, seções com header uppercase.
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value, valueStyle }: { label: string; value: string; valueStyle?: CSSProperties }) {
   return (
     <div>
       <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</p>
-      <p className="text-sm font-medium text-foreground truncate">{value}</p>
+      <p className="text-sm font-medium text-foreground truncate" style={valueStyle}>{value}</p>
     </div>
   )
 }
@@ -716,7 +760,24 @@ function ManifestoDetailPanel({ pendencia: p, now, onClose }: { pendencia: Pende
           </div>
         </div>
 
-        {/* (4) Sascar */}
+        {/* (4) No cliente — furo real (11/08): caminhão descarrega e vai embora,
+            manifesto continua aberto por morosidade do operador (ver
+            jaSaiuDoCliente/JA_SAIU_CHIP acima) */}
+        <div>
+          <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">No cliente</h4>
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <Metric label="Chegou" value={fmtLocal(p.destino_historico?.chegou_local)} />
+            <Metric label="Permanência mínima atingida" value={fmtLocal(p.destino_historico?.parado_min_descarga_local)} />
+            <Metric label="Macro de fim no destino" value={fmtLocal(p.destino_historico?.macro_fim_no_destino_local)} />
+            <Metric
+              label="Saiu do cliente"
+              value={fmtLocal(p.destino_historico?.saiu_local)}
+              valueStyle={p.destino_historico?.saiu_local ? { color: 'var(--status-atrasado-fg)' } : undefined}
+            />
+          </div>
+        </div>
+
+        {/* (5) Sascar */}
         <div>
           <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Sascar</h4>
           <div className="grid grid-cols-2 gap-3 text-xs">
@@ -754,7 +815,7 @@ function ManifestoDetailPanel({ pendencia: p, now, onClose }: { pendencia: Pende
           </div>
         </div>
 
-        {/* (5) Evidências */}
+        {/* (6) Evidências */}
         <div>
           <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Evidências</h4>
           {evidenciasV2 && evidenciasV2.length > 0 ? (
