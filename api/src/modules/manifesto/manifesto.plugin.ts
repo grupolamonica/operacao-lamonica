@@ -1,7 +1,16 @@
 import { Elysia, t } from 'elysia'
 
 import { authGuard } from '../../lib/rbac'
+import { logger } from '../../lib/logger'
+import { MOTIVOS_TRATATIVA } from '../../db/schema'
 import { applySnapshot, getPendencias } from './manifesto.service'
+import {
+  chaveManifesto,
+  historicoManifesto,
+  motivoValido,
+  registrarTratativa,
+  resumoPorManifesto,
+} from './tratativas.service'
 
 /**
  * Manifesto (baixa de manifesto) — Fase F3.
@@ -239,22 +248,123 @@ const ingestPlugin = new Elysia({ name: 'manifesto-ingest' }).group('/api/manife
   ),
 )
 
+// Quem pode registrar justificativa (decisão Danilo 12/08): os 3 operadores dedicados
+// (papel 'manifesto') e a supervisão. 'analyst'/'viewer' seguem só lendo.
+const PODE_JUSTIFICAR = ['manifesto', 'supervisor', 'admin'] as const
+
 const readPlugin = new Elysia({ name: 'manifesto-read' })
   .use(authGuard)
   .group('/api/manifesto', (app) =>
-    app.get(
-      '/pendencias',
-      async () => {
-        const view = await getPendencias()
-        return { ok: true, ...view }
-      },
-      {
-        detail: {
-          tags: ['manifesto'],
-          summary: 'Snapshot atual de pendências de baixa de manifesto (tela /baixa-manifesto)',
+    app
+      .get(
+        '/pendencias',
+        async () => {
+          const view = await getPendencias()
+          // Enriquece com a justificativa do operador (Postgres) — o snapshot em si é
+          // volátil e sobrescrito pelo coletor, então a nota nunca mora nele. Um GET só:
+          // a tela faz polling de 30s e dois requests por ciclo seria desperdício.
+          const refs = view.pendencias
+            .filter((p) => typeof p.codman === 'number' && typeof p.filial === 'number')
+            .map((p) => ({ codman: p.codman!, filial: p.filial!, serie: p.serie }))
+          // A justificativa é ADITIVA à tela: se a leitura dela falhar (deploy antes da
+          // migration, banco fora), a tela dos operadores tem que continuar mostrando o
+          // estado dos manifestos — que é a função crítica. Degrada para mapa vazio.
+          let tratativas: Awaited<ReturnType<typeof resumoPorManifesto>> = {}
+          if (refs.length) {
+            try {
+              tratativas = await resumoPorManifesto(refs)
+            } catch (e: any) {
+              logger.error(
+                { error: e?.message ?? String(e) },
+                '[manifesto] falha ao ler tratativas — seguindo sem elas (tabela ausente?)',
+              )
+            }
+          }
+          return { ok: true, ...view, tratativas, motivos: MOTIVOS_TRATATIVA }
         },
-      },
-    ),
+        {
+          detail: {
+            tags: ['manifesto'],
+            summary: 'Snapshot atual de pendências de baixa de manifesto (tela /baixa-manifesto)',
+          },
+        },
+      )
+      // Histórico completo de um manifesto — o painel de detalhes abre sob demanda,
+      // então não precisa vir no snapshot de todos.
+      .get(
+        '/tratativas/:codman/:filial',
+        async ({ params, query, set }) => {
+          // params vêm como string: /tratativas/abc/xyz daria NaN e o insert/select em coluna
+          // integer estouraria com 500. Valida antes e devolve 400 com mensagem útil.
+          const codman = Number(params.codman)
+          const filial = Number(params.filial)
+          if (!Number.isSafeInteger(codman) || !Number.isSafeInteger(filial)) {
+            set.status = 400
+            return { ok: false, error: 'codman e filial devem ser inteiros' }
+          }
+          return { ok: true, tratativas: await historicoManifesto(codman, filial, query.serie ?? '') }
+        },
+        {
+          params: t.Object({ codman: t.String(), filial: t.String() }),
+          query: t.Object({ serie: t.Optional(t.String()) }),
+          detail: {
+            tags: ['manifesto'],
+            summary: 'Histórico de justificativas de um manifesto',
+          },
+        },
+      )
+      .post(
+        '/tratativas',
+        async ({ body, user, set }) => {
+          // Gate na PRÓPRIA rota, não via requireRole: o onBeforeHandle dele é 'local' e
+          // não alcança a rota do consumidor, o que deixaria isto ABERTO (ver a nota em
+          // audit.plugin.ts). O servidor é a fonte da verdade; a tela só esconde o botão.
+          if (!PODE_JUSTIFICAR.includes(user.role as (typeof PODE_JUSTIFICAR)[number])) {
+            set.status = 403
+            return { ok: false, error: `Forbidden: requires role ${PODE_JUSTIFICAR.join('|')}` }
+          }
+          if (!motivoValido(body.motivo)) {
+            set.status = 400
+            return {
+              ok: false,
+              error: `motivo inválido — use um de: ${Object.keys(MOTIVOS_TRATATIVA).join(', ')}`,
+            }
+          }
+          const registro = await registrarTratativa({
+            codman: body.codman,
+            filial: body.filial,
+            serie: body.serie ?? '',
+            placa: body.placa ?? null,
+            destino: body.destino ?? null,
+            motivo: body.motivo,
+            notes: body.notes ?? null,
+            operatorId: user.id,
+            // o serviço resolve o nome pelo id (o JWT só traz id/role/jti). Nunca vem do
+            // corpo do request: o cliente não escolhe sob qual nome assina.
+            authorName: null,
+          })
+          return { ok: true, tratativa: registro, chave: chaveManifesto(body.codman, body.filial, body.serie) }
+        },
+        {
+          // maxLength no notes/motivo: sem isso um texto de megabytes seria aceito e gravado.
+          // Placa/serie/destino são ACESSÓRIOS (só enfeitam o relatório) e ficam folgados de
+          // propósito — o service trunca no tamanho da coluna. Rejeitar a requisição por causa
+          // de um destino comprido perderia a justificativa que o operador acabou de escrever.
+          body: t.Object({
+            codman: t.Integer(),
+            filial: t.Integer(),
+            serie: t.Optional(t.String({ maxLength: 20 })),
+            placa: t.Optional(t.String({ maxLength: 20 })),
+            destino: t.Optional(t.String({ maxLength: 200 })),
+            motivo: t.String({ maxLength: 40 }),
+            notes: t.Optional(t.String({ maxLength: 2000 })),
+          }),
+          detail: {
+            tags: ['manifesto'],
+            summary: 'Registra justificativa do operador (append-only) — papel manifesto/supervisor/admin',
+          },
+        },
+      ),
   )
 
 export const manifestoPlugin = new Elysia({ name: 'manifesto' })

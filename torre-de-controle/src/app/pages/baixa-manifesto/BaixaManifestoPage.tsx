@@ -1,14 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { PackageCheck, Phone, Volume2, VolumeX } from 'lucide-react'
+import { MessageSquare, PackageCheck, Phone, Volume2, VolumeX } from 'lucide-react'
 import { PanelCard } from '@/components/domain/PanelCard'
 import { SidePanelLayout } from '@/components/domain/SidePanelLayout'
 import { FixedPanel } from '@/components/domain/FixedPanel'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { useManifestoPendencias, type EstadoManifesto, type PendenciaManifesto, type Telefone } from '@/hooks/useManifestoPendencias'
+import {
+  chaveTratativa,
+  useHistoricoTratativas,
+  useManifestoPendencias,
+  useRegistrarTratativa,
+  type EstadoManifesto,
+  type PendenciaManifesto,
+  type ResumoTratativa,
+  type Telefone,
+} from '@/hooks/useManifestoPendencias'
 import { useNow } from '@/hooks/useNow'
+import { useAuthStore } from '@/stores/useAuthStore'
 import { formatDuration } from '@/lib/formatters'
 import { unlockAudio, beep, speak, primeSpeech } from '@/lib/audioAlert'
 
@@ -217,7 +227,7 @@ function rankEstado(p: PendenciaManifesto): number {
 }
 
 export function BaixaManifestoPage() {
-  const { data: snapshot, pendencias, isLoading } = useManifestoPendencias()
+  const { data: snapshot, pendencias, tratativas, motivos, isLoading, isError } = useManifestoPendencias()
   const now = useNow(30_000)
   const [soundOn, setSoundOn] = useState(true)
   const seenKeys = useRef<Set<string> | null>(null)
@@ -307,6 +317,10 @@ export function BaixaManifestoPage() {
   }, [pendenciasAba, estadoFiltro, soVencido, soJaSaiu, now])
 
   const stale = (snapshot?.idade_min ?? 0) > 15
+  // A API responde ok:true com total 0 e idade_min null quando NÃO HÁ snapshot no Redis
+  // (coletor nunca enviou, chave zerada). Sem distinguir isso de "nada pendente", a tela
+  // exibiria o mesmo verde tranquilizador nos dois casos.
+  const semSnapshot = !!snapshot && snapshot.idade_min == null
 
   return (
     <div className="space-y-5">
@@ -339,9 +353,24 @@ export function BaixaManifestoPage() {
             {soundOn ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
             {soundOn ? 'Som ligado' : 'Som mudo'}
           </Button>
-          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" /> {isLoading ? 'Carregando…' : 'Atualizado'}
-          </span>
+          {/* Numa tela cujo trabalho é não deixar manifesto passar, "verde + Atualizado" quando
+              a leitura falhou é pior que erro nenhum: o operador confia numa lista que pode
+              estar congelada ou vazia por falha, não por não haver pendência. */}
+          {isError ? (
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--destructive)' }}>
+              <span className="h-2 w-2 rounded-full" style={{ background: 'var(--destructive)' }} />
+              Falha ao atualizar — a lista pode estar defasada
+            </span>
+          ) : semSnapshot ? (
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--destructive)' }}>
+              <span className="h-2 w-2 rounded-full" style={{ background: 'var(--destructive)' }} />
+              Sem dados do coletor
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" /> {isLoading ? 'Carregando…' : 'Atualizado'}
+            </span>
+          )}
         </div>
       </div>
 
@@ -462,6 +491,10 @@ export function BaixaManifestoPage() {
                     const estado = deriveEstado(p)
                     const info = ESTADO_INFO[estado]
                     const horasAberto = horasAbertoDe(p, now)
+                    // chave da tratativa é a natural do Rodopar, diferente da chave de UI
+                    // acima (que também cobre o formato v1) — ver chaveTratativa
+                    const chaveT = chaveTratativa(p)
+                    const resumoTratativa: ResumoTratativa | undefined = chaveT ? tratativas[chaveT] : undefined
                     const cliente = p.sm?.cliente || p.destino || '—'
                     const destinoLinha = [p.destino, p.destino_uf ?? p.viagem?.destino_uf].filter(Boolean).join('/')
                     return (
@@ -476,6 +509,18 @@ export function BaixaManifestoPage() {
                             <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5">
                               <span className="font-mono font-bold">{p.codman}</span>
                               <span className="text-[9px] text-muted-foreground">f{p.filial ?? '—'}{p.serie ? `/${p.serie}` : ''}</span>
+                              {/* já justificado: o operador vê sem abrir o painel, e o title
+                                  mostra o motivo mais recente no hover */}
+                              {resumoTratativa && (
+                                <span
+                                  className="ml-0.5 inline-flex items-center gap-0.5 rounded-full px-1.5 text-[9px] font-bold"
+                                  style={{ background: 'var(--muted-foreground)', color: 'var(--background)' }}
+                                  title={`${resumoTratativa.ultima.motivo_rotulo}${resumoTratativa.ultima.notes ? ` — ${resumoTratativa.ultima.notes}` : ''} (${resumoTratativa.ultima.autor ?? 'autor não identificado'})`}
+                                >
+                                  <MessageSquare className="h-2.5 w-2.5" />
+                                  {resumoTratativa.total}
+                                </span>
+                              )}
                             </span>
                           ) : p.manifestos?.length ? (
                             <div className="flex flex-wrap items-center gap-1">
@@ -574,7 +619,25 @@ export function BaixaManifestoPage() {
                     )
                   })}
                   {rows.length === 0 && (
-                    <tr><td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">{isLoading ? 'Carregando manifestos…' : 'Nenhum manifesto aberto com esse filtro.'}</td></tr>
+                    <tr>
+                      <td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">
+                        {/* nunca afirmar "nenhum manifesto" sem ter conseguido ler: lista vazia
+                            e leitura falhada são coisas diferentes para quem opera a fila */}
+                        {isError ? (
+                          <span className="font-semibold" style={{ color: 'var(--destructive)' }}>
+                            Não foi possível ler os manifestos — não assuma que a lista está vazia. Recarregue a página.
+                          </span>
+                        ) : semSnapshot ? (
+                          <span className="font-semibold" style={{ color: 'var(--destructive)' }}>
+                            Sem dados do coletor — a lista não reflete a operação. Verifique se o coletor está rodando.
+                          </span>
+                        ) : isLoading ? (
+                          'Carregando manifestos…'
+                        ) : (
+                          'Nenhum manifesto aberto com esse filtro.'
+                        )}
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>
@@ -584,7 +647,19 @@ export function BaixaManifestoPage() {
 
         {selected && (
           <FixedPanel>
-            <ManifestoDetailPanel pendencia={selected} now={now} onClose={() => setSelectedKey(null)} />
+            {/* key OBRIGATÓRIA: clicar de um manifesto para outro troca `selected` numa única
+                atualização de estado, então o painel nunca desmonta e o React o reconcilia
+                no lugar — o texto que o operador digitou na justificativa de A permaneceria
+                no formulário de B e poderia ser gravado no manifesto errado, num registro
+                append-only que não dá para editar nem apagar. Com a key, trocar de manifesto
+                remonta o painel e zera todo o estado local dele. */}
+            <ManifestoDetailPanel
+              key={selectedKey}
+              pendencia={selected}
+              now={now}
+              motivos={motivos}
+              onClose={() => setSelectedKey(null)}
+            />
           </FixedPanel>
         )}
       </div>
@@ -677,7 +752,18 @@ function MotoristaLinha({ nome, fones }: { nome: string; fones?: Telefone[] }) {
   )
 }
 
-function ManifestoDetailPanel({ pendencia: p, now, onClose }: { pendencia: PendenciaManifesto; now: Date; onClose: () => void }) {
+function ManifestoDetailPanel({
+  pendencia: p,
+  now,
+  onClose,
+  motivos,
+}: {
+  pendencia: PendenciaManifesto
+  now: Date
+  onClose: () => void
+  // lista de motivos vem da API (via snapshot) para não divergir do que ela valida
+  motivos: Record<string, string>
+}) {
   const estado = deriveEstado(p)
   const info = ESTADO_INFO[estado]
   const horasAberto = horasAbertoDe(p, now)
@@ -834,7 +920,138 @@ function ManifestoDetailPanel({ pendencia: p, now, onClose }: { pendencia: Pende
             <p className="text-xs text-muted-foreground">—</p>
           )}
         </div>
+
+        {/* (7) Justificativa do operador — único bloco de ESCRITA da tela */}
+        <TratativasSecao pendencia={p} motivos={motivos} />
       </div>
     </SidePanelLayout>
+  )
+}
+
+/**
+ * Justificativa do operador: histórico + formulário.
+ *
+ * Append-only por decisão (12/08): nada é editado nem apagado — correção se faz
+ * escrevendo nota nova, e o histórico é a auditoria de quem disse o quê e quando.
+ * A nota vive no Postgres e SOBREVIVE à baixa do manifesto (o snapshot é volátil).
+ *
+ * Só aparece em manifesto v2 (precisa de codman+filial); item v1 não tem chave natural.
+ * O botão fica oculto para quem não pode escrever, mas o gate real é no servidor.
+ */
+function TratativasSecao({
+  pendencia: p,
+  motivos,
+}: {
+  pendencia: PendenciaManifesto
+  motivos: Record<string, string>
+}) {
+  const role = useAuthStore((s) => s.user?.role)
+  const podeEscrever = role === 'manifesto' || role === 'supervisor' || role === 'admin'
+  const { historico, isLoading } = useHistoricoTratativas(p.codman, p.filial, p.serie)
+  const registrar = useRegistrarTratativa()
+
+  const opcoes = Object.entries(motivos)
+  const [motivo, setMotivo] = useState('')
+  const [texto, setTexto] = useState('')
+
+  if (p.codman == null || p.filial == null) return null
+
+  const enviar = () => {
+    if (!motivo) return
+    registrar.mutate(
+      {
+        codman: p.codman!,
+        filial: p.filial!,
+        serie: p.serie ?? '',
+        placa: cavaloDe(p),
+        destino: p.destino ?? undefined,
+        motivo,
+        notes: texto.trim() || undefined,
+      },
+      { onSuccess: () => { setMotivo(''); setTexto('') } },
+    )
+  }
+
+  return (
+    <div>
+      <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">
+        Justificativa {historico.length > 0 && <span className="text-muted-foreground">({historico.length})</span>}
+      </h4>
+
+      {isLoading ? (
+        <p className="text-xs text-muted-foreground">carregando…</p>
+      ) : historico.length === 0 ? (
+        <p className="text-xs text-muted-foreground">Nenhuma justificativa registrada.</p>
+      ) : (
+        <ol className="space-y-2">
+          {historico.map((t) => (
+            <li key={t.id} className="rounded-md border p-2.5" style={{ borderColor: 'var(--border)' }}>
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-xs font-semibold text-foreground">{t.motivo_rotulo}</span>
+                <span className="shrink-0 text-[10px] text-muted-foreground">
+                  {new Date(t.criado_em).toLocaleString('pt-BR')}
+                </span>
+              </div>
+              {t.notes && <p className="mt-1 whitespace-pre-wrap text-xs text-foreground">{t.notes}</p>}
+              <p className="mt-1 text-[10px] text-muted-foreground">{t.autor ?? 'autor não identificado'}</p>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {podeEscrever && (
+        <div className="mt-3 rounded-md border p-2.5" style={{ borderColor: 'var(--border)' }}>
+          <label className="block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+            Motivo
+          </label>
+          <select
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+            className="w-full rounded-md border bg-background px-2 py-1.5 text-xs text-foreground"
+            style={{ borderColor: 'var(--border)' }}
+          >
+            <option value="">Selecione…</option>
+            {opcoes.map(([valor, rotulo]) => (
+              <option key={valor} value={valor}>{rotulo}</option>
+            ))}
+          </select>
+
+          <label className="mt-2 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+            Observação (opcional)
+          </label>
+          <textarea
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            rows={3}
+            // mesmo limite que a API valida (t.String maxLength 2000): cortar aqui evita
+            // o operador escrever um texto longo e só descobrir no 422
+            maxLength={2000}
+            placeholder="O que está acontecendo com este manifesto"
+            className="w-full resize-y rounded-md border bg-background px-2 py-1.5 text-xs text-foreground"
+            style={{ borderColor: 'var(--border)' }}
+          />
+
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={enviar}
+              disabled={!motivo || registrar.isPending}
+              className="rounded-md px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+              style={{ background: 'var(--primary)' }}
+            >
+              {registrar.isPending ? 'Registrando…' : 'Registrar justificativa'}
+            </button>
+            {registrar.isError && (
+              <span className="text-[10px] font-semibold" style={{ color: 'var(--destructive)' }}>
+                {(registrar.error as Error)?.message ?? 'falhou'}
+              </span>
+            )}
+          </div>
+          <p className="mt-1.5 text-[10px] italic text-muted-foreground">
+            O registro não pode ser editado nem apagado — para corrigir, escreva uma nova justificativa.
+          </p>
+        </div>
+      )}
+    </div>
   )
 }

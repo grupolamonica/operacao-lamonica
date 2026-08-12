@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 
 // Baixa de Manifesto — snapshot do coletor (Sascar + Rodopar), publicado via POST
@@ -145,6 +145,39 @@ export interface PendenciaManifesto {
   destino_historico?: ManifestoDestinoHistorico | null
 }
 
+// ── Justificativa do operador (12/08) ──────────────────────────────────────
+// Vem do Postgres, NÃO do snapshot: o coletor sobrescreve o snapshot inteiro a cada
+// 5 min, então nota gravada nele seria apagada. O GET /pendencias devolve as duas
+// coisas juntas (um request só, o polling é de 30s).
+export interface TratativaRegistro {
+  id: string
+  motivo: string
+  motivo_rotulo: string
+  notes: string | null
+  autor: string | null
+  criado_em: string
+}
+
+export interface ResumoTratativa {
+  total: number
+  ultima: TratativaRegistro
+}
+
+/**
+ * Chave do manifesto no formato que a API usa para indexar `tratativas`.
+ *
+ * ATENÇÃO: é diferente de `chaveManifesto` da BaixaManifestoPage — aquela é chave de
+ * UI e precisa cobrir também o formato v1 (codlpr/placa), então leva prefixo. Esta é
+ * a chave natural do Rodopar (codman|filial|serie), a mesma do backend. Não unificar:
+ * item v1 não tem tratativa, e mudar o prefixo da chave de UI mexeria na seleção da tabela.
+ */
+export function chaveTratativa(p: PendenciaManifesto): string | null {
+  if (p.codman == null || p.filial == null) return null
+  // ESPELHA normalizarSerie() do backend (tratativas.service.ts) — trim + corte em 10, o
+  // tamanho da coluna. Se as duas divergirem, a nota existe no banco e nunca aparece na tela.
+  return `${p.codman}|${p.filial}|${(p.serie ?? '').trim().slice(0, 10)}`
+}
+
 export interface ManifestoPendenciasSnapshot {
   ok: boolean
   // nulos quando ainda não há snapshot (API acabou de subir, coletor nunca enviou)
@@ -153,6 +186,10 @@ export interface ManifestoPendenciasSnapshot {
   idade_min: number | null
   total: number
   pendencias: PendenciaManifesto[]
+  // mapa chaveTratativa() → resumo; ausente enquanto a API antiga estiver no ar
+  tratativas?: Record<string, ResumoTratativa>
+  // lista de motivos vem da API para o seletor não divergir do que ela valida
+  motivos?: Record<string, string>
 }
 
 export function useManifestoPendencias() {
@@ -168,8 +205,57 @@ export function useManifestoPendencias() {
   return {
     data: q.data,
     pendencias: q.data?.pendencias ?? [],
+    tratativas: q.data?.tratativas ?? {},
+    motivos: q.data?.motivos ?? {},
     isLoading: q.isLoading,
     isError: q.isError,
     error: q.error,
   }
+}
+
+export interface NovaTratativaInput {
+  codman: number
+  filial: number
+  serie?: string
+  placa?: string
+  destino?: string
+  motivo: string
+  notes?: string
+}
+
+/** Registra justificativa (append-only). Invalida o snapshot para o resumo aparecer na tela. */
+export function useRegistrarTratativa() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: NovaTratativaInput) => {
+      const { data, error } = await (api.api as any).manifesto.tratativas.post(vars)
+      if (error) throw new Error((error.value as any)?.error ?? 'Falha ao registrar justificativa')
+      return data as { ok: boolean; tratativa: TratativaRegistro; chave: string }
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ['manifesto', 'pendencias'] })
+      qc.invalidateQueries({ queryKey: ['manifesto', 'tratativas', vars.codman, vars.filial] })
+    },
+  })
+}
+
+/** Histórico completo de um manifesto — só busca quando o painel de detalhes está aberto. */
+export function useHistoricoTratativas(
+  codman: number | null | undefined,
+  filial: number | null | undefined,
+  serie?: string | null,
+) {
+  const habilitado = codman != null && filial != null
+  const q = useQuery({
+    queryKey: ['manifesto', 'tratativas', codman, filial, serie ?? ''],
+    queryFn: async () => {
+      const { data, error } = await (api.api as any).manifesto
+        .tratativas[String(codman)][String(filial)].get({ query: { serie: (serie ?? '').trim() } })
+      if (error) throw new Error('Falha ao ler o histórico de justificativas')
+      return (data as { tratativas: TratativaRegistro[] }).tratativas
+    },
+    enabled: habilitado,
+    staleTime: 10_000,
+  })
+  return { historico: q.data ?? [], isLoading: q.isLoading, isError: q.isError }
 }
