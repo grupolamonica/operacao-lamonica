@@ -27,4 +27,6 @@ export * from './gr'
 export * from './spx-trip-check'
 // Credenciais das integrações (Angellira/aspx) — rotação de senha via banco
 export * from './integration-credentials'
+// Justificativa do operador na baixa de manifesto (append-only; snapshot é volátil no Redis)
+export * from './manifesto-tratativas'
 export * from './relations'
