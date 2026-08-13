@@ -11,6 +11,7 @@ import {
   marcarFone,
   normalizarCodmot,
 } from './motorista-fones.service'
+import { relatorioTratativas } from './tratativas.report.service'
 import { applySnapshot, getPendencias } from './manifesto.service'
 import {
   chaveManifesto,
@@ -323,6 +324,39 @@ const readPlugin = new Elysia({ name: 'manifesto-read' })
           detail: {
             tags: ['manifesto'],
             summary: 'Snapshot atual de pendências de baixa de manifesto (tela /baixa-manifesto)',
+          },
+        },
+      )
+      // Relatório de motivos (13/08). Mora dentro da tela de manifesto, então quem vê a tela vê o
+      // relatório: só authGuard, igual ao GET /pendencias. Sem quebra por autor (decisão Danilo) —
+      // o papel `manifesto` é confinado por prefixo de URL, e corte por autor é dado de avaliação.
+      .get(
+        '/tratativas/relatorio',
+        async ({ query, set }) => {
+          try {
+            return { ok: true, ...(await relatorioTratativas(query.inicio, query.fim)) }
+          } catch (e: any) {
+            // Tolerância INVERTIDA em relação ao GET /pendencias: lá a justificativa é aditiva a uma
+            // tela crítica e degradar para vazio é o certo. Aqui o relatório AFIRMA um fato, e
+            // relatório vazio seria lido como "ninguém justificou" — falhar alto é mais honesto.
+            logger.error({ error: e?.message ?? String(e) }, '[manifesto] relatório de tratativas falhou')
+            set.status = 503
+            return {
+              ok: false,
+              error: 'não foi possível montar o relatório — verifique se a migration das justificativas foi aplicada',
+            }
+          }
+        },
+        {
+          // pattern não é decoração: o bound entra numa expressão ::timestamp, então 'abc' viraria
+          // 500 do Postgres em vez de erro útil
+          query: t.Object({
+            inicio: t.Optional(t.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}$' })),
+            fim: t.Optional(t.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}$' })),
+          }),
+          detail: {
+            tags: ['manifesto'],
+            summary: 'Distribuição de motivos das justificativas + cobertura dos vencidos',
           },
         },
       )

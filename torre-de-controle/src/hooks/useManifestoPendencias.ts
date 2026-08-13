@@ -321,6 +321,55 @@ export function useMarcarFoneMotorista() {
   })
 }
 
+// ── Relatório de motivos (13/08) ────────────────────────────────────────────
+export interface MotivoAgregado {
+  motivo: string
+  motivo_rotulo: string
+  ativo: boolean
+  notas: number
+  manifestos: number
+}
+
+export interface RelatorioTratativas {
+  ok: boolean
+  periodo: { inicio: string | null; fim: string | null }
+  total_notas: number
+  total_manifestos: number
+  por_motivo: MotivoAgregado[]
+  serie: { dia: string; total: number }[]
+  por_destino: { destino: string; notas: number; manifestos: number }[]
+  cobertura: {
+    snapshot_em: string | null
+    idade_min: number | null
+    snapshot_ok: boolean
+    abertos: number
+    vencidos: number
+    vencidos_com_justificativa: number
+    vencidos_sem_justificativa: number
+    cobertura_pct: number
+  } | null
+}
+
+/**
+ * Distribuição de motivos num período. `enabled` só quando a seção está aberta — não faz sentido
+ * pesar a tela operacional com um agregado que ninguém está olhando.
+ */
+export function useRelatorioTratativas(inicio: string, fim: string, habilitado: boolean) {
+  const q = useQuery({
+    queryKey: ['manifesto', 'relatorio', inicio, fim],
+    queryFn: async (): Promise<RelatorioTratativas> => {
+      const { data, error } = await (api.api as any).manifesto.tratativas.relatorio.get({
+        query: { inicio, fim },
+      })
+      if (error) throw new Error((error.value as any)?.error ?? 'Falha ao montar o relatório')
+      return data as RelatorioTratativas
+    },
+    enabled: habilitado,
+    staleTime: 60_000,
+  })
+  return { relatorio: q.data, isLoading: q.isLoading, isError: q.isError, error: q.error }
+}
+
 /** Histórico completo de um manifesto — só busca quando o painel de detalhes está aberto. */
 export function useHistoricoTratativas(
   codman: number | null | undefined,

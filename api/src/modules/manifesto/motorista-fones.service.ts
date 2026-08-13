@@ -177,6 +177,45 @@ export async function adicionarFone(
       .returning()
 
     if (!criadas.length) {
+      // A linha pode existir apenas como OVERRIDE de um número do Rodopar (origem='rodopar',
+      // criada para carregar a marca). Se o operador está cadastrando esse número
+      // explicitamente, ADOTA a linha: vira 'operador'. Sem isso, um número que depois saia do
+      // cadastro do Rodopar ficaria invisível na tela e sem como ser desmarcado — e a mensagem
+      // "use Desfazer na linha dele" apontaria para um botão que não existe.
+      // `nao_funciona` NÃO é tocado: re-adicionar não desrisca em silêncio.
+      const [adotada] = await tx
+        .update(manifestoMotoristaFones)
+        .set({
+          origem: 'operador',
+          numero: input.numero.trim().slice(0, 40),
+          rotulo: (input.rotulo || 'Celular').slice(0, 40),
+          updatedBy: input.operatorId,
+          updatedByName: autor,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(manifestoMotoristaFones.codmot, codmot),
+            eq(manifestoMotoristaFones.foneDigitos, digitos),
+            eq(manifestoMotoristaFones.origem, 'rodopar'),
+          ),
+        )
+        .returning()
+
+      if (adotada) {
+        await tx.insert(manifestoMotoristaFoneEventos).values({
+          codmot,
+          foneDigitos: digitos,
+          acao: 'criou',
+          numero: adotada.numero,
+          rotulo: adotada.rotulo,
+          origem: 'operador',
+          operatorId: input.operatorId,
+          authorName: autor,
+        })
+        return { fone: paraRegistro(adotada), jaExistia: true }
+      }
+
       const [existente] = await tx
         .select()
         .from(manifestoMotoristaFones)
@@ -187,6 +226,9 @@ export async function adicionarFone(
           ),
         )
         .limit(1)
+      // defensivo: o DO NOTHING só dispara com conflito, então a linha existe. Se por alguma
+      // razão não vier, erro claro em vez de estourar em paraRegistro(undefined).
+      if (!existente) throw new Error('telefone em conflito não encontrado após ON CONFLICT')
       return { fone: paraRegistro(existente), jaExistia: true }
     }
 

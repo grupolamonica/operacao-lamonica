@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { MessageSquare, PackageCheck, Phone, Volume2, VolumeX } from 'lucide-react'
 import { PanelCard } from '@/components/domain/PanelCard'
+import { RelatorioMotivos } from './components/RelatorioMotivos'
 import { SidePanelLayout } from '@/components/domain/SidePanelLayout'
 import { FixedPanel } from '@/components/domain/FixedPanel'
 import { Button } from '@/components/ui/button'
@@ -740,6 +741,12 @@ export function BaixaManifestoPage() {
               </table>
             </div>
           </PanelCard>
+
+          {/* Relatório de motivos: recolhido por padrão e só busca quando aberto — a fila de
+              manifestos é a função crítica da tela e não pode dividir atenção nem carga com ele. */}
+          <div className="mt-3">
+            <RelatorioMotivos />
+          </div>
         </div>
 
         {selected && (
@@ -890,10 +897,15 @@ function ContatosDialog({
                     {podeEscrever && c.codmot && (
                       <button
                         type="button"
-                        onClick={() => marcar.mutate({
-                          codmot: c.codmot!, numero: f.numero,
-                          nao_funciona: !f.naoFunciona, rotulo: f.rotulo, motorista_nome: c.nome,
-                        })}
+                        // onError obrigatório: sem ele a falha era MUDA — o número simplesmente
+                        // não riscava e o operador não sabia por quê (o gêmeo `adicionar` já tratava)
+                        onClick={() => {
+                          setAviso(null)
+                          marcar.mutate({
+                            codmot: c.codmot!, numero: f.numero,
+                            nao_funciona: !f.naoFunciona, rotulo: f.rotulo, motorista_nome: c.nome,
+                          }, { onError: (e) => setAviso((e as Error).message) })
+                        }}
                         disabled={marcar.isPending}
                         className="shrink-0 rounded-md border px-2 py-1 text-[10px] font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50"
                         style={{ borderColor: 'var(--border)' }}
@@ -908,6 +920,14 @@ function ContatosDialog({
                   <p className="text-xs text-muted-foreground">Nenhum telefone no cadastro do Rodopar.</p>
                 )}
               </div>
+
+              {/* aviso fora do formulário: serve tanto ao cadastro quanto ao botão de riscar,
+                  e fica logo abaixo da lista onde a ação aconteceu */}
+              {aviso && (
+                <p className="mt-1.5 text-[10px] font-semibold" style={{ color: 'var(--destructive)' }}>
+                  {aviso}
+                </p>
+              )}
 
               {podeEscrever && c.codmot && (
                 <div className="mt-2.5 rounded-md border p-2.5" style={{ borderColor: 'var(--border)' }}>
@@ -941,9 +961,6 @@ function ContatosDialog({
                       {adicionar.isPending ? '…' : 'Adicionar'}
                     </button>
                   </div>
-                  {aviso && (
-                    <p className="mt-1.5 text-[10px] font-semibold" style={{ color: 'var(--destructive)' }}>{aviso}</p>
-                  )}
                   <p className="mt-1 text-[10px] italic text-muted-foreground">
                     Vale para as próximas viagens deste motorista.
                   </p>
