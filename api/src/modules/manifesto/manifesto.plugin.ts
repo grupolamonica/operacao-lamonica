@@ -2,7 +2,16 @@ import { Elysia, t } from 'elysia'
 
 import { authGuard } from '../../lib/rbac'
 import { logger } from '../../lib/logger'
-import { MOTIVOS_TRATATIVA } from '../../db/schema'
+import { MOTIVOS_TRATATIVA, ROTULOS_FONE } from '../../db/schema'
+import {
+  adicionarFone,
+  digitosFone,
+  fonesPorMotorista,
+  foneValido,
+  marcarFone,
+  normalizarCodmot,
+} from './motorista-fones.service'
+import { relatorioTratativas } from './tratativas.report.service'
 import { applySnapshot, getPendencias } from './manifesto.service'
 import {
   chaveManifesto,
@@ -199,6 +208,11 @@ const PendenciaSchema = t.Object({
   cavalo: t.Optional(t.String()),
   carreta: t.Optional(t.String()),
   motorista_fones: t.Optional(t.Array(TelefoneSchema)),
+  // CODMOT do Rodopar (RODMOT.CODMOT via M.CODMO1) — chave dos telefones que o operador
+  // cadastra. t.Optional + t.Nullable porque o coletor antigo não manda e o novo manda '' quando
+  // o LEFT JOIN não casa (mesma lição do sm.* acima). Sem declarar aqui, o TypeBox descarta o
+  // campo em silêncio e a feature de telefone nunca liga.
+  motorista_codmot: t.Optional(t.Nullable(t.String())),
   destino_uf: t.Optional(t.String()),
   // abas da tela FROTA × DEMAIS (decisão Danilo 11/08 — ver V2-CONTRATO.md)
   na_frota_sascar: t.Optional(t.Boolean()),
@@ -248,9 +262,10 @@ const ingestPlugin = new Elysia({ name: 'manifesto-ingest' }).group('/api/manife
   ),
 )
 
-// Quem pode registrar justificativa (decisão Danilo 12/08): os 3 operadores dedicados
-// (papel 'manifesto') e a supervisão. 'analyst'/'viewer' seguem só lendo.
-const PODE_JUSTIFICAR = ['manifesto', 'supervisor', 'admin'] as const
+// Quem pode ESCREVER nesta tela (decisão Danilo 12/08, estendida aos telefones em 13/08): os 3
+// operadores dedicados (papel 'manifesto') e a supervisão. 'analyst'/'viewer' seguem só lendo.
+// Uma lista só para justificativa e telefone — duas listas iguais divergem com o tempo.
+const PODE_ESCREVER = ['manifesto', 'supervisor', 'admin'] as const
 
 const readPlugin = new Elysia({ name: 'manifesto-read' })
   .use(authGuard)
@@ -280,12 +295,68 @@ const readPlugin = new Elysia({ name: 'manifesto-read' })
               )
             }
           }
-          return { ok: true, ...view, tratativas, motivos: MOTIVOS_TRATATIVA }
+          // Telefones que o operador cadastrou/riscou, por CODMOT. try/catch SEPARADO do de
+          // tratativas de propósito: uma falha não pode esconder a outra nem levar a outra embora.
+          const codmots = [...new Set(
+            view.pendencias.map((p) => normalizarCodmot(p.motorista_codmot)).filter(Boolean),
+          )]
+          let fones_motorista: Awaited<ReturnType<typeof fonesPorMotorista>> = {}
+          if (codmots.length) {
+            try {
+              fones_motorista = await fonesPorMotorista(codmots)
+            } catch (e: any) {
+              logger.error(
+                { error: e?.message ?? String(e) },
+                '[manifesto] falha ao ler telefones do motorista — seguindo sem eles (tabela ausente?)',
+              )
+            }
+          }
+          return {
+            ok: true,
+            ...view,
+            tratativas,
+            motivos: MOTIVOS_TRATATIVA,
+            fones_motorista,
+            rotulos_fone: ROTULOS_FONE,
+          }
         },
         {
           detail: {
             tags: ['manifesto'],
             summary: 'Snapshot atual de pendências de baixa de manifesto (tela /baixa-manifesto)',
+          },
+        },
+      )
+      // Relatório de motivos (13/08). Mora dentro da tela de manifesto, então quem vê a tela vê o
+      // relatório: só authGuard, igual ao GET /pendencias. Sem quebra por autor (decisão Danilo) —
+      // o papel `manifesto` é confinado por prefixo de URL, e corte por autor é dado de avaliação.
+      .get(
+        '/tratativas/relatorio',
+        async ({ query, set }) => {
+          try {
+            return { ok: true, ...(await relatorioTratativas(query.inicio, query.fim)) }
+          } catch (e: any) {
+            // Tolerância INVERTIDA em relação ao GET /pendencias: lá a justificativa é aditiva a uma
+            // tela crítica e degradar para vazio é o certo. Aqui o relatório AFIRMA um fato, e
+            // relatório vazio seria lido como "ninguém justificou" — falhar alto é mais honesto.
+            logger.error({ error: e?.message ?? String(e) }, '[manifesto] relatório de tratativas falhou')
+            set.status = 503
+            return {
+              ok: false,
+              error: 'não foi possível montar o relatório — verifique se a migration das justificativas foi aplicada',
+            }
+          }
+        },
+        {
+          // pattern não é decoração: o bound entra numa expressão ::timestamp, então 'abc' viraria
+          // 500 do Postgres em vez de erro útil
+          query: t.Object({
+            inicio: t.Optional(t.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}$' })),
+            fim: t.Optional(t.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}$' })),
+          }),
+          detail: {
+            tags: ['manifesto'],
+            summary: 'Distribuição de motivos das justificativas + cobertura dos vencidos',
           },
         },
       )
@@ -319,9 +390,9 @@ const readPlugin = new Elysia({ name: 'manifesto-read' })
           // Gate na PRÓPRIA rota, não via requireRole: o onBeforeHandle dele é 'local' e
           // não alcança a rota do consumidor, o que deixaria isto ABERTO (ver a nota em
           // audit.plugin.ts). O servidor é a fonte da verdade; a tela só esconde o botão.
-          if (!PODE_JUSTIFICAR.includes(user.role as (typeof PODE_JUSTIFICAR)[number])) {
+          if (!PODE_ESCREVER.includes(user.role as (typeof PODE_ESCREVER)[number])) {
             set.status = 403
-            return { ok: false, error: `Forbidden: requires role ${PODE_JUSTIFICAR.join('|')}` }
+            return { ok: false, error: `Forbidden: requires role ${PODE_ESCREVER.join('|')}` }
           }
           if (!motivoValido(body.motivo)) {
             set.status = 400
@@ -362,6 +433,96 @@ const readPlugin = new Elysia({ name: 'manifesto-read' })
           detail: {
             tags: ['manifesto'],
             summary: 'Registra justificativa do operador (append-only) — papel manifesto/supervisor/admin',
+          },
+        },
+      )
+      // ── Telefones do motorista (13/08) ───────────────────────────────────────
+      // O Rodopar manda UM número por motorista (medido: 87/87) e é read-only para nós. Se ele
+      // não atende, o operador não tem alternativa — daí poder cadastrar e riscar.
+      .post(
+        '/motorista-fones',
+        async ({ body, user, set }) => {
+          if (!PODE_ESCREVER.includes(user.role as (typeof PODE_ESCREVER)[number])) {
+            set.status = 403
+            return { ok: false, error: `Forbidden: requires role ${PODE_ESCREVER.join('|')}` }
+          }
+          const codmot = normalizarCodmot(body.codmot)
+          if (!codmot) {
+            set.status = 422
+            return {
+              ok: false,
+              error: 'codmot ausente — este manifesto não trouxe o código do motorista (coletor antigo?)',
+            }
+          }
+          const digitos = digitosFone(body.numero)
+          if (!foneValido(digitos)) {
+            set.status = 422
+            return { ok: false, error: 'informe DDD + número (10 ou 11 dígitos)' }
+          }
+          const { fone, jaExistia } = await adicionarFone({
+            codmot,
+            numero: body.numero,
+            rotulo: body.rotulo ?? null,
+            motoristaNome: body.motorista_nome ?? null,
+            operatorId: user.id,
+          })
+          return { ok: true, fone, ja_existia: jaExistia }
+        },
+        {
+          body: t.Object({
+            codmot: t.String({ maxLength: 30 }),
+            numero: t.String({ maxLength: 40 }),
+            rotulo: t.Optional(t.String({ maxLength: 40 })),
+            motorista_nome: t.Optional(t.String({ maxLength: 200 })),
+          }),
+          detail: {
+            tags: ['manifesto'],
+            summary: 'Cadastra telefone do motorista — papel manifesto/supervisor/admin',
+          },
+        },
+      )
+      // PUT idempotente com booleano em vez de duas rotas (mesmo idioma de PUT /api/gr/spx/override).
+      // Serve os dois casos: número do Rodopar (cria a linha de override) e número nosso (atualiza).
+      .put(
+        '/motorista-fones/marca',
+        async ({ body, user, set }) => {
+          if (!PODE_ESCREVER.includes(user.role as (typeof PODE_ESCREVER)[number])) {
+            set.status = 403
+            return { ok: false, error: `Forbidden: requires role ${PODE_ESCREVER.join('|')}` }
+          }
+          const codmot = normalizarCodmot(body.codmot)
+          if (!codmot) {
+            set.status = 422
+            return { ok: false, error: 'codmot ausente — este manifesto não trouxe o código do motorista' }
+          }
+          const digitos = digitosFone(body.numero)
+          if (!foneValido(digitos)) {
+            set.status = 422
+            return { ok: false, error: 'informe DDD + número (10 ou 11 dígitos)' }
+          }
+          const fone = await marcarFone({
+            codmot,
+            numero: body.numero,
+            naoFunciona: body.nao_funciona,
+            rotulo: body.rotulo ?? null,
+            motoristaNome: body.motorista_nome ?? null,
+            operatorId: user.id,
+          })
+          return { ok: true, fone }
+        },
+        {
+          // `origem` NÃO está no body de propósito: o servidor decide (linha nova = veio do
+          // Rodopar; linha existente mantém a origem que tinha). O cliente não rebatiza registro.
+          body: t.Object({
+            codmot: t.String({ maxLength: 30 }),
+            numero: t.String({ maxLength: 40 }),
+            nao_funciona: t.Boolean(),
+            rotulo: t.Optional(t.String({ maxLength: 40 })),
+            motorista_nome: t.Optional(t.String({ maxLength: 200 })),
+          }),
+          detail: {
+            tags: ['manifesto'],
+            summary: 'Marca/desmarca telefone como "não funciona" — papel manifesto/supervisor/admin',
           },
         },
       ),

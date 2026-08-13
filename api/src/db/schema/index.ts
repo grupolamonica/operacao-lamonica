@@ -29,4 +29,6 @@ export * from './spx-trip-check'
 export * from './integration-credentials'
 // Justificativa do operador na baixa de manifesto (append-only; snapshot é volátil no Redis)
 export * from './manifesto-tratativas'
+// Telefones do motorista gerenciados pelo operador (override lateral; o Rodopar é read-only)
+export * from './manifesto-motorista-fones'
 export * from './relations'

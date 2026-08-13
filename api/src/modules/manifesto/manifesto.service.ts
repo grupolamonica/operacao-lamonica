@@ -130,6 +130,10 @@ export interface ManifestoPendencia {
   cavalo?: string
   carreta?: string
   motorista_fones?: Telefone[]
+  // CODMOT do Rodopar — chave dos telefones cadastrados pelo operador (ver
+  // motorista-fones.service.ts). String porque o CODMOT pode vir com padding; '' quando o
+  // LEFT JOIN não casou.
+  motorista_codmot?: string | null
   destino_uf?: string
   // abas da tela FROTA × DEMAIS (decisão Danilo 11/08 — ver V2-CONTRATO.md)
   na_frota_sascar?: boolean
