@@ -133,6 +133,8 @@ export interface PendenciaManifesto {
   cavalo?: string
   carreta?: string
   motorista_fones?: Telefone[]
+  // CODMOT do Rodopar — chave dos telefones que o operador cadastra (ver codmotDaPendencia)
+  motorista_codmot?: string | null
   destino_uf?: string
   // abas da tela FROTA × DEMAIS (decisão Danilo 11/08 — ver V2-CONTRATO.md)
   na_frota_sascar?: boolean
@@ -178,6 +180,40 @@ export function chaveTratativa(p: PendenciaManifesto): string | null {
   return `${p.codman}|${p.filial}|${(p.serie ?? '').trim().slice(0, 10)}`
 }
 
+// ── Telefones do motorista (13/08) ──────────────────────────────────────────
+// Vêm do Postgres, não do snapshot: o Rodopar manda UM número por motorista e é read-only para
+// nós. O operador cadastra outros e marca os que não funcionam (que ficam RISCADOS na tela, não
+// escondidos — decisão do Danilo). Chaveado pelo CODMOT, então o número segue o motorista.
+export interface FoneMotoristaRegistro {
+  digitos: string
+  numero: string
+  rotulo: string
+  origem: string
+  nao_funciona: boolean
+  criado_por: string | null
+  criado_em: string
+  atualizado_por: string | null
+  atualizado_em: string
+}
+
+/**
+ * CODMOT canônico — ESPELHA normalizarCodmot() de
+ * api/src/modules/manifesto/motorista-fones.service.ts. '001234' e '1234' são o mesmo motorista;
+ * '' e '0' são inválidos (não existe "motorista sem código").
+ */
+export function normalizarCodmot(valor?: string | number | null): string {
+  const s = String(valor ?? '').trim()
+  if (!s) return ''
+  const limpo = /^\d+$/.test(s) ? s.replace(/^0+/, '') : s
+  if (!limpo || limpo === '0') return ''
+  return limpo.slice(0, 20)
+}
+
+/** CODMOT do manifesto, ou null quando o snapshot não trouxe (coletor antigo). */
+export function codmotDaPendencia(p: PendenciaManifesto): string | null {
+  return normalizarCodmot(p.motorista_codmot) || null
+}
+
 export interface ManifestoPendenciasSnapshot {
   ok: boolean
   // nulos quando ainda não há snapshot (API acabou de subir, coletor nunca enviou)
@@ -190,6 +226,10 @@ export interface ManifestoPendenciasSnapshot {
   tratativas?: Record<string, ResumoTratativa>
   // lista de motivos vem da API para o seletor não divergir do que ela valida
   motivos?: Record<string, string>
+  // mapa CODMOT → telefones cadastrados/riscados; ausente na API antiga
+  fones_motorista?: Record<string, FoneMotoristaRegistro[]>
+  // rótulos oferecidos no seletor, também da API pelo mesmo motivo dos motivos
+  rotulos_fone?: readonly string[]
 }
 
 export function useManifestoPendencias() {
@@ -207,6 +247,8 @@ export function useManifestoPendencias() {
     pendencias: q.data?.pendencias ?? [],
     tratativas: q.data?.tratativas ?? {},
     motivos: q.data?.motivos ?? {},
+    fonesMotorista: q.data?.fones_motorista ?? {},
+    rotulosFone: q.data?.rotulos_fone ?? ['Celular', 'WhatsApp', 'Recado', 'Outro'],
     isLoading: q.isLoading,
     isError: q.isError,
     error: q.error,
@@ -236,6 +278,46 @@ export function useRegistrarTratativa() {
       qc.invalidateQueries({ queryKey: ['manifesto', 'pendencias'] })
       qc.invalidateQueries({ queryKey: ['manifesto', 'tratativas', vars.codman, vars.filial] })
     },
+  })
+}
+
+/**
+ * Cadastra telefone do motorista. Invalida o snapshot — e como o mapa vem do Postgres (não do
+ * snapshot do coletor), o número aparece no próximo refetch, sem esperar o ciclo de 5 min.
+ */
+export function useAdicionarFoneMotorista() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: {
+      codmot: string
+      numero: string
+      rotulo?: string
+      motorista_nome?: string
+    }) => {
+      const { data, error } = await (api.api as any).manifesto['motorista-fones'].post(vars)
+      if (error) throw new Error((error.value as any)?.error ?? 'Falha ao cadastrar telefone')
+      return data as { ok: boolean; fone: FoneMotoristaRegistro; ja_existia: boolean }
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['manifesto', 'pendencias'] }),
+  })
+}
+
+/** Liga/desliga o "não funciona" (o riscado). Serve inclusive para número vindo do Rodopar. */
+export function useMarcarFoneMotorista() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: {
+      codmot: string
+      numero: string
+      nao_funciona: boolean
+      rotulo?: string
+      motorista_nome?: string
+    }) => {
+      const { data, error } = await (api.api as any).manifesto['motorista-fones'].marca.put(vars)
+      if (error) throw new Error((error.value as any)?.error ?? 'Falha ao marcar telefone')
+      return data as { ok: boolean; fone: FoneMotoristaRegistro }
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['manifesto', 'pendencias'] }),
   })
 }
 

@@ -9,10 +9,14 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   chaveTratativa,
+  codmotDaPendencia,
+  useAdicionarFoneMotorista,
   useHistoricoTratativas,
   useManifestoPendencias,
+  useMarcarFoneMotorista,
   useRegistrarTratativa,
   type EstadoManifesto,
+  type FoneMotoristaRegistro,
   type PendenciaManifesto,
   type ResumoTratativa,
   type Telefone,
@@ -20,6 +24,7 @@ import {
 import { useNow } from '@/hooks/useNow'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { formatDuration } from '@/lib/formatters'
+import { digitosFone, foneValido, telHref } from '@/lib/telefone'
 import { unlockAudio, beep, speak, primeSpeech } from '@/lib/audioAlert'
 
 /**
@@ -194,16 +199,90 @@ function fmtDistancia(m: number | null | undefined): string {
   return `${Math.round(m)} m`
 }
 
-// Contatos de uma pendência: v2 manda `motorista_fones` no topo (um motorista);
-// v1 manda dentro de `viagem` (até dois motoristas). Unifica os dois formatos.
-function contatosDaPendencia(p: PendenciaManifesto): { nome: string; fones: Telefone[] }[] {
-  if (p.motorista_fones?.length) {
-    return [{ nome: p.motorista || '—', fones: p.motorista_fones }]
+// Um número na tela, já resolvido: veio do Rodopar ou foi cadastrado, e está ou não riscado.
+export interface FoneExibicao {
+  digitos: string
+  numero: string
+  rotulo: string
+  origem: 'rodopar' | 'operador'
+  naoFunciona: boolean
+  marcadoPor: string | null
+  marcadoEm: string | null
+}
+
+export interface ContatoMotorista {
+  nome: string
+  codmot: string | null
+  fones: FoneExibicao[]
+}
+
+/**
+ * Contatos de uma pendência, mesclando o snapshot (Rodopar) com o que o operador cadastrou/riscou.
+ *
+ * v2 manda `motorista_fones` no topo (um motorista); v1 manda dentro de `viagem` (até dois).
+ * A marca de "não funciona" mora na NOSSA tabela e é cruzada aqui por dígitos — inclusive para
+ * número que veio do Rodopar, onde não escrevemos.
+ *
+ * ⚠️ O ramo v2 dispara também quando existe apenas `codmot` sem nenhum telefone: motorista sem
+ * número no Rodopar é justamente o caso em que o operador MAIS precisa cadastrar.
+ */
+function contatosDaPendencia(
+  p: PendenciaManifesto,
+  fonesMotorista: Record<string, FoneMotoristaRegistro[]> = {},
+): ContatoMotorista[] {
+  const codmot = codmotDaPendencia(p)
+
+  if (p.motorista_fones?.length || codmot) {
+    const porDigitos = new Map<string, FoneExibicao>()
+    for (const f of p.motorista_fones ?? []) {
+      const d = digitosFone(f.numero)
+      porDigitos.set(d, {
+        digitos: d, numero: f.numero, rotulo: f.rotulo,
+        origem: 'rodopar', naoFunciona: false, marcadoPor: null, marcadoEm: null,
+      })
+    }
+    for (const r of (codmot ? fonesMotorista[codmot] : undefined) ?? []) {
+      const existente = porDigitos.get(r.digitos)
+      if (existente) {
+        // mesmo número do Rodopar: nossa linha só aplica a marca, sem duplicar
+        existente.naoFunciona = r.nao_funciona
+        existente.marcadoPor = r.atualizado_por
+        existente.marcadoEm = r.atualizado_em
+      } else if (r.origem === 'operador') {
+        porDigitos.set(r.digitos, {
+          digitos: r.digitos, numero: r.numero, rotulo: r.rotulo,
+          origem: 'operador', naoFunciona: r.nao_funciona,
+          marcadoPor: r.atualizado_por, marcadoEm: r.atualizado_em,
+        })
+      }
+      // linha 'rodopar' cujo número saiu do snapshot (cadastro mudou): não exibe — o número
+      // não é mais o do motorista, e mostrá-lo confundiria quem vai ligar
+    }
+    return [{ nome: p.motorista || '—', codmot, fones: [...porDigitos.values()] }]
   }
-  const legado = (fone?: string) => (fone ? [{ rotulo: 'Telefone', numero: fone }] : [])
+
+  // ── v1: sem codmot e sem motorista_fones, preserva o formato antigo (sem escrita) ──
+  const legado = (fone?: string): FoneExibicao[] =>
+    fone
+      ? [{
+          digitos: digitosFone(fone), numero: fone, rotulo: 'Telefone',
+          origem: 'rodopar', naoFunciona: false, marcadoPor: null, marcadoEm: null,
+        }]
+      : []
+  const daLista = (fones?: Telefone[]): FoneExibicao[] =>
+    (fones ?? []).map((f) => ({
+      digitos: digitosFone(f.numero), numero: f.numero, rotulo: f.rotulo,
+      origem: 'rodopar' as const, naoFunciona: false, marcadoPor: null, marcadoEm: null,
+    }))
   return [
-    { nome: p.motorista ?? '', fones: p.viagem?.motorista_fones ?? legado(p.viagem?.motorista_fone) },
-    { nome: p.viagem?.motorista2 ?? '', fones: p.viagem?.motorista2_fones ?? legado(p.viagem?.motorista2_fone) },
+    {
+      nome: p.motorista ?? '', codmot: null,
+      fones: p.viagem?.motorista_fones ? daLista(p.viagem.motorista_fones) : legado(p.viagem?.motorista_fone),
+    },
+    {
+      nome: p.viagem?.motorista2 ?? '', codmot: null,
+      fones: p.viagem?.motorista2_fones ? daLista(p.viagem.motorista2_fones) : legado(p.viagem?.motorista2_fone),
+    },
   ].filter((c) => c.nome && c.fones.length > 0)
 }
 
@@ -227,7 +306,14 @@ function rankEstado(p: PendenciaManifesto): number {
 }
 
 export function BaixaManifestoPage() {
-  const { data: snapshot, pendencias, tratativas, motivos, isLoading, isError } = useManifestoPendencias()
+  const {
+    data: snapshot, pendencias, tratativas, motivos,
+    fonesMotorista, rotulosFone, isLoading, isError,
+  } = useManifestoPendencias()
+  // papel com escrita (justificativa e telefone) — o gate de verdade é no servidor; aqui só
+  // decide o que mostrar. Antes isto vivia só dentro de TratativasSecao.
+  const role = useAuthStore((s) => s.user?.role)
+  const podeEscrever = role === 'manifesto' || role === 'supervisor' || role === 'admin'
   const now = useNow(30_000)
   const [soundOn, setSoundOn] = useState(true)
   const seenKeys = useRef<Set<string> | null>(null)
@@ -495,6 +581,10 @@ export function BaixaManifestoPage() {
                     // acima (que também cobre o formato v1) — ver chaveTratativa
                     const chaveT = chaveTratativa(p)
                     const resumoTratativa: ResumoTratativa | undefined = chaveT ? tratativas[chaveT] : undefined
+                    // telefones já mesclados (Rodopar + cadastrados) — `fonesUteis` conta os que
+                    // não estão riscados: zero significa "não tenho como falar com este motorista"
+                    const fonesDaLinha = contatosDaPendencia(p, fonesMotorista).flatMap((c) => c.fones)
+                    const fonesUteis = fonesDaLinha.filter((f) => !f.naoFunciona).length
                     const cliente = p.sm?.cliente || p.destino || '—'
                     const destinoLinha = [p.destino, p.destino_uf ?? p.viagem?.destino_uf].filter(Boolean).join('/')
                     return (
@@ -590,11 +680,18 @@ export function BaixaManifestoPage() {
                         <td className="px-3 py-2 font-medium">{p.motorista || '—'}</td>
                         {/* coluna própria: ícone sempre alinhado, independente do tamanho do nome */}
                         <td className="w-10 px-2 py-2 text-center">
-                          {contatosDaPendencia(p).length > 0 && (
+                          {(fonesDaLinha.length > 0 || (podeEscrever && codmotDaPendencia(p))) && (
                             <button
                               type="button"
-                              className="rounded-md p-1 text-primary hover:bg-muted"
-                              title="Ver telefones cadastrados"
+                              className="rounded-md p-1 hover:bg-muted"
+                              style={{ color: fonesUteis > 0 ? 'var(--primary)' : 'var(--muted-foreground)' }}
+                              title={
+                                fonesDaLinha.length === 0
+                                  ? 'Sem telefone no cadastro — cadastrar'
+                                  : fonesUteis === 0
+                                    ? 'Todos os telefones marcados como "não funciona"'
+                                    : 'Ver telefones'
+                              }
                               onClick={(e) => { e.stopPropagation(); setContatosDe(key) }}
                             >
                               <Phone className="h-4 w-4" />
@@ -658,13 +755,24 @@ export function BaixaManifestoPage() {
               pendencia={selected}
               now={now}
               motivos={motivos}
+              fonesMotorista={fonesMotorista}
               onClose={() => setSelectedKey(null)}
             />
           </FixedPanel>
         )}
       </div>
 
-      <ContatosDialog pendencia={pendenciaContatos} onClose={() => setContatosDe(null)} />
+      {/* key OBRIGATÓRIA: este Dialog fica sempre montado (só alterna `open`), então sem ela o
+          número digitado no formulário de um motorista permaneceria ao abrir o de outro — e podia
+          ser cadastrado na pessoa errada. Mesmo remédio do painel de detalhes. */}
+      <ContatosDialog
+        key={contatosDe ?? 'sem-contato'}
+        pendencia={pendenciaContatos}
+        onClose={() => setContatosDe(null)}
+        fonesMotorista={fonesMotorista}
+        rotulos={rotulosFone}
+        podeEscrever={podeEscrever}
+      />
     </div>
   )
 }
@@ -682,14 +790,56 @@ function Metric({ label, value, valueStyle }: { label: string; value: string; va
   )
 }
 
-// Modal de contatos: aberto pelo ícone 📞 da tabela. Lista um botão por número
-// (o motorista pode ter celular E telefone diferentes) — clique disca via tel:.
+/**
+ * Modal de contatos: aberto pelo ícone 📞 da tabela. Um botão por número — clique disca via tel:.
+ *
+ * É a superfície de ESCRITA dos telefones (13/08): o Rodopar manda um número só por motorista
+ * (medido: 87/87) e é read-only para nós, então quando aquele número não atende o operador não
+ * tem alternativa. Aqui ele cadastra outros e marca os que não funcionam. O riscado continua
+ * visível e clicável — é aviso de "já tentaram", não bloqueio.
+ */
 function ContatosDialog({
-  pendencia, onClose,
-}: { pendencia: PendenciaManifesto | null; onClose: () => void }) {
-  const contatos = pendencia ? contatosDaPendencia(pendencia) : []
+  pendencia, onClose, fonesMotorista, rotulos, podeEscrever,
+}: {
+  pendencia: PendenciaManifesto | null
+  onClose: () => void
+  fonesMotorista: Record<string, FoneMotoristaRegistro[]>
+  rotulos: readonly string[]
+  podeEscrever: boolean
+}) {
+  const contatos = pendencia ? contatosDaPendencia(pendencia, fonesMotorista) : []
+  const marcar = useMarcarFoneMotorista()
+  const adicionar = useAdicionarFoneMotorista()
+  const [novo, setNovo] = useState('')
+  const [rotulo, setRotulo] = useState(rotulos[0] ?? 'Celular')
+  const [aviso, setAviso] = useState<string | null>(null)
+
+  const enviarNovo = (codmot: string, nome: string) => {
+    setAviso(null)
+    if (!foneValido(digitosFone(novo))) {
+      setAviso('Informe DDD + número (10 ou 11 dígitos).')
+      return
+    }
+    adicionar.mutate(
+      { codmot, numero: novo.trim(), rotulo, motorista_nome: nome },
+      {
+        onSuccess: (r) => {
+          setNovo('')
+          if (r?.ja_existia) {
+            setAviso(
+              r.fone?.nao_funciona
+                ? 'Esse número já está cadastrado e está marcado como "não funciona" — use Desfazer na linha dele.'
+                : 'Esse número já está cadastrado.',
+            )
+          }
+        },
+        onError: (e) => setAviso((e as Error).message),
+      },
+    )
+  }
+
   return (
-    <Dialog open={!!pendencia} onOpenChange={(aberto) => { if (!aberto) onClose() }}>
+    <Dialog open={!!pendencia} onOpenChange={(aberto) => { if (!aberto) { onClose(); setAviso(null) } }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-base">Contatos do motorista</DialogTitle>
@@ -702,24 +852,109 @@ function ContatosDialog({
         )}
         <div className="space-y-4">
           {contatos.map((c) => (
-            <div key={c.nome}>
+            <div key={c.codmot ?? c.nome}>
               <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{c.nome}</p>
               <div className="space-y-1.5">
                 {c.fones.map((f) => (
-                  <a
-                    key={f.numero}
-                    href={`tel:+55${f.numero.replace(/\D/g, '')}`}
-                    className="flex items-center justify-between rounded-md border px-3 py-2 hover:bg-muted"
-                    style={{ borderColor: 'var(--border)' }}
-                  >
-                    <span className="flex items-center gap-2">
-                      <Phone className="h-4 w-4 text-primary" />
-                      <span className="font-mono text-sm font-medium text-foreground">{f.numero}</span>
-                    </span>
-                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{f.rotulo}</span>
-                  </a>
+                  // key por dígitos: o MESMO número em dois formatos daria key duplicada
+                  <div key={f.digitos} className="flex items-center gap-1.5">
+                    <a
+                      href={telHref(f.numero)}
+                      className="flex flex-1 items-center justify-between rounded-md border px-3 py-2 hover:bg-muted"
+                      style={{ borderColor: 'var(--border)' }}
+                      title={f.naoFunciona && f.marcadoPor ? `marcado por ${f.marcadoPor}` : undefined}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Phone className="h-4 w-4" style={{ color: f.naoFunciona ? 'var(--muted-foreground)' : 'var(--primary)' }} />
+                        <span
+                          className="font-mono text-sm font-medium"
+                          style={f.naoFunciona
+                            ? { textDecoration: 'line-through', color: 'var(--muted-foreground)' }
+                            : { color: 'var(--foreground)' }}
+                        >
+                          {f.numero}
+                        </span>
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        {f.naoFunciona && (
+                          <span
+                            className="rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase"
+                            style={{ background: 'var(--status-em-risco-bg)', color: 'var(--status-em-risco-fg)' }}
+                          >
+                            não funciona
+                          </span>
+                        )}
+                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{f.rotulo}</span>
+                      </span>
+                    </a>
+                    {podeEscrever && c.codmot && (
+                      <button
+                        type="button"
+                        onClick={() => marcar.mutate({
+                          codmot: c.codmot!, numero: f.numero,
+                          nao_funciona: !f.naoFunciona, rotulo: f.rotulo, motorista_nome: c.nome,
+                        })}
+                        disabled={marcar.isPending}
+                        className="shrink-0 rounded-md border px-2 py-1 text-[10px] font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50"
+                        style={{ borderColor: 'var(--border)' }}
+                        title={f.naoFunciona ? 'Voltar a considerar este número' : 'Marcar que este número não funciona'}
+                      >
+                        {f.naoFunciona ? 'Desfazer' : 'Não funciona'}
+                      </button>
+                    )}
+                  </div>
                 ))}
+                {c.fones.length === 0 && (
+                  <p className="text-xs text-muted-foreground">Nenhum telefone no cadastro do Rodopar.</p>
+                )}
               </div>
+
+              {podeEscrever && c.codmot && (
+                <div className="mt-2.5 rounded-md border p-2.5" style={{ borderColor: 'var(--border)' }}>
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Acrescentar telefone
+                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      value={novo}
+                      onChange={(e) => setNovo(e.target.value)}
+                      placeholder="(DDD) 90000-0000"
+                      maxLength={40}
+                      className="min-w-0 flex-1 rounded-md border bg-background px-2 py-1.5 font-mono text-xs text-foreground"
+                      style={{ borderColor: 'var(--border)' }}
+                    />
+                    <select
+                      value={rotulo}
+                      onChange={(e) => setRotulo(e.target.value)}
+                      className="rounded-md border bg-background px-1.5 py-1.5 text-xs text-foreground"
+                      style={{ borderColor: 'var(--border)' }}
+                    >
+                      {rotulos.map((r) => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => enviarNovo(c.codmot!, c.nome)}
+                      disabled={!novo.trim() || adicionar.isPending}
+                      className="shrink-0 rounded-md px-2.5 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                      style={{ background: 'var(--primary)' }}
+                    >
+                      {adicionar.isPending ? '…' : 'Adicionar'}
+                    </button>
+                  </div>
+                  {aviso && (
+                    <p className="mt-1.5 text-[10px] font-semibold" style={{ color: 'var(--destructive)' }}>{aviso}</p>
+                  )}
+                  <p className="mt-1 text-[10px] italic text-muted-foreground">
+                    Vale para as próximas viagens deste motorista.
+                  </p>
+                </div>
+              )}
+
+              {podeEscrever && !c.codmot && (
+                <p className="mt-2 text-[10px] italic text-muted-foreground">
+                  Sem o código do motorista no Rodopar — não é possível cadastrar telefone neste manifesto.
+                </p>
+              )}
             </div>
           ))}
           {contatos.length === 0 && (
@@ -731,19 +966,22 @@ function ContatosDialog({
   )
 }
 
-// Motorista no painel de detalhes: nome + TODOS os números cadastrados, cada um
-// em linha própria e clicável (nome comprido não engole mais o telefone).
-function MotoristaLinha({ nome, fones }: { nome: string; fones?: Telefone[] }) {
+// Motorista no painel de detalhes: nome + TODOS os números, cada um em linha própria e clicável
+// (nome comprido não engole mais o telefone). Somente leitura — a escrita fica no modal 📞.
+function MotoristaLinha({ nome, fones }: { nome: string; fones?: FoneExibicao[] }) {
   return (
     <span className="block">
       <span className="block truncate" title={nome}>{nome}</span>
       {(fones ?? []).map((f) => (
         <a
-          key={f.numero}
-          href={`tel:+55${f.numero.replace(/\D/g, '')}`}
-          className="block font-mono text-primary hover:underline"
+          key={f.digitos}
+          href={telHref(f.numero)}
+          className="block font-mono hover:underline"
+          style={f.naoFunciona
+            ? { textDecoration: 'line-through', color: 'var(--muted-foreground)' }
+            : { color: 'var(--primary)' }}
           onClick={(e) => e.stopPropagation()}
-          title={f.rotulo}
+          title={f.naoFunciona ? `${f.rotulo} — marcado como "não funciona"` : f.rotulo}
         >
           📞 {f.numero}
         </a>
@@ -757,19 +995,22 @@ function ManifestoDetailPanel({
   now,
   onClose,
   motivos,
+  fonesMotorista,
 }: {
   pendencia: PendenciaManifesto
   now: Date
   onClose: () => void
   // lista de motivos vem da API (via snapshot) para não divergir do que ela valida
   motivos: Record<string, string>
+  // telefones cadastrados/riscados, para o painel mostrar o mesmo que o modal
+  fonesMotorista: Record<string, FoneMotoristaRegistro[]>
 }) {
   const estado = deriveEstado(p)
   const info = ESTADO_INFO[estado]
   const horasAberto = horasAbertoDe(p, now)
   const posMin = minutesSinceLocal(p.posicao?.quando_local, now)
   const macroMin = minutesSinceLocal(p.macro?.quando_local, now)
-  const contatos = contatosDaPendencia(p)
+  const contatos = contatosDaPendencia(p, fonesMotorista)
   const evidenciasV2 = Array.isArray(p.evidencias) ? p.evidencias : null
   const temGrade = p.sm?.grade_inicio_local != null || p.sm?.grade_fim_local != null
 
