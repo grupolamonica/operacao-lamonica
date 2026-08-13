@@ -324,6 +324,7 @@ export function BaixaManifestoPage() {
   const [estadoFiltro, setEstadoFiltro] = useState<EstadoManifesto | 'todos'>('todos')
   const [soVencido, setSoVencido] = useState(false)
   const [soJaSaiu, setSoJaSaiu] = useState(false)
+  const [soValidar, setSoValidar] = useState(false)
   // Painel de detalhes: guarda só a chave, não o objeto — a cada render re-deriva
   // do array (fresco a cada polling de 30s); some sozinho da lista (baixada) = painel fecha.
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
@@ -385,6 +386,17 @@ export function BaixaManifestoPage() {
   }, [pendenciasAba])
   const vencidoCount = useMemo(() => pendenciasAba.filter(vencido).length, [pendenciasAba])
   const jaSaiuCount = useMemo(() => pendenciasAba.filter(jaSaiuDoCliente).length, [pendenciasAba])
+  // fila de validação: descarregado que ninguém confirmou. Mesma regra do chip VALIDAR da linha —
+  // uma função só, para o contador e a marca nunca discordarem.
+  const precisaValidar = (p: PendenciaManifesto) => {
+    if (deriveEstado(p) !== 'descarregado') return false
+    const k = chaveTratativa(p)
+    return k != null && !validacoes[k]
+  }
+  const validarCount = useMemo(
+    () => pendenciasAba.filter(precisaValidar).length,
+    [pendenciasAba, validacoes],
+  )
 
   // Ordenação + filtro.
   const rows = useMemo(() => {
@@ -392,6 +404,7 @@ export function BaixaManifestoPage() {
       if (estadoFiltro !== 'todos' && deriveEstado(p) !== estadoFiltro) return false
       if (soVencido && !vencido(p)) return false
       if (soJaSaiu && !jaSaiuDoCliente(p)) return false
+      if (soValidar && !precisaValidar(p)) return false
       return true
     })
     return [...filtradas].sort((a, b) => {
@@ -403,7 +416,7 @@ export function BaixaManifestoPage() {
       const hb = horasAbertoDe(b, now) ?? -1
       return hb - ha
     })
-  }, [pendenciasAba, estadoFiltro, soVencido, soJaSaiu, now])
+  }, [pendenciasAba, estadoFiltro, soVencido, soJaSaiu, soValidar, validacoes, now])
 
   const stale = (snapshot?.idade_min ?? 0) > 15
   // A API responde ok:true com total 0 e idade_min null quando NÃO HÁ snapshot no Redis
@@ -502,6 +515,18 @@ export function BaixaManifestoPage() {
           <div className="text-3xl font-bold tabular-nums" style={{ color: 'var(--status-atrasado-fg)' }}>{jaSaiuCount}</div>
           <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">JÁ SAIU DO CLIENTE</div>
         </div>
+        {/* Validação pendente: descarregado que ninguém confirmou ainda. Clicável porque é uma
+            fila de trabalho, não só um número — o operador filtra e vai fechando. */}
+        <button
+          type="button"
+          onClick={() => setSoValidar((v) => !v)}
+          className="rounded-xl bg-card px-4 py-3 text-left"
+          style={{ border: soValidar ? '2px solid var(--primary)' : '1px solid var(--border)' }}
+          title="Descarregados que ainda não foram confirmados pelo operador — clique para filtrar"
+        >
+          <div className="text-3xl font-bold tabular-nums" style={{ color: 'var(--primary)' }}>{validarCount}</div>
+          <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">A VALIDAR</div>
+        </button>
       </div>
 
       {/* Filtro rápido — 85 itens não rola sem filtro */}
@@ -590,7 +615,7 @@ export function BaixaManifestoPage() {
                     const fonesUteis = fonesDaLinha.filter((f) => !f.naoFunciona).length
                     // descarregado que ninguém validou ainda: é o que sustenta a medição de
                     // precisão, e validação opcional enviesaria o número (valida-se o estranho)
-                    const validarPendente = estado === 'descarregado' && chaveT != null && !validacoes[chaveT]
+                    const validarPendente = precisaValidar(p)
                     const cliente = p.sm?.cliente || p.destino || '—'
                     const destinoLinha = [p.destino, p.destino_uf ?? p.viagem?.destino_uf].filter(Boolean).join('/')
                     return (
@@ -673,13 +698,15 @@ export function BaixaManifestoPage() {
                                 validação opcional enviesaria a precisão medida, porque se valida
                                 o caso estranho e se ignora o óbvio */}
                             {validarPendente && (
-                              <span
-                                className="rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide whitespace-nowrap"
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setSelectedKey(key) }}
+                                className="rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide whitespace-nowrap hover:opacity-80"
                                 style={{ background: 'var(--primary)', color: '#fff' }}
-                                title="Confirme se o sistema acertou — é o que mede a precisão do alerta"
+                                title="Abrir para confirmar se o sistema acertou — é o que mede a precisão do alerta"
                               >
                                 VALIDAR
-                              </span>
+                              </button>
                             )}
                           </div>
                         </td>
@@ -1051,6 +1078,10 @@ function ManifestoDetailPanel({
 }) {
   const estado = deriveEstado(p)
   const info = ESTADO_INFO[estado]
+  const chaveV = chaveTratativa(p)
+  const validacaoDoItem = chaveV ? validacoes[chaveV] : undefined
+  // pendente = o sistema aponta baixa e ninguém confirmou ainda
+  const validacaoPendente = estado === 'descarregado' && !validacaoDoItem && podeEscrever
   const horasAberto = horasAbertoDe(p, now)
   const posMin = minutesSinceLocal(p.posicao?.quando_local, now)
   const macroMin = minutesSinceLocal(p.macro?.quando_local, now)
@@ -1061,6 +1092,18 @@ function ManifestoDetailPanel({
   return (
     <SidePanelLayout title={`Manifesto ${manifestoLabel(p)}`} subtitle={p.sm?.cliente || p.destino || undefined} onClose={onClose}>
       <div className="space-y-4">
+        {/* Validação PRIMEIRO quando está pendente: é por isso que o operador abriu o painel.
+            Antes ela ficava no fim, depois de 6 seções de ficha, e ninguém achava. Já validada,
+            desce para o lugar de sempre (vira histórico, não ação). */}
+        {validacaoPendente && (
+          <ValidacaoSecao
+            pendencia={p}
+            validacao={undefined}
+            motivosErro={motivosErro}
+            podeEscrever={podeEscrever}
+          />
+        )}
+
         {/* Cabeçalho */}
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1">
@@ -1206,13 +1249,15 @@ function ManifestoDetailPanel({
           )}
         </div>
 
-        {/* (7) Validação do sistema — mede se o alerta está certo */}
-        <ValidacaoSecao
-          pendencia={p}
-          validacao={chaveTratativa(p) ? validacoes[chaveTratativa(p)!] : undefined}
-          motivosErro={motivosErro}
-          podeEscrever={podeEscrever}
-        />
+        {/* (7) Validação — aqui só quando NÃO está pendente (pendente sobe pro topo) */}
+        {!validacaoPendente && (
+          <ValidacaoSecao
+            pendencia={p}
+            validacao={validacaoDoItem}
+            motivosErro={motivosErro}
+            podeEscrever={podeEscrever}
+          />
+        )}
 
         {/* (8) Justificativa do operador */}
         <TratativasSecao pendencia={p} motivos={motivos} />
