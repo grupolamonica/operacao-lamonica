@@ -31,4 +31,6 @@ export * from './integration-credentials'
 export * from './manifesto-tratativas'
 // Telefones do motorista gerenciados pelo operador (override lateral; o Rodopar é read-only)
 export * from './manifesto-motorista-fones'
+// Validação do sistema pelo operador — mede a precisão do alerta (carrega a foto do momento)
+export * from './manifesto-validacoes'
 export * from './relations'

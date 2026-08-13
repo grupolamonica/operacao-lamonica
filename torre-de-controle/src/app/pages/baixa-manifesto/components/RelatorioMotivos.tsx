@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { BarChart3, ChevronDown, ChevronUp } from 'lucide-react'
-import { useRelatorioTratativas } from '@/hooks/useManifestoPendencias'
+import { useAcuraciaSistema, useRelatorioTratativas } from '@/hooks/useManifestoPendencias'
 
 /**
  * Relatório de motivos das justificativas — seção dentro de /baixa-manifesto.
@@ -32,6 +32,7 @@ export function RelatorioMotivos() {
     [dias],
   )
   const { relatorio, isLoading, isError, error } = useRelatorioTratativas(inicio, fim, aberto)
+  const { acuracia } = useAcuraciaSistema(dias, aberto)
 
   const maxManifestos = Math.max(1, ...(relatorio?.por_motivo ?? []).map((m) => m.manifestos))
   const comDado = (relatorio?.por_motivo ?? []).filter((m) => m.notas > 0)
@@ -78,6 +79,75 @@ export function RelatorioMotivos() {
             <p className="text-xs font-semibold" style={{ color: 'var(--destructive)' }}>
               {(error as Error)?.message ?? 'Não foi possível montar o relatório.'}
             </p>
+          )}
+
+          {/* Precisão do alerta — medida pelas validações dos operadores. Fica ANTES dos motivos
+              porque responde a pergunta mais básica: o sistema está certo? */}
+          {acuracia && (
+            <div className="mb-3 rounded-md border p-2.5" style={{ borderColor: 'var(--border)' }}>
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                O sistema está acertando?
+              </p>
+              {acuracia.alertas_validados === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Nenhum alerta validado ainda neste período. A precisão aparece aqui quando os
+                  operadores começarem a confirmar os manifestos marcados como descarregados.
+                </p>
+              ) : (
+                <>
+                  <p className="text-xs text-foreground">
+                    <b className="text-base">{acuracia.precisao_pct}%</b> de precisão
+                    {acuracia.margem_pp != null && (
+                      <span className="text-muted-foreground"> (± {acuracia.margem_pp} pontos)</span>
+                    )}
+                    {' — '}
+                    <b>{acuracia.alertas_corretos}</b> de <b>{acuracia.alertas_validados}</b> alertas
+                    confirmados.
+                  </p>
+                  {/* amostra pequena precisa de aviso: 5 validações não sustentam conclusão */}
+                  {acuracia.alertas_validados < 30 && (
+                    <p className="mt-1 text-[10px] font-semibold" style={{ color: 'var(--status-em-risco-fg)' }}>
+                      Amostra ainda pequena — com ~7 alertas por dia, duas semanas de validação dão
+                      base firme. Até lá, trate como indicativo.
+                    </p>
+                  )}
+                  {acuracia.por_origem.length > 1 && (
+                    <p className="mt-1.5 text-[11px] text-muted-foreground">
+                      Por origem do sinal:{' '}
+                      {acuracia.por_origem.map((o, i) => (
+                        <span key={o.origem}>
+                          {i > 0 && ' · '}
+                          <b className="text-foreground">{o.origem}</b> {o.precisao_pct}% ({o.total})
+                        </span>
+                      ))}
+                    </p>
+                  )}
+                  {acuracia.por_motivo_erro.length > 0 && (
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Quando errou:{' '}
+                      {acuracia.por_motivo_erro.map((m, i) => (
+                        <span key={m.motivo}>{i > 0 && ' · '}{m.motivo_rotulo} ({m.total})</span>
+                      ))}
+                    </p>
+                  )}
+                  {acuracia.falsos_negativos > 0 && (
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      <b className="text-foreground">{acuracia.falsos_negativos}</b> manifesto(s) que
+                      o operador considerou prontos sem o sistema ter apontado — indício de que a
+                      regra está conservadora (não é medida completa).
+                    </p>
+                  )}
+                  {acuracia.baixas_declaradas > 0 && acuracia.horas_ate_baixa_mediana != null && (
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Tempo entre o alerta e a baixa: mediana de{' '}
+                      <b className="text-foreground">{acuracia.horas_ate_baixa_mediana} h</b>
+                      {acuracia.horas_ate_baixa_media != null && ` (média ${acuracia.horas_ate_baixa_media} h)`}
+                      {' '}em {acuracia.baixas_declaradas} baixa(s) declarada(s).
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
           )}
 
           {relatorio && !isLoading && !isError && (
