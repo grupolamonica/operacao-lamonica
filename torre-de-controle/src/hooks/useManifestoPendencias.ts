@@ -135,6 +135,8 @@ export interface PendenciaManifesto {
   motorista_fones?: Telefone[]
   // CODMOT do Rodopar — chave dos telefones que o operador cadastra (ver codmotDaPendencia)
   motorista_codmot?: string | null
+  // quando o estado atual começou (wall-clock local): "descarregado há 3 h" e base do tempo até a baixa
+  estado_desde_local?: string | null
   destino_uf?: string
   // abas da tela FROTA × DEMAIS (decisão Danilo 11/08 — ver V2-CONTRATO.md)
   na_frota_sascar?: boolean
@@ -230,6 +232,10 @@ export interface ManifestoPendenciasSnapshot {
   fones_motorista?: Record<string, FoneMotoristaRegistro[]>
   // rótulos oferecidos no seletor, também da API pelo mesmo motivo dos motivos
   rotulos_fone?: readonly string[]
+  // última validação por manifesto (chaveTratativa) — a tela marca o que falta validar
+  validacoes?: Record<string, ValidacaoRegistro>
+  // motivos de erro do sistema, para o seletor não divergir do que a API valida
+  motivos_erro?: Record<string, string>
 }
 
 export function useManifestoPendencias() {
@@ -249,6 +255,8 @@ export function useManifestoPendencias() {
     motivos: q.data?.motivos ?? {},
     fonesMotorista: q.data?.fones_motorista ?? {},
     rotulosFone: q.data?.rotulos_fone ?? ['Celular', 'WhatsApp', 'Recado', 'Outro'],
+    validacoes: q.data?.validacoes ?? {},
+    motivosErro: q.data?.motivos_erro ?? {},
     isLoading: q.isLoading,
     isError: q.isError,
     error: q.error,
@@ -319,6 +327,91 @@ export function useMarcarFoneMotorista() {
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['manifesto', 'pendencias'] }),
   })
+}
+
+// ── Validação do sistema pelo operador (13/08) ──────────────────────────────
+// O operador confirma ou nega o que o sistema apontou. Cada validação carrega a FOTO do que a tela
+// mostrava (estado, origem do sinal, evidências) — sem isso a acurácia não é calculável depois,
+// porque o snapshot é sobrescrito a cada 5 min.
+export interface ValidacaoRegistro {
+  id: string
+  estado_sistema: string
+  origem_estado: string | null
+  veredito: string
+  motivo_erro: string | null
+  motivo_erro_rotulo: string | null
+  observacao: string | null
+  baixado_em: string | null
+  autor: string | null
+  criado_em: string
+  horas_ate_baixa: number | null
+}
+
+export interface AcuraciaSistema {
+  ok: boolean
+  periodo_dias: number
+  total: number
+  alertas_validados: number
+  alertas_corretos: number
+  precisao_pct: number | null
+  margem_pp: number | null
+  falsos_negativos: number
+  por_origem: { origem: string; total: number; corretos: number; precisao_pct: number }[]
+  por_motivo_erro: { motivo: string; motivo_rotulo: string; total: number }[]
+  baixas_declaradas: number
+  horas_ate_baixa_media: number | null
+  horas_ate_baixa_mediana: number | null
+}
+
+export interface NovaValidacaoInput {
+  codman: number
+  filial: number
+  serie?: string
+  estado_sistema: string
+  origem_estado?: string | null
+  evidencias?: string[] | null
+  comprovacao_trava?: boolean | null
+  na_frota?: boolean | null
+  estado_desde?: string | null
+  veredito: 'correto' | 'incorreto'
+  motivo_erro?: string | null
+  observacao?: string
+  baixou?: boolean
+  placa?: string
+  destino?: string
+}
+
+/** Registra o veredito do operador. Invalida o snapshot para o item sair da fila de "validar". */
+export function useRegistrarValidacao() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: NovaValidacaoInput) => {
+      const { data, error } = await (api.api as any).manifesto.validacoes.post(vars)
+      if (error) throw new Error((error.value as any)?.error ?? 'Falha ao registrar validação')
+      return data as { ok: boolean; validacao: ValidacaoRegistro }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['manifesto', 'pendencias'] })
+      qc.invalidateQueries({ queryKey: ['manifesto', 'acuracia'] })
+    },
+  })
+}
+
+/** Precisão do alerta medida pelas validações. Só busca quando a seção do relatório está aberta. */
+export function useAcuraciaSistema(dias: number, habilitado: boolean) {
+  const q = useQuery({
+    queryKey: ['manifesto', 'acuracia', dias],
+    queryFn: async (): Promise<AcuraciaSistema> => {
+      const { data, error } = await (api.api as any).manifesto.validacoes.acuracia.get({
+        query: { dias: String(dias) },
+      })
+      if (error) throw new Error((error.value as any)?.error ?? 'Falha ao calcular a acurácia')
+      return data as AcuraciaSistema
+    },
+    enabled: habilitado,
+    staleTime: 60_000,
+  })
+  return { acuracia: q.data, isLoading: q.isLoading, isError: q.isError }
 }
 
 // ── Relatório de motivos (13/08) ────────────────────────────────────────────

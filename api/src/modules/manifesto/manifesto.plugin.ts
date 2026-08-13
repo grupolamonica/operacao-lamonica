@@ -2,7 +2,13 @@ import { Elysia, t } from 'elysia'
 
 import { authGuard } from '../../lib/rbac'
 import { logger } from '../../lib/logger'
-import { MOTIVOS_TRATATIVA, ROTULOS_FONE } from '../../db/schema'
+import { MOTIVOS_ERRO, MOTIVOS_TRATATIVA, ROTULOS_FONE } from '../../db/schema'
+import {
+  acuraciaSistema,
+  motivoErroValido,
+  registrarValidacao,
+  validacoesPorManifesto,
+} from './validacoes.service'
 import {
   adicionarFone,
   digitosFone,
@@ -213,6 +219,10 @@ const PendenciaSchema = t.Object({
   // o LEFT JOIN não casa (mesma lição do sm.* acima). Sem declarar aqui, o TypeBox descarta o
   // campo em silêncio e a feature de telefone nunca liga.
   motorista_codmot: t.Optional(t.Nullable(t.String())),
+  // quando o estado ATUAL começou (wall-clock local, como os outros *_local). A tela mostra
+  // "descarregado há 3 h" e a validação mede o tempo entre o alerta e a baixa — impossível sem
+  // isto, porque o snapshot não guarda histórico.
+  estado_desde_local: t.Optional(t.Nullable(t.String())),
   destino_uf: t.Optional(t.String()),
   // abas da tela FROTA × DEMAIS (decisão Danilo 11/08 — ver V2-CONTRATO.md)
   na_frota_sascar: t.Optional(t.Boolean()),
@@ -311,6 +321,19 @@ const readPlugin = new Elysia({ name: 'manifesto-read' })
               )
             }
           }
+          // Validações já feitas, para a tela marcar o que falta validar. try/catch próprio pelo
+          // mesmo motivo dos anteriores: é aditivo, não pode derrubar a fila de manifestos.
+          let validacoes: Awaited<ReturnType<typeof validacoesPorManifesto>> = {}
+          if (refs.length) {
+            try {
+              validacoes = await validacoesPorManifesto(refs)
+            } catch (e: any) {
+              logger.error(
+                { error: e?.message ?? String(e) },
+                '[manifesto] falha ao ler validações — seguindo sem elas (tabela ausente?)',
+              )
+            }
+          }
           return {
             ok: true,
             ...view,
@@ -318,6 +341,8 @@ const readPlugin = new Elysia({ name: 'manifesto-read' })
             motivos: MOTIVOS_TRATATIVA,
             fones_motorista,
             rotulos_fone: ROTULOS_FONE,
+            validacoes,
+            motivos_erro: MOTIVOS_ERRO,
           }
         },
         {
@@ -433,6 +458,91 @@ const readPlugin = new Elysia({ name: 'manifesto-read' })
           detail: {
             tags: ['manifesto'],
             summary: 'Registra justificativa do operador (append-only) — papel manifesto/supervisor/admin',
+          },
+        },
+      )
+      // ── Validação do sistema pelo operador (13/08) ───────────────────────────
+      // Mede se o alerta está certo. O corpo carrega a FOTO do que a tela mostrava (estado,
+      // origem, evidências) porque o snapshot é sobrescrito a cada 5 min — sem ela a acurácia
+      // não é calculável depois. Ver drizzle/manifesto-validacoes.sql.
+      .post(
+        '/validacoes',
+        async ({ body, user, set }) => {
+          if (!PODE_ESCREVER.includes(user.role as (typeof PODE_ESCREVER)[number])) {
+            set.status = 403
+            return { ok: false, error: `Forbidden: requires role ${PODE_ESCREVER.join('|')}` }
+          }
+          if (body.veredito === 'incorreto' && body.motivo_erro && !motivoErroValido(body.motivo_erro)) {
+            set.status = 400
+            return {
+              ok: false,
+              error: `motivo_erro inválido — use um de: ${Object.keys(MOTIVOS_ERRO).join(', ')}`,
+            }
+          }
+          const registro = await registrarValidacao({
+            codman: body.codman,
+            filial: body.filial,
+            serie: body.serie ?? '',
+            estadoSistema: body.estado_sistema,
+            origemEstado: body.origem_estado ?? null,
+            evidencias: body.evidencias ?? null,
+            comprovacaoTrava: body.comprovacao_trava ?? null,
+            naFrota: body.na_frota ?? null,
+            estadoDesde: body.estado_desde ?? null,
+            veredito: body.veredito,
+            motivoErro: body.motivo_erro ?? null,
+            observacao: body.observacao ?? null,
+            baixou: body.baixou ?? false,
+            placa: body.placa ?? null,
+            destino: body.destino ?? null,
+            operatorId: user.id,
+          })
+          return { ok: true, validacao: registro }
+        },
+        {
+          body: t.Object({
+            codman: t.Integer(),
+            filial: t.Integer(),
+            serie: t.Optional(t.String({ maxLength: 20 })),
+            // a foto do momento — o cliente manda porque é o que ELE estava vendo; o servidor não
+            // pode reconstruir (o snapshot pode já ter mudado entre a leitura e o clique)
+            estado_sistema: t.String({ maxLength: 30 }),
+            origem_estado: t.Optional(t.Nullable(t.String({ maxLength: 10 }))),
+            evidencias: t.Optional(t.Nullable(t.Array(t.String({ maxLength: 60 })))),
+            comprovacao_trava: t.Optional(t.Nullable(t.Boolean())),
+            na_frota: t.Optional(t.Nullable(t.Boolean())),
+            estado_desde: t.Optional(t.Nullable(t.String({ maxLength: 40 }))),
+            veredito: t.Union([t.Literal('correto'), t.Literal('incorreto')]),
+            motivo_erro: t.Optional(t.Nullable(t.String({ maxLength: 40 }))),
+            observacao: t.Optional(t.String({ maxLength: 2000 })),
+            baixou: t.Optional(t.Boolean()),
+            placa: t.Optional(t.String({ maxLength: 20 })),
+            destino: t.Optional(t.String({ maxLength: 200 })),
+          }),
+          detail: {
+            tags: ['manifesto'],
+            summary: 'Operador valida se o sistema acertou — papel manifesto/supervisor/admin',
+          },
+        },
+      )
+      .get(
+        '/validacoes/acuracia',
+        async ({ query, set }) => {
+          try {
+            return { ok: true, ...(await acuraciaSistema(Number(query.dias ?? 30))) }
+          } catch (e: any) {
+            // falha alto, como o relatório de motivos: número ausente aqui seria lido como
+            // "o sistema nunca errou", que é pior que erro visível
+            logger.error({ error: e?.message ?? String(e) }, '[manifesto] acurácia falhou')
+            set.status = 503
+            return { ok: false, error: 'não foi possível calcular a acurácia — migration aplicada?' }
+          }
+        },
+        {
+          query: t.Object({ dias: t.Optional(t.String({ pattern: '^\\d{1,3}$' })) }),
+          detail: {
+            tags: ['manifesto'],
+            summary: 'Precisão do alerta medida pelas validações dos operadores',
           },
         },
       )

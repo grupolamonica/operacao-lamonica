@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react'
 import { MessageSquare, PackageCheck, Phone, Volume2, VolumeX } from 'lucide-react'
 import { PanelCard } from '@/components/domain/PanelCard'
 import { RelatorioMotivos } from './components/RelatorioMotivos'
+import { ValidacaoSecao } from './components/ValidacaoSecao'
 import { SidePanelLayout } from '@/components/domain/SidePanelLayout'
 import { FixedPanel } from '@/components/domain/FixedPanel'
 import { Button } from '@/components/ui/button'
@@ -21,6 +22,7 @@ import {
   type PendenciaManifesto,
   type ResumoTratativa,
   type Telefone,
+  type ValidacaoRegistro,
 } from '@/hooks/useManifestoPendencias'
 import { useNow } from '@/hooks/useNow'
 import { useAuthStore } from '@/stores/useAuthStore'
@@ -309,7 +311,7 @@ function rankEstado(p: PendenciaManifesto): number {
 export function BaixaManifestoPage() {
   const {
     data: snapshot, pendencias, tratativas, motivos,
-    fonesMotorista, rotulosFone, isLoading, isError,
+    fonesMotorista, rotulosFone, validacoes, motivosErro, isLoading, isError,
   } = useManifestoPendencias()
   // papel com escrita (justificativa e telefone) — o gate de verdade é no servidor; aqui só
   // decide o que mostrar. Antes isto vivia só dentro de TratativasSecao.
@@ -586,6 +588,9 @@ export function BaixaManifestoPage() {
                     // não estão riscados: zero significa "não tenho como falar com este motorista"
                     const fonesDaLinha = contatosDaPendencia(p, fonesMotorista).flatMap((c) => c.fones)
                     const fonesUteis = fonesDaLinha.filter((f) => !f.naoFunciona).length
+                    // descarregado que ninguém validou ainda: é o que sustenta a medição de
+                    // precisão, e validação opcional enviesaria o número (valida-se o estranho)
+                    const validarPendente = estado === 'descarregado' && chaveT != null && !validacoes[chaveT]
                     const cliente = p.sm?.cliente || p.destino || '—'
                     const destinoLinha = [p.destino, p.destino_uf ?? p.viagem?.destino_uf].filter(Boolean).join('/')
                     return (
@@ -662,6 +667,18 @@ export function BaixaManifestoPage() {
                                 title={JA_SAIU_CHIP.title}
                               >
                                 {JA_SAIU_CHIP.label}
+                              </span>
+                            )}
+                            {/* validação pedida em TODOS os descarregados (decisão Danilo):
+                                validação opcional enviesaria a precisão medida, porque se valida
+                                o caso estranho e se ignora o óbvio */}
+                            {validarPendente && (
+                              <span
+                                className="rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide whitespace-nowrap"
+                                style={{ background: 'var(--primary)', color: '#fff' }}
+                                title="Confirme se o sistema acertou — é o que mede a precisão do alerta"
+                              >
+                                VALIDAR
                               </span>
                             )}
                           </div>
@@ -763,6 +780,9 @@ export function BaixaManifestoPage() {
               now={now}
               motivos={motivos}
               fonesMotorista={fonesMotorista}
+              validacoes={validacoes}
+              motivosErro={motivosErro}
+              podeEscrever={podeEscrever}
               onClose={() => setSelectedKey(null)}
             />
           </FixedPanel>
@@ -1013,6 +1033,9 @@ function ManifestoDetailPanel({
   onClose,
   motivos,
   fonesMotorista,
+  validacoes,
+  motivosErro,
+  podeEscrever,
 }: {
   pendencia: PendenciaManifesto
   now: Date
@@ -1021,6 +1044,10 @@ function ManifestoDetailPanel({
   motivos: Record<string, string>
   // telefones cadastrados/riscados, para o painel mostrar o mesmo que o modal
   fonesMotorista: Record<string, FoneMotoristaRegistro[]>
+  // última validação por manifesto + lista de motivos de erro (ver ValidacaoSecao)
+  validacoes: Record<string, ValidacaoRegistro>
+  motivosErro: Record<string, string>
+  podeEscrever: boolean
 }) {
   const estado = deriveEstado(p)
   const info = ESTADO_INFO[estado]
@@ -1179,7 +1206,15 @@ function ManifestoDetailPanel({
           )}
         </div>
 
-        {/* (7) Justificativa do operador — único bloco de ESCRITA da tela */}
+        {/* (7) Validação do sistema — mede se o alerta está certo */}
+        <ValidacaoSecao
+          pendencia={p}
+          validacao={chaveTratativa(p) ? validacoes[chaveTratativa(p)!] : undefined}
+          motivosErro={motivosErro}
+          podeEscrever={podeEscrever}
+        />
+
+        {/* (8) Justificativa do operador */}
         <TratativasSecao pendencia={p} motivos={motivos} />
       </div>
     </SidePanelLayout>
