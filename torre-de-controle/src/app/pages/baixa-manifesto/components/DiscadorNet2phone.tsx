@@ -59,39 +59,10 @@ const ALTURA_COMPACTA = 200
 const ALTURA_AMPLIADA = 600
 /** largura do iframe (imposta pelo fornecedor) + as duas bordas de 1px do nosso card */
 const LARGURA_PAINEL = 395
+/** calha da barra de rolagem no modo ampliado (.panel-scroll usa 4px) — sem isso ela come o widget */
+const CALHA_ROLAGEM = 6
 /** teto de espera pelo anúncio do embed; bem abaixo dos 30 s de timeout do SDK */
 const MS_EMBED_PRONTO = 12_000
-
-/**
- * Resolve quando o embed do net2phone anuncia que carregou (`dialerInitialized`), ou false no teto
- * de espera. O anúncio é consumido internamente pelo SDK e NÃO chega aos assinantes de `subscribe`
- * (dialer-sdk.es.js:50-55 roteia para os handlers internos), então ouvimos o `message` cru — o
- * postMessage do iframe chega a todos os listeners da janela, não é exclusivo do SDK.
- *
- * Precisa ser chamado ANTES de criar o dialer: o anúncio pode chegar antes de `criar()` resolver.
- */
-function esperarEmbedPronto(ms: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    let encerrado = false
-    const encerrar = (ok: boolean) => {
-      if (encerrado) return
-      encerrado = true
-      clearTimeout(timer)
-      window.removeEventListener('message', ouvir)
-      resolve(ok)
-    }
-    const ouvir = (e: MessageEvent) => {
-      const d = e.data as { source?: unknown; type?: unknown } | null | undefined
-      if (d && typeof d === 'object' && d.source === 'n2p-dialer-embed' && d.type === 'dialerInitialized') {
-        encerrar(true)
-      }
-    }
-    window.addEventListener('message', ouvir)
-    // declarado por último de propósito: `encerrar` só o lê quando chamado, e mensagens do iframe
-    // chegam como tarefa assíncrona — nunca entre estas duas linhas.
-    const timer = setTimeout(() => encerrar(false), ms)
-  })
-}
 
 /**
  * Identifica a PERNA de chamada a que um evento pertence.
@@ -140,8 +111,12 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
   const dialerRef = useRef<N2pDialer | null>(null)
   /** o embed já anunciou que carregou? antes disso, nenhum comando chega ao outro lado */
   const prontoRef = useRef(false)
+  /** quem está esperando o anúncio; o latch avisa todos de uma vez quando ele chega */
+  const aguardandoProntoRef = useRef<Set<(ok: boolean) => void>>(new Set())
   /** preparo em voo, para dois cliques rápidos não criarem dois iframes e dois listeners */
   const preparoRef = useRef<Promise<N2pDialer> | null>(null)
+  /** espelha `abertoPeloOperador` para o callback de estado, que tem deps [] e não lê state */
+  const abertoPeloOperadorRef = useRef(false)
   /** pernas de chamada vivas, por chave — ver chaveDaChamada() */
   const vivasRef = useRef<Map<string, N2pEstado>>(new Map())
   /** quantos eventos de estado já chegaram; usado para não atropelar um ciclo já encerrado */
@@ -169,6 +144,34 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
     }
   }
 
+  /** state + ref sempre juntos: o callback de estado só alcança o ref */
+  const marcarDoOperador = (v: boolean) => {
+    abertoPeloOperadorRef.current = v
+    setAbertoPeloOperador(v)
+  }
+
+  /**
+   * Latch do anúncio do embed. Precisa ser um ouvinte de VIDA LONGA, não uma corrida por tentativa:
+   * `dialerInitialized` é postado UMA vez por carregamento do iframe e nada no SDK o re-solicita.
+   * Com escuta por tentativa, um anúncio que chegasse 1 s depois do teto era perdido para sempre, e
+   * toda tentativa seguinte reaproveitava o mesmo iframe esperando um anúncio que nunca viria — o
+   * discador ficava inutilizável, com a mensagem mandando "tente de novo".
+   *
+   * Fica no mount: o anúncio pode chegar antes de qualquer `await` nosso.
+   */
+  useEffect(() => {
+    const ouvir = (e: MessageEvent) => {
+      const d = e.data as { source?: unknown; type?: unknown } | null | undefined
+      if (!d || typeof d !== 'object') return
+      if (d.source !== 'n2p-dialer-embed' || d.type !== 'dialerInitialized') return
+      prontoRef.current = true
+      for (const avisar of aguardandoProntoRef.current) avisar(true)
+      aguardandoProntoRef.current.clear()
+    }
+    window.addEventListener('message', ouvir)
+    return () => window.removeEventListener('message', ouvir)
+  }, [])
+
   useEffect(() => () => {
     limparTimer()
     // O construtor do SDK registra um listener de 'message' em window e só dispose() o remove
@@ -189,9 +192,12 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
 
     const aindaFalando = vivasRef.current.size > 0
     setEmChamada(aindaFalando)
-    // A barra descreve a chamada QUE CONTINUA — não a perna que acabou de morrer.
-    const viva = vivasRef.current.values().next().value
-    setEstado(aindaFalando ? (viva ?? info) : info)
+    // A barra descreve a perna DO PRÓPRIO EVENTO quando ela continua viva; se foi ela que morreu,
+    // cai em outra perna viva. `values().next()` devolve a mais ANTIGA inserida — usá-la direto
+    // fazia a barra narrar a chamada errada quando havia duas em curso.
+    const doEvento = vivasRef.current.get(chave)
+    const outraViva = vivasRef.current.values().next().value
+    setEstado(aindaFalando ? (doEvento ?? outraViva ?? info) : info)
 
     if (aindaFalando) {
       setDesfecho(false)
@@ -203,12 +209,14 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
     // exibe LOGOUT e o seletor de origem. Sai de cena sozinho; fica a NOSSA barra com o desfecho
     // por alguns segundos (atendeu? quanto durou?) e depois ela sai também.
     //
-    // `abertoPeloOperador` NÃO é tocado aqui de propósito: se ele abriu o painel para trocar o Call
-    // From e uma chamada recebida qualquer nasceu e morreu no meio, o painel dele não pode fechar
-    // sozinho no meio do ajuste.
+    // Se o painel é do OPERADOR (ele abriu para logar ou trocar o Call From), o fim de uma chamada
+    // qualquer não pode mexer nele: nem fechar, nem colapsar para a faixa compacta — isso arrancaria
+    // o Login e o Call From de baixo do cursor no meio do ajuste. Lido por ref porque este callback
+    // tem deps [] e não vê o state.
+    const doOperador = abertoPeloOperadorRef.current
     setEmUso(false)
     setMinimizado(false)
-    setAmpliado(false)
+    setAmpliado(doOperador)
     setDesfecho(true)
     limparTimer()
     timerDesfecho.current = setTimeout(() => {
@@ -219,34 +227,58 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
     }, SEGUNDOS_DESFECHO * 1000)
   }, [])
 
+  /** Resolve quando o latch marca que o embed anunciou, ou false no teto de espera. */
+  const esperarPronto = useCallback((ms: number) => new Promise<boolean>((resolve) => {
+    if (prontoRef.current) {
+      resolve(true)
+      return
+    }
+    let feito = false
+    const encerrar = (ok: boolean) => {
+      if (feito) return
+      feito = true
+      clearTimeout(timer)
+      aguardandoProntoRef.current.delete(encerrar)
+      resolve(ok)
+    }
+    aguardandoProntoRef.current.add(encerrar)
+    const timer = setTimeout(() => encerrar(false), ms)
+  }), [])
+
   const garantirDialer = useCallback(async (): Promise<N2pDialer> => {
     if (dialerRef.current && prontoRef.current) return dialerRef.current
     if (!preparoRef.current) {
       preparoRef.current = (async () => {
-        // o ouvinte precisa estar de pé ANTES de criar o iframe — o anúncio pode chegar primeiro
-        const espera = esperarEmbedPronto(MS_EMBED_PRONTO)
         try {
-          if (!dialerRef.current) {
+          let d = dialerRef.current
+          if (!d) {
             if (!containerRef.current) throw new Error('O discador ainda não está pronto na tela.')
-            dialerRef.current = await N2pDialer.criar({
-              container: containerRef.current,
-              aoMudarEstado,
-            })
+            d = await N2pDialer.criar({ container: containerRef.current, aoMudarEstado })
+            dialerRef.current = d
           }
-          if (!(await espera)) {
-            // não deixamos o placeCall sair: ele ficaria 30 s pendurado e voltaria como
-            // "você não está autenticado", que é diagnóstico falso
+          if (!(await esperarPronto(MS_EMBED_PRONTO))) {
+            // Não deixamos o placeCall sair: ele ficaria 30 s pendurado e voltaria como "você não
+            // está autenticado", diagnóstico falso.
+            //
+            // E descartamos o iframe que não anunciou: o embed anuncia UMA vez por carregamento, então
+            // reaproveitá-lo faria toda tentativa seguinte esperar um anúncio que nunca vem — o
+            // discador travado até trocar de tela, com a mensagem mandando tentar de novo. Assim
+            // "tente de novo" passa a ser verdade. Seguro: sem anúncio nunca houve chamada, e
+            // conferimos o mapa de pernas vivas antes de arrancar o iframe.
+            if (vivasRef.current.size === 0) {
+              dialerRef.current?.dispose()
+              dialerRef.current = null
+            }
             throw new Error('O discador não terminou de carregar. Verifique a conexão e tente de novo.')
           }
-          prontoRef.current = true
-          return dialerRef.current
+          return d
         } finally {
           preparoRef.current = null
         }
       })()
     }
     return preparoRef.current
-  }, [aoMudarEstado])
+  }, [aoMudarEstado, esperarPronto])
 
   const ligar = useCallback(async (numero: string): Promise<string | null> => {
     // normaliza com a NOSSA função (o kit não tira o zero do DDD) e monta E.164
@@ -278,7 +310,7 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
       setMinimizado(false)
       setEmUso(true)
       // a partir daqui o painel pertence à chamada, não ao ajuste que o operador estivesse fazendo
-      setAbertoPeloOperador(false)
+      marcarDoOperador(false)
       return null
     } catch (e: unknown) {
       const err = e as { codigo?: string; message?: string; dica?: string | null }
@@ -301,14 +333,16 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
 
   const abrirPainel = useCallback(async (): Promise<string | null> => {
     setDesfecho(false)
-    setEstado(null)
+    // só apaga a narração se não há nada em curso: com uma chamada viva, zerar aqui faria a barra
+    // parar de dizer "em ligação"/"recebendo chamada" e passar a instruir a ação errada
+    if (vivasRef.current.size === 0) setEstado(null)
     limparTimer()
     setMinimizado(false)
-    // Sem chamada em curso, o que interessa no widget é o Login e o seletor Call From — e os dois
-    // ficam abaixo da faixa compacta. Abrir já ampliado evita mandar o operador caçá-los num
-    // chevron sem rótulo.
-    setAmpliado(!emChamada)
-    setAbertoPeloOperador(true)
+    // O que interessa no widget aqui é o Login e o seletor Call From, e os dois ficam abaixo da faixa
+    // compacta. Ampliar não esconde nada — o card da chamada e o botão de desligar ficam na faixa de
+    // topo — então vale mesmo com chamada em curso.
+    setAmpliado(true)
+    marcarDoOperador(true)
     setPreparando(true)
     try {
       // O iframe nasce aqui e só devolvemos depois do anúncio do embed. Sem isso o painel abria com
@@ -318,12 +352,14 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
       return null
     } catch (e: unknown) {
       const err = e as { message?: string; dica?: string | null }
-      setAbertoPeloOperador(false)
+      // não há widget para mostrar (o iframe foi descartado ou nunca subiu): não deixamos um card
+      // vazio na tela. Se houver chamada viva, `aberto` continua true por ela e nada é escondido.
+      marcarDoOperador(false)
       return [err.message ?? 'Não foi possível abrir o discador', err.dica].filter(Boolean).join(' ')
     } finally {
       setPreparando(false)
     }
-  }, [garantirDialer, emChamada])
+  }, [garantirDialer])
 
   const aberto = emChamada || emUso || abertoPeloOperador
   const mostrarWidget = aberto && !minimizado
@@ -332,12 +368,15 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
 
   const fechar = () => {
     setAmpliado(false)
+    // O X sempre significa "não quero este painel", então o pedido do operador é limpo nos dois
+    // ramos — senão, um painel que ele abriu para ajustar o Call From voltava sozinho à tela quando
+    // a chamada terminasse.
+    marcarDoOperador(false)
     // Durante a chamada, fechar de verdade tiraria da tela o ÚNICO botão de desligar que existe
     // (o SDK não tem hangup). Então aqui o X recolhe, e a barra mantém como voltar.
     if (emChamada) setMinimizado(true)
     else {
       setEmUso(false)
-      setAbertoPeloOperador(false)
       setDesfecho(false)
       setEstado(null)
       limparTimer()
@@ -350,7 +389,11 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
       style={
         mostrarBarra
           ? {
-              bottom: '0.75rem', right: '0.75rem', width: LARGURA_PAINEL, zIndex: 60, pointerEvents: 'auto',
+              bottom: '0.75rem', right: '0.75rem', zIndex: 60, pointerEvents: 'auto',
+              // no modo ampliado a barra de rolagem precisa de calha própria, senão ela come a
+              // largura do iframe (que é fixa em 393px, imposta pelo fornecedor) e corta a borda
+              // direita do widget — com overflowX escondido, o que sai da vista fica inalcançável
+              width: LARGURA_PAINEL + (ampliado ? CALHA_ROLAGEM : 0),
               borderColor: 'var(--border)', background: 'var(--card)',
             }
           : { left: -9999, top: -9999, width: LARGURA_PAINEL, zIndex: 60, pointerEvents: 'auto', visibility: 'hidden' }
@@ -438,6 +481,7 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
         horizontal permanente comendo altura útil.
       */}
       <div
+        className="panel-scroll"
         style={{
           height: mostrarWidget ? (ampliado ? ALTURA_AMPLIADA : ALTURA_COMPACTA) : 0,
           maxHeight: '70vh',

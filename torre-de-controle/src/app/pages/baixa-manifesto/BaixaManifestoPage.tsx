@@ -972,7 +972,12 @@ function ContatosDialog({
                         onClick={async () => {
                           setAviso(null)
                           const err = await discador.ligar(f.numero)
+                          // deu certo: este diálogo sai da frente. O painel do discador ancora no
+                          // canto inferior direito e, em janela menor que ~1260px, cobriria justamente
+                          // estes botões; e a lista não serve mais para nada com a chamada em curso.
+                          // No erro fica aberto, porque é aqui que o aviso aparece.
                           if (err) setAviso(err)
+                          else onClose()
                         }}
                         disabled={discador.chamando}
                         className="shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50"
@@ -1077,7 +1082,10 @@ function ContatosDialog({
                 onClick={async () => {
                   setAviso(null)
                   const err = await discador.abrirPainel()
+                  // mesmo motivo do botão Ligar: o painel abre ampliado no canto inferior direito e
+                  // cobriria este diálogo em tela menor. No erro fica aberto para mostrar o aviso.
                   if (err) setAviso(err)
+                  else onClose()
                 }}
                 className="text-[11px] font-semibold text-primary hover:underline"
               >
