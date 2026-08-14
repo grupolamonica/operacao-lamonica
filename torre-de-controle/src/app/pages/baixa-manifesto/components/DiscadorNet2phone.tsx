@@ -300,9 +300,11 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
     setDesfecho(false)
     setEstado(null)
     limparTimer()
+    let inicioDaDiscagem = 0
     try {
       const dialer = await garantirDialer()
       setPreparando(false)
+      inicioDaDiscagem = performance.now()
       await dialer.ligarPara(`55${d}`)
       if (cicloJaTerminou()) return null
       // painel aberto para o operador ver o estado e alcançar o desligar. Sai sozinho quando não
@@ -314,7 +316,21 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
       return null
     } catch (e: unknown) {
       const err = e as { codigo?: string; message?: string; dica?: string | null }
-      const mensagem = [err.message ?? 'Falha ao ligar', err.dica].filter(Boolean).join(' ')
+      /**
+       * O kit traduz DOIS erros diferentes para o mesmo `sem_sessao` (n2p-dialer.js:192 e :196):
+       * a recusa real de autenticação E qualquer TimeoutError — inclusive o timeout de 30 s do
+       * `placeCall`. A mensagem dele ("você não está autenticado, clique em Login") já apareceu para
+       * operador que estava logado, com o widget mostrando LOGOUT: o embed tinha subido pela metade e
+       * ninguém respondeu ao comando.
+       *
+       * Não editamos o kit (é cópia do fornecedor), mas dá para distinguir por fora, pelo relógio:
+       * recusa volta em instantes, timeout leva ~30 s. Assim a tela para de acusar senha quando o
+       * problema é outro, e aponta o que de fato separa as causas — a presença do Call From.
+       */
+      const demorouComoTimeout = inicioDaDiscagem > 0 && performance.now() - inicioDaDiscagem > 25_000
+      const mensagem = err.codigo === 'sem_sessao' && demorouComoTimeout
+        ? 'O discador não respondeu em 30s. Não é senha: o widget abriu mas não terminou de carregar nesta máquina. Confira se o painel mostra o seletor "Call From" — se não mostra, este usuário net2phone está sem ramal/linha, ou a rede/navegador desta máquina está bloqueando o discador.'
+        : [err.message ?? 'Falha ao ligar', err.dica].filter(Boolean).join(' ')
       // sem sessão: o login é feito DENTRO do widget, então abrimos o painel — e ampliado, porque o
       // botão de Login fica abaixo da faixa compacta. Nos outros erros (microfone, número, embed que
       // não carregou) não há nada a fazer ali, e NÃO baixamos visibilidade que outro fluxo criou.
