@@ -243,7 +243,15 @@ export function useManifestoPendencias() {
     queryKey: ['manifesto', 'pendencias'],
     queryFn: async (): Promise<ManifestoPendenciasSnapshot> => {
       const { data, error } = await (api.api as any).manifesto.pendencias.get()
-      if (error) throw new Error((error.value as any)?.error ?? 'Falha ao ler pendências de manifesto')
+      if (error) {
+        // Propaga o status para a tela distinguir "sua sessão expirou" (401 — só relogar) de
+        // "o sistema falhou" (500). Sem isso as duas mostravam a mesma mensagem, e o operador
+        // concluía que o sistema caiu quando bastava fazer login. O AuthGuard só valida a
+        // sessão no mount, então cookie que expira com a tela aberta não redireciona ninguém.
+        const e = new Error((error.value as any)?.error ?? 'Falha ao ler pendências de manifesto')
+        ;(e as Error & { status?: number }).status = (error as { status?: number }).status
+        throw e
+      }
       return data as ManifestoPendenciasSnapshot
     },
     refetchInterval: 30_000,

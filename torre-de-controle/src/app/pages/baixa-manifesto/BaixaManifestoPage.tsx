@@ -311,8 +311,12 @@ function rankEstado(p: PendenciaManifesto): number {
 export function BaixaManifestoPage() {
   const {
     data: snapshot, pendencias, tratativas, motivos,
-    fonesMotorista, rotulosFone, validacoes, motivosErro, isLoading, isError,
+    fonesMotorista, rotulosFone, validacoes, motivosErro, isLoading, isError, error,
   } = useManifestoPendencias()
+  // 401 = sessão expirada, e o operador só precisa relogar. O AuthGuard valida a sessão apenas
+  // no mount, então cookie que vence com a tela aberta não redireciona ninguém — sem separar os
+  // dois casos, o operador lê "falha" e conclui que o sistema caiu.
+  const sessaoExpirou = isError && (error as (Error & { status?: number }) | null)?.status === 401
   // papel com escrita (justificativa e telefone) — o gate de verdade é no servidor; aqui só
   // decide o que mostrar. Antes isto vivia só dentro de TratativasSecao.
   const role = useAuthStore((s) => s.user?.role)
@@ -461,7 +465,9 @@ export function BaixaManifestoPage() {
           {isError ? (
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--destructive)' }}>
               <span className="h-2 w-2 rounded-full" style={{ background: 'var(--destructive)' }} />
-              Falha ao atualizar — a lista pode estar defasada
+              {sessaoExpirou
+                ? 'Sessão expirada — recarregue a página para entrar de novo'
+                : 'Falha ao atualizar — a lista pode estar defasada'}
             </span>
           ) : semSnapshot ? (
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--destructive)' }}>
@@ -767,7 +773,9 @@ export function BaixaManifestoPage() {
                             e leitura falhada são coisas diferentes para quem opera a fila */}
                         {isError ? (
                           <span className="font-semibold" style={{ color: 'var(--destructive)' }}>
-                            Não foi possível ler os manifestos — não assuma que a lista está vazia. Recarregue a página.
+                            {sessaoExpirou
+                              ? 'Sua sessão expirou. Recarregue a página (F5) para entrar de novo — os manifestos continuam sendo coletados normalmente.'
+                              : 'Não foi possível ler os manifestos — não assuma que a lista está vazia. Recarregue a página.'}
                           </span>
                         ) : semSnapshot ? (
                           <span className="font-semibold" style={{ color: 'var(--destructive)' }}>
