@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronUp, Phone, PhoneOff, X } from 'lucide-react'
 import { N2pDialer, type N2pEstado } from '@/lib/net2phone/n2p-dialer.js'
 import { digitosFone, foneValido } from '@/lib/telefone'
@@ -10,28 +11,121 @@ import { digitosFone, foneValido } from '@/lib/telefone'
  * OPERADOR, com áudio no headset dele. Nada toca do lado dele; o motorista recebe direto. A VPS
  * só entrega o HTML — quem registra o softphone é o navegador.
  *
- * ⚠️ DUAS RESTRIÇÕES DO SDK QUE MOLDAM ESTE COMPONENTE:
+ * ⚠️ RESTRIÇÕES DO SDK QUE MOLDAM ESTE COMPONENTE (auditadas no dialer-sdk.es.js, 428 linhas):
  *
- * 1. O widget é um iframe 393x600 que precisa existir no DOM e NÃO PODE SER REMOVIDO — é nele que
- *    o operador faz login, atende chamada recebida e DESLIGA (o SDK não expõe hangup por código).
- *    Por isso o container é montado uma vez e apenas escondido por CSS quando recolhido. Trocar
- *    para renderização condicional quebraria a ligação em curso.
+ * 1. A superfície pública do SDK é só `subscribe`, `dispose` e `placeCall` — existe UM único tipo
+ *    de mensagem de comando em todo o arquivo, `"placeCall"` (:419). **Não há hangup por código.**
+ *    O `dispose()` (:388-391) arranca o iframe do DOM e derruba a chamada junto com a sessão SIP —
+ *    é machado, não desligar. Consequência, e é a invariante mais importante daqui: **enquanto
+ *    existe QUALQUER chamada viva, o widget não pode sair da tela nem ficar inalcançável**, porque
+ *    o botão vermelho dentro dele é a única forma de encerrar.
  *
- * 2. `conferirSessao()` demora ~30 s quando não há sessão (o iframe não responde e o SDK estoura
- *    timeout). Então NÃO sondamos no carregamento: criamos o discador no primeiro clique e, se vier
- *    'sem_sessao', abrimos o painel com a instrução de login.
+ * 2. `N2pDialer.criar()` **resolve antes de o embed existir de verdade**: o construtor do SDK cria o
+ *    iframe, seta o `src` e faz `append` de forma síncrona (:359), e nada espera o carregamento.
+ *    Disparar `placeCall` nesse instante posta a mensagem num `contentWindow` que ainda é
+ *    about:blank — ela se perde, ninguém responde, e 30 s depois (:327) o SDK devolve TimeoutError,
+ *    que o wrapper traduz para 'sem_sessao' (n2p-dialer.js:196). Ou seja: a primeira ligação de cada
+ *    carregamento de página morria em 30 s dizendo "você não está autenticado" para quem estava
+ *    autenticado. Por isso esperamos o anúncio `dialerInitialized` do embed antes de liberar o
+ *    primeiro comando — ver esperarEmbedPronto().
+ *
+ * 3. Quem dimensiona o iframe é a página remota do fornecedor, não nós: ela manda `containerStyle`
+ *    naquele mesmo anúncio e o SDK faz `Object.assign(iframe.style, {...containerStyle,
+ *    display: 'block'})` (:396-401). Daí duas regras: CSS nosso no iframe perderia do style inline,
+ *    e esconder com `display:none` inline seria revertido no próximo init. **Por isso escondemos o
+ *    container externo (posicionamento), nunca o iframe.** O 393x600 é escolha do fornecedor.
+ *
+ * 4. `conferirSessao()` demora ~30 s quando não há sessão (ele provoca o timeout de propósito).
+ *    Nunca chamar em caminho interativo.
  *
  * ⚠️ NORMALIZAÇÃO: o phone.mjs do kit NÃO remove o zero do DDD — "(081)98633-6617" viraria
  * "081986336617" (testado). É o mesmo defeito que o `tel:` da tela tinha. Por isso passamos por
  * digitosFone() e prefixamos 55, caindo no caminho E.164 do kit.
+ *
+ * ⚠️ O widget em repouso mostra LOGOUT e o seletor **Call From** — que não é enfeite: é o número
+ * que aparece no celular do motorista (`placeCall` aceita só `{to}`, não dá para fixar a origem por
+ * código; ver DC-517). Ele precisa ficar ALCANÇÁVEL, não precisa ficar VISÍVEL: some quando a
+ * chamada termina e volta pelo `abrirPainel()`.
+ *
+ * ⚠️ PORTAL OBRIGATÓRIO: o painel é renderizado em `document.body`, não na árvore da página. O
+ * AppLayout envolve o conteúdo num `div` com `position:relative; z-index:1` (AppLayout.tsx:47-48),
+ * que cria stacking context — dentro dele, `z-index` nenhum escapa, nem em elemento `fixed`. O
+ * overlay do diálogo de contatos é portalado para o body com z-50 e pintaria por cima do widget,
+ * deixando o botão de desligar escurecido e inerte. Fora do stacking context, o z-60 daqui vence.
  */
+
+const SEGUNDOS_DESFECHO = 6
+const ALTURA_COMPACTA = 200
+const ALTURA_AMPLIADA = 600
+/** largura do iframe (imposta pelo fornecedor) + as duas bordas de 1px do nosso card */
+const LARGURA_PAINEL = 395
+/** teto de espera pelo anúncio do embed; bem abaixo dos 30 s de timeout do SDK */
+const MS_EMBED_PRONTO = 12_000
+
+/**
+ * Resolve quando o embed do net2phone anuncia que carregou (`dialerInitialized`), ou false no teto
+ * de espera. O anúncio é consumido internamente pelo SDK e NÃO chega aos assinantes de `subscribe`
+ * (dialer-sdk.es.js:50-55 roteia para os handlers internos), então ouvimos o `message` cru — o
+ * postMessage do iframe chega a todos os listeners da janela, não é exclusivo do SDK.
+ *
+ * Precisa ser chamado ANTES de criar o dialer: o anúncio pode chegar antes de `criar()` resolver.
+ */
+function esperarEmbedPronto(ms: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    let encerrado = false
+    const encerrar = (ok: boolean) => {
+      if (encerrado) return
+      encerrado = true
+      clearTimeout(timer)
+      window.removeEventListener('message', ouvir)
+      resolve(ok)
+    }
+    const ouvir = (e: MessageEvent) => {
+      const d = e.data as { source?: unknown; type?: unknown } | null | undefined
+      if (d && typeof d === 'object' && d.source === 'n2p-dialer-embed' && d.type === 'dialerInitialized') {
+        encerrar(true)
+      }
+    }
+    window.addEventListener('message', ouvir)
+    // declarado por último de propósito: `encerrar` só o lê quando chamado, e mensagens do iframe
+    // chegam como tarefa assíncrona — nunca entre estas duas linhas.
+    const timer = setTimeout(() => encerrar(false), ms)
+  })
+}
+
+/**
+ * Identifica a PERNA de chamada a que um evento pertence.
+ *
+ * O embed atende mais de uma chamada ao mesmo tempo (uma recebida entrando no meio de uma ligação
+ * nossa, por exemplo), e todas chegam pelo mesmo callback. Guardar só "o último evento" fazia o
+ * 'disconnected' de uma perna qualquer ser lido como fim de tudo — e esconder o widget com a
+ * ligação do motorista ainda de pé, deixando o operador sem o único botão de desligar que existe.
+ *
+ * O payload do fornecedor não é documentado; usamos `id` quando ele existe e caímos em
+ * direção+número quando não existe. Duas pernas para o mesmo número na mesma direção colidiriam —
+ * degradação aceitável, e o pior caso volta a ser o comportamento antigo.
+ */
+function chaveDaChamada(info: N2pEstado): string {
+  const c = info.chamada
+  if (c && typeof c === 'object') {
+    const id = (c as Record<string, unknown>).id
+    if (typeof id === 'string' && id !== '') return id
+    if (typeof id === 'number') return String(id)
+  }
+  return `${info.direcao || '?'}|${info.numero || '?'}`
+}
 
 interface DiscadorApi {
   /** Origina a chamada. Devolve mensagem de erro pronta para exibir, ou null em caso de sucesso. */
   ligar: (numero: string) => Promise<string | null>
+  /**
+   * Abre o widget sem discar — para fazer login ou trocar o número de origem (Call From).
+   * Cria o iframe e espera o embed carregar: sem isso o painel abria vazio.
+   */
+  abrirPainel: () => Promise<string | null>
   chamando: boolean
+  emChamada: boolean
   estado: N2pEstado | null
-  abrirPainel: () => void
 }
 
 const Ctx = createContext<DiscadorApi | null>(null)
@@ -44,20 +138,115 @@ export function useDiscador(): DiscadorApi | null {
 export function DiscadorNet2phoneProvider({ children }: { children: ReactNode }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const dialerRef = useRef<N2pDialer | null>(null)
-  const [aberto, setAberto] = useState(false)
-  const [chamando, setChamando] = useState(false)
-  const [estado, setEstado] = useState<N2pEstado | null>(null)
-  const [ampliado, setAmpliado] = useState(false)
+  /** o embed já anunciou que carregou? antes disso, nenhum comando chega ao outro lado */
+  const prontoRef = useRef(false)
+  /** preparo em voo, para dois cliques rápidos não criarem dois iframes e dois listeners */
+  const preparoRef = useRef<Promise<N2pDialer> | null>(null)
+  /** pernas de chamada vivas, por chave — ver chaveDaChamada() */
+  const vivasRef = useRef<Map<string, N2pEstado>>(new Map())
+  /** quantos eventos de estado já chegaram; usado para não atropelar um ciclo já encerrado */
+  const eventosRef = useRef(0)
+  const timerDesfecho = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const garantirDialer = useCallback(async () => {
-    if (dialerRef.current) return dialerRef.current
-    if (!containerRef.current) throw new Error('container do discador ainda não montou')
-    dialerRef.current = await N2pDialer.criar({
-      container: containerRef.current,
-      aoMudarEstado: (info) => setEstado(info),
-    })
-    return dialerRef.current
+  const [chamando, setChamando] = useState(false)
+  const [preparando, setPreparando] = useState(false)
+  const [emChamada, setEmChamada] = useState(false)
+  const [estado, setEstado] = useState<N2pEstado | null>(null)
+  /** painel aberto por causa de uma ligação em curso */
+  const [emUso, setEmUso] = useState(false)
+  /** painel aberto de propósito pelo operador (login, ajustar Call From) — só ele mesmo fecha */
+  const [abertoPeloOperador, setAbertoPeloOperador] = useState(false)
+  /** recolhido DURANTE a chamada: a barra continua, com botão para trazer o desligar de volta */
+  const [minimizado, setMinimizado] = useState(false)
+  const [ampliado, setAmpliado] = useState(false)
+  /** mostra o resultado da última chamada por alguns segundos, depois a barra também sai */
+  const [desfecho, setDesfecho] = useState(false)
+
+  const limparTimer = () => {
+    if (timerDesfecho.current) {
+      clearTimeout(timerDesfecho.current)
+      timerDesfecho.current = null
+    }
+  }
+
+  useEffect(() => () => {
+    limparTimer()
+    // O construtor do SDK registra um listener de 'message' em window e só dispose() o remove
+    // (dialer-sdk.es.js:45 e :388-391). Sem isso, cada visita à página deixaria um ouvinte órfão
+    // chamando os setState de um provider já desmontado.
+    dialerRef.current?.dispose()
+    dialerRef.current = null
+    prontoRef.current = false
+    preparoRef.current = null
+    vivasRef.current.clear()
   }, [])
+
+  const aoMudarEstado = useCallback((info: N2pEstado) => {
+    eventosRef.current += 1
+    const chave = chaveDaChamada(info)
+    if (info.estado === 'disconnected') vivasRef.current.delete(chave)
+    else vivasRef.current.set(chave, info)
+
+    const aindaFalando = vivasRef.current.size > 0
+    setEmChamada(aindaFalando)
+    // A barra descreve a chamada QUE CONTINUA — não a perna que acabou de morrer.
+    const viva = vivasRef.current.values().next().value
+    setEstado(aindaFalando ? (viva ?? info) : info)
+
+    if (aindaFalando) {
+      setDesfecho(false)
+      limparTimer()
+      return
+    }
+
+    // Fim de verdade: nenhuma perna viva. O widget não tem mais função na tela — em repouso ele só
+    // exibe LOGOUT e o seletor de origem. Sai de cena sozinho; fica a NOSSA barra com o desfecho
+    // por alguns segundos (atendeu? quanto durou?) e depois ela sai também.
+    //
+    // `abertoPeloOperador` NÃO é tocado aqui de propósito: se ele abriu o painel para trocar o Call
+    // From e uma chamada recebida qualquer nasceu e morreu no meio, o painel dele não pode fechar
+    // sozinho no meio do ajuste.
+    setEmUso(false)
+    setMinimizado(false)
+    setAmpliado(false)
+    setDesfecho(true)
+    limparTimer()
+    timerDesfecho.current = setTimeout(() => {
+      setDesfecho(false)
+      // limpa o estado junto: senão a barra, ao reaparecer por outro motivo, exibiria o desfecho
+      // de uma chamada antiga colado na instrução de login.
+      setEstado(null)
+    }, SEGUNDOS_DESFECHO * 1000)
+  }, [])
+
+  const garantirDialer = useCallback(async (): Promise<N2pDialer> => {
+    if (dialerRef.current && prontoRef.current) return dialerRef.current
+    if (!preparoRef.current) {
+      preparoRef.current = (async () => {
+        // o ouvinte precisa estar de pé ANTES de criar o iframe — o anúncio pode chegar primeiro
+        const espera = esperarEmbedPronto(MS_EMBED_PRONTO)
+        try {
+          if (!dialerRef.current) {
+            if (!containerRef.current) throw new Error('O discador ainda não está pronto na tela.')
+            dialerRef.current = await N2pDialer.criar({
+              container: containerRef.current,
+              aoMudarEstado,
+            })
+          }
+          if (!(await espera)) {
+            // não deixamos o placeCall sair: ele ficaria 30 s pendurado e voltaria como
+            // "você não está autenticado", que é diagnóstico falso
+            throw new Error('O discador não terminou de carregar. Verifique a conexão e tente de novo.')
+          }
+          prontoRef.current = true
+          return dialerRef.current
+        } finally {
+          preparoRef.current = null
+        }
+      })()
+    }
+    return preparoRef.current
+  }, [aoMudarEstado])
 
   const ligar = useCallback(async (numero: string): Promise<string | null> => {
     // normaliza com a NOSSA função (o kit não tira o zero do DDD) e monta E.164
@@ -65,109 +254,212 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
     if (!foneValido(d)) {
       return 'Número sem DDD válido — não é possível ligar por aqui.'
     }
+    const eventosAntes = eventosRef.current
+    /**
+     * `placeCall` só resolve quando a resposta do iframe chega, e o SDK espera até 30 s
+     * (dialer-sdk.es.js:327) — enquanto as notificações de estado vêm por outro caminho. Ou seja: a
+     * chamada pode nascer, ser atendida e terminar ANTES desta promise voltar. Quando isso
+     * acontece, mexer na visibilidade aqui traria o widget de volta para uma chamada que já morreu.
+     */
+    const cicloJaTerminou = () => eventosRef.current !== eventosAntes && vivasRef.current.size === 0
+
     setChamando(true)
+    setPreparando(true)
+    setDesfecho(false)
+    setEstado(null)
+    limparTimer()
     try {
       const dialer = await garantirDialer()
+      setPreparando(false)
       await dialer.ligarPara(`55${d}`)
-      setAberto(true) // painel aberto para o operador ver o estado e poder desligar
+      if (cicloJaTerminou()) return null
+      // painel aberto para o operador ver o estado e alcançar o desligar. Sai sozinho quando não
+      // sobra nenhuma chamada viva — antes ficava aberto para sempre e o widget virava mobília.
+      setMinimizado(false)
+      setEmUso(true)
+      // a partir daqui o painel pertence à chamada, não ao ajuste que o operador estivesse fazendo
+      setAbertoPeloOperador(false)
       return null
     } catch (e: unknown) {
       const err = e as { codigo?: string; message?: string; dica?: string | null }
-      // sem sessão: o login é feito DENTRO do widget, então abrimos o painel
-      if (err.codigo === 'sem_sessao' || err.codigo === 'nao_iniciado') setAberto(true)
-      return [err.message ?? 'Falha ao ligar', err.dica].filter(Boolean).join(' ')
+      const mensagem = [err.message ?? 'Falha ao ligar', err.dica].filter(Boolean).join(' ')
+      // sem sessão: o login é feito DENTRO do widget, então abrimos o painel — e ampliado, porque o
+      // botão de Login fica abaixo da faixa compacta. Nos outros erros (microfone, número, embed que
+      // não carregou) não há nada a fazer ali, e NÃO baixamos visibilidade que outro fluxo criou.
+      const precisaDoWidget = err.codigo === 'sem_sessao' || err.codigo === 'nao_iniciado'
+      if (precisaDoWidget) {
+        setEmUso(true)
+        setMinimizado(false)
+        setAmpliado(true)
+      }
+      return mensagem
     } finally {
       setChamando(false)
+      setPreparando(false)
     }
   }, [garantirDialer])
 
-  const emChamada = estado?.estado === 'connecting' || estado?.estado === 'answered'
+  const abrirPainel = useCallback(async (): Promise<string | null> => {
+    setDesfecho(false)
+    setEstado(null)
+    limparTimer()
+    setMinimizado(false)
+    // Sem chamada em curso, o que interessa no widget é o Login e o seletor Call From — e os dois
+    // ficam abaixo da faixa compacta. Abrir já ampliado evita mandar o operador caçá-los num
+    // chevron sem rótulo.
+    setAmpliado(!emChamada)
+    setAbertoPeloOperador(true)
+    setPreparando(true)
+    try {
+      // O iframe nasce aqui e só devolvemos depois do anúncio do embed. Sem isso o painel abria com
+      // 600 px de nada: nenhum Login, nenhum Call From — falhando exatamente nos dois casos que
+      // justificam este botão.
+      await garantirDialer()
+      return null
+    } catch (e: unknown) {
+      const err = e as { message?: string; dica?: string | null }
+      setAbertoPeloOperador(false)
+      return [err.message ?? 'Não foi possível abrir o discador', err.dica].filter(Boolean).join(' ')
+    } finally {
+      setPreparando(false)
+    }
+  }, [garantirDialer, emChamada])
 
-  /**
-   * O iframe do net2phone tem 393x600 fixos e, abaixo do card da chamada, exibe um teclado
-   * numérico que não serve para nada aqui — o número vem dos dados, ninguém digita. Não dá para
-   * remover: é conteúdo de outra origem.
-   *
-   * Então recortamos a janela de visualização e mostramos só a faixa de cima, onde ficam o login,
-   * o card da chamada e — o que importa — o botão de DESLIGAR. O iframe continua com o tamanho
-   * original (mudá-lo poderia quebrar o layout interno do widget); só o wrapper tem overflow
-   * escondido. Quem precisar de transferir ou teclado usa o botão de ampliar.
-   */
-  const ALTURA_COMPACTA = 200
+  const aberto = emChamada || emUso || abertoPeloOperador
+  const mostrarWidget = aberto && !minimizado
+  const mostrarBarra = aberto || desfecho
+  const entrante = estado?.direcao === 'inbound'
 
-  return (
-    <Ctx.Provider value={{ ligar, chamando, estado, abrirPainel: () => setAberto(true) }}>
-      {children}
+  const fechar = () => {
+    setAmpliado(false)
+    // Durante a chamada, fechar de verdade tiraria da tela o ÚNICO botão de desligar que existe
+    // (o SDK não tem hangup). Então aqui o X recolhe, e a barra mantém como voltar.
+    if (emChamada) setMinimizado(true)
+    else {
+      setEmUso(false)
+      setAbertoPeloOperador(false)
+      setDesfecho(false)
+      setEstado(null)
+      limparTimer()
+    }
+  }
 
-      {/* Barra fixa: só aparece quando há algo a mostrar (painel aberto ou chamada em curso) */}
-      {(aberto || emChamada) && (
-        <div
-          className="fixed bottom-3 right-3 z-50 rounded-lg border shadow-lg"
-          style={{ borderColor: 'var(--border)', background: 'var(--card)' }}
-        >
+  const painel = (
+    <div
+      className="fixed overflow-hidden rounded-lg border shadow-lg"
+      style={
+        mostrarBarra
+          ? {
+              bottom: '0.75rem', right: '0.75rem', width: LARGURA_PAINEL, zIndex: 60, pointerEvents: 'auto',
+              borderColor: 'var(--border)', background: 'var(--card)',
+            }
+          : { left: -9999, top: -9999, width: LARGURA_PAINEL, zIndex: 60, pointerEvents: 'auto', visibility: 'hidden' }
+      }
+    >
+      {mostrarBarra && (
+        <>
           <div className="flex items-center justify-between gap-2 border-b px-3 py-2" style={{ borderColor: 'var(--border)' }}>
             <span className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
               {emChamada ? <Phone className="h-3.5 w-3.5 text-primary" /> : <PhoneOff className="h-3.5 w-3.5 text-muted-foreground" />}
               Discador
-              {estado && (
-                <span className="font-normal text-muted-foreground">
-                  {estado.estado === 'connecting' && '· chamando…'}
-                  {estado.estado === 'answered' && '· em ligação'}
-                  {estado.estado === 'disconnected' && (
-                    estado.resultado === 'answered'
-                      ? `· encerrada${estado.duracaoSegundos != null ? ` (${estado.duracaoSegundos}s)` : ''}`
-                      : '· não atendeu'
-                  )}
-                </span>
-              )}
+              <span className="font-normal text-muted-foreground">
+                {preparando && '· abrindo…'}
+                {!preparando && estado?.estado === 'connecting' && (entrante ? '· recebendo chamada' : '· chamando…')}
+                {!preparando && estado?.estado === 'answered' && '· em ligação'}
+                {/* o desfecho só vale dentro da janela de exibição: fora dela seria o resultado
+                    de uma chamada antiga passando por estado atual */}
+                {!preparando && desfecho && estado?.estado === 'disconnected' && (
+                  estado.resultado === 'answered'
+                    ? `· encerrada${estado.duracaoSegundos != null ? ` (${estado.duracaoSegundos}s)` : ''}`
+                    : (entrante ? '· recebida perdida' : '· não atendeu')
+                )}
+              </span>
             </span>
             <span className="flex items-center gap-0.5">
-              <button
-                type="button"
-                onClick={() => setAmpliado((v) => !v)}
-                className="rounded p-0.5 text-muted-foreground hover:bg-muted"
-                title={ampliado ? 'Mostrar só a chamada' : 'Mostrar teclado e transferência'}
-              >
-                {ampliado ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-              </button>
-              <button
-                type="button"
-                onClick={() => setAberto(false)}
-                className="rounded p-0.5 text-muted-foreground hover:bg-muted"
-                title="Recolher (a ligação continua)"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
+              {minimizado ? (
+                <button
+                  type="button"
+                  onClick={() => setMinimizado(false)}
+                  className="rounded px-1.5 py-0.5 text-[11px] font-semibold text-primary hover:bg-muted"
+                >
+                  Abrir para desligar
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setAmpliado((v) => !v)}
+                    className="rounded p-0.5 text-muted-foreground hover:bg-muted"
+                    title={ampliado ? 'Mostrar só a chamada' : 'Mostrar teclado, transferência e o número de origem'}
+                  >
+                    {ampliado ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={fechar}
+                    className="rounded p-0.5 text-muted-foreground hover:bg-muted"
+                    title={emChamada ? 'Recolher — a ligação continua e o desligar volta em um clique' : 'Fechar'}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </>
+              )}
             </span>
           </div>
-          <p className="px-3 pt-1.5 text-[10px] text-muted-foreground">
-            Desligue no botão vermelho abaixo. Na primeira vez, entre com <b>Login</b>.
-          </p>
-        </div>
+          {aberto && (
+            <p className="px-3 pb-1.5 pt-1.5 text-[10px] leading-snug text-muted-foreground">
+              {emChamada
+                ? (minimizado
+                    ? 'A ligação continua. Use “Abrir para desligar”.'
+                    : entrante
+                      ? 'Chamada entrando — atenda no widget abaixo.'
+                      : 'Para desligar, use o botão vermelho abaixo.')
+                : (
+                  <>
+                    Entre com <b>Login</b>. Em <b>Call From</b>, escolha o número que aparece no
+                    celular do motorista.
+                  </>
+                )}
+            </p>
+          )}
+        </>
       )}
 
       {/*
-        O container do widget fica SEMPRE montado — remover do DOM mataria a sessão e a ligação em
-        curso. Quando recolhido, sai de vista por posicionamento, não por desmontagem.
+        Altura 0 esconde o widget sem desmontar nem tocar no style do iframe (que o fornecedor
+        reescreve a cada init). O div interno NÃO fixa tamanho de propósito: o iframe se dimensiona
+        sozinho pelo `containerStyle` que vem do embed — repetir 393x600 aqui daria a impressão
+        falsa de que controlamos isso.
+
+        Rolagem só na vertical, e só no modo ampliado: 70vh corta o rodapé do widget num notebook de
+        768 px de altura, e é justamente lá que ficam o teclado, a transferência e o Call From — tudo
+        que o ampliar existe para revelar. Conteúdo cross-origin não rola por fora. Na horizontal
+        `hidden` sempre, senão a diferença entre a largura do iframe e a do card renderia uma barra
+        horizontal permanente comendo altura útil.
       */}
       <div
-        className="fixed z-50"
-        style={
-          aberto || emChamada
-            ? {
-                bottom: '3.25rem', right: '0.75rem', width: 393,
-                // recorta a faixa util: login + card da chamada + botao de desligar.
-                // Ampliado mostra o iframe inteiro (teclado, transferencia).
-                height: ampliado ? 600 : ALTURA_COMPACTA,
-                maxHeight: '70vh', overflow: 'hidden',
-                borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)',
-              }
-            : { width: 393, height: 600, left: -9999, top: -9999, visibility: 'hidden' }
-        }
+        style={{
+          height: mostrarWidget ? (ampliado ? ALTURA_AMPLIADA : ALTURA_COMPACTA) : 0,
+          maxHeight: '70vh',
+          overflowY: ampliado ? 'auto' : 'hidden',
+          overflowX: 'hidden',
+        }}
       >
-        {/* tamanho do iframe NUNCA muda — mexer nele pode quebrar o layout interno do widget */}
-        <div ref={containerRef} style={{ width: 393, height: 600 }} />
+        <div ref={containerRef} />
       </div>
+    </div>
+  )
+
+  return (
+    <Ctx.Provider value={{ ligar, abrirPainel, chamando, emChamada, estado }}>
+      {children}
+      {/*
+        Portal para o body — obrigatório, ver o cabeçalho: dentro da árvore da página o painel fica
+        preso no stacking context do AppLayout e o overlay do diálogo pinta por cima, deixando o
+        botão de desligar inerte. O alvo é constante, então o React reusa o mesmo nó entre renders e
+        o iframe (com a sessão e a ligação dentro) nunca é remontado.
+      */}
+      {createPortal(painel, document.body)}
     </Ctx.Provider>
   )
 }

@@ -60,7 +60,12 @@ declare module '@/lib/net2phone/n2p-dialer.js' {
 
     aoMudarEstado(fn: (info: N2pEstado) => void): () => void
 
-    descartar?(): void
+    /**
+     * ⚠️ NÃO é desligar. Remove o iframe do DOM (dialer-sdk.es.js:388-391) e derruba de uma vez a
+     * sessão, o registro SIP e qualquer chamada em curso. O SDK não tem hangup — o único tipo de
+     * comando que existe nele é "placeCall".
+     */
+    dispose(): void
   }
 
   export default N2pDialer
