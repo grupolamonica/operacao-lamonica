@@ -4,6 +4,7 @@ import { MessageSquare, PackageCheck, Phone, Volume2, VolumeX } from 'lucide-rea
 import { PanelCard } from '@/components/domain/PanelCard'
 import { RelatorioMotivos } from './components/RelatorioMotivos'
 import { ValidacaoSecao } from './components/ValidacaoSecao'
+import { DiscadorNet2phoneProvider, useDiscador } from './components/DiscadorNet2phone'
 import { SidePanelLayout } from '@/components/domain/SidePanelLayout'
 import { FixedPanel } from '@/components/domain/FixedPanel'
 import { Button } from '@/components/ui/button'
@@ -308,7 +309,20 @@ function rankEstado(p: PendenciaManifesto): number {
   return 4
 }
 
+/**
+ * O provider envolve a tela porque o widget do discador (iframe do net2phone) precisa viver ACIMA
+ * do conteúdo e permanecer montado: é nele que o operador faz login e desliga a chamada, e o SDK
+ * não expõe hangup por código. Desmontar durante uma ligação a mataria.
+ */
 export function BaixaManifestoPage() {
+  return (
+    <DiscadorNet2phoneProvider>
+      <BaixaManifestoConteudo />
+    </DiscadorNet2phoneProvider>
+  )
+}
+
+function BaixaManifestoConteudo() {
   const {
     data: snapshot, pendencias, tratativas, motivos,
     fonesMotorista, rotulosFone, validacoes, motivosErro, isLoading, isError, error,
@@ -872,6 +886,9 @@ function ContatosDialog({
   const contatos = pendencia ? contatosDaPendencia(pendencia, fonesMotorista) : []
   const marcar = useMarcarFoneMotorista()
   const adicionar = useAdicionarFoneMotorista()
+  // discador net2phone: quando disponível, ligar sai pelo navegador do operador (headset).
+  // O link tel: continua ali como alternativa para quem não tem headset ou sessão.
+  const discador = useDiscador()
   const [novo, setNovo] = useState('')
   const [rotulo, setRotulo] = useState(rotulos[0] ?? 'Celular')
   const [aviso, setAviso] = useState<string | null>(null)
@@ -949,6 +966,22 @@ function ContatosDialog({
                         <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{f.rotulo}</span>
                       </span>
                     </a>
+                    {discador && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setAviso(null)
+                          const err = await discador.ligar(f.numero)
+                          if (err) setAviso(err)
+                        }}
+                        disabled={discador.chamando}
+                        className="shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50"
+                        style={{ background: 'var(--primary)' }}
+                        title="Ligar pelo navegador (headset) — o motorista recebe a chamada direto"
+                      >
+                        {discador.chamando ? '…' : 'Ligar'}
+                      </button>
+                    )}
                     {podeEscrever && c.codmot && (
                       <button
                         type="button"
