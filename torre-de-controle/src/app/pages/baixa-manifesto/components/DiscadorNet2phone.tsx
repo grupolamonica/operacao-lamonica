@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react'
-import { Phone, PhoneOff, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Phone, PhoneOff, X } from 'lucide-react'
 import { N2pDialer, type N2pEstado } from '@/lib/net2phone/n2p-dialer.js'
 import { digitosFone, foneValido } from '@/lib/telefone'
 
@@ -47,6 +47,7 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
   const [aberto, setAberto] = useState(false)
   const [chamando, setChamando] = useState(false)
   const [estado, setEstado] = useState<N2pEstado | null>(null)
+  const [ampliado, setAmpliado] = useState(false)
 
   const garantirDialer = useCallback(async () => {
     if (dialerRef.current) return dialerRef.current
@@ -82,6 +83,18 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
 
   const emChamada = estado?.estado === 'connecting' || estado?.estado === 'answered'
 
+  /**
+   * O iframe do net2phone tem 393x600 fixos e, abaixo do card da chamada, exibe um teclado
+   * numérico que não serve para nada aqui — o número vem dos dados, ninguém digita. Não dá para
+   * remover: é conteúdo de outra origem.
+   *
+   * Então recortamos a janela de visualização e mostramos só a faixa de cima, onde ficam o login,
+   * o card da chamada e — o que importa — o botão de DESLIGAR. O iframe continua com o tamanho
+   * original (mudá-lo poderia quebrar o layout interno do widget); só o wrapper tem overflow
+   * escondido. Quem precisar de transferir ou teclado usa o botão de ampliar.
+   */
+  const ALTURA_COMPACTA = 200
+
   return (
     <Ctx.Provider value={{ ligar, chamando, estado, abrirPainel: () => setAberto(true) }}>
       {children}
@@ -108,17 +121,27 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
                 </span>
               )}
             </span>
-            <button
-              type="button"
-              onClick={() => setAberto(false)}
-              className="rounded p-0.5 text-muted-foreground hover:bg-muted"
-              title="Recolher (a ligação continua)"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
+            <span className="flex items-center gap-0.5">
+              <button
+                type="button"
+                onClick={() => setAmpliado((v) => !v)}
+                className="rounded p-0.5 text-muted-foreground hover:bg-muted"
+                title={ampliado ? 'Mostrar só a chamada' : 'Mostrar teclado e transferência'}
+              >
+                {ampliado ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => setAberto(false)}
+                className="rounded p-0.5 text-muted-foreground hover:bg-muted"
+                title="Recolher (a ligação continua)"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </span>
           </div>
           <p className="px-3 pt-1.5 text-[10px] text-muted-foreground">
-            Use o widget abaixo para <b>entrar</b> na primeira vez e para <b>desligar</b> a chamada.
+            Desligue no botão vermelho abaixo. Na primeira vez, entre com <b>Login</b>.
           </p>
         </div>
       )}
@@ -131,10 +154,18 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
         className="fixed z-50"
         style={
           aberto || emChamada
-            ? { bottom: '3rem', right: '0.75rem', width: 393, height: 600, maxHeight: '70vh', overflow: 'hidden' }
+            ? {
+                bottom: '3.25rem', right: '0.75rem', width: 393,
+                // recorta a faixa util: login + card da chamada + botao de desligar.
+                // Ampliado mostra o iframe inteiro (teclado, transferencia).
+                height: ampliado ? 600 : ALTURA_COMPACTA,
+                maxHeight: '70vh', overflow: 'hidden',
+                borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)',
+              }
             : { width: 393, height: 600, left: -9999, top: -9999, visibility: 'hidden' }
         }
       >
+        {/* tamanho do iframe NUNCA muda — mexer nele pode quebrar o layout interno do widget */}
         <div ref={containerRef} style={{ width: 393, height: 600 }} />
       </div>
     </Ctx.Provider>
