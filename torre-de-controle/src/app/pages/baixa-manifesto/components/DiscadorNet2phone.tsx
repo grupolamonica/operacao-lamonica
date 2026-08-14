@@ -253,6 +253,11 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
           let d = dialerRef.current
           if (!d) {
             if (!containerRef.current) throw new Error('O discador ainda não está pronto na tela.')
+            // O latch é POR IFRAME, não global: um iframe novo tem o próprio anúncio para dar. Sem
+            // zerar aqui, o `true` de um iframe anterior liberaria o comando na hora e o placeCall
+            // voltaria a ser postado num contentWindow ainda about:blank — exatamente o defeito que a
+            // espera existe para evitar.
+            prontoRef.current = false
             d = await N2pDialer.criar({ container: containerRef.current, aoMudarEstado })
             dialerRef.current = d
           }
@@ -268,6 +273,8 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
             if (vivasRef.current.size === 0) {
               dialerRef.current?.dispose()
               dialerRef.current = null
+              // e o latch vai junto: ele pertencia ao iframe que acabou de ser arrancado
+              prontoRef.current = false
             }
             throw new Error('O discador não terminou de carregar. Verifique a conexão e tente de novo.')
           }
@@ -327,7 +334,22 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
        * recusa volta em instantes, timeout leva ~30 s. Assim a tela para de acusar senha quando o
        * problema é outro, e aponta o que de fato separa as causas — a presença do Call From.
        */
-      const demorouComoTimeout = inicioDaDiscagem > 0 && performance.now() - inicioDaDiscagem > 25_000
+      const msDaTentativa = inicioDaDiscagem > 0 ? Math.round(performance.now() - inicioDaDiscagem) : null
+      const demorouComoTimeout = msDaTentativa != null && msDaTentativa > 25_000
+      /**
+       * O kit achata erros distintos no mesmo `codigo`, e o texto na tela não pode virar um despejo
+       * técnico. Então o detalhe vai para o console: com F12 aberto, `ms` perto de 30000 é timeout (o
+       * comando não foi respondido) e `ms` de poucas centenas é recusa explícita do embed. É o que
+       * separa "a conta não pode originar" de "o widget não estava pronto" sem depender de cronômetro.
+       */
+      console.warn('[discador] falha ao ligar', {
+        codigo: err.codigo ?? '(sem codigo)',
+        ms: msDaTentativa,
+        leitura: msDaTentativa == null
+          ? 'falhou antes de discar (widget não ficou pronto)'
+          : demorouComoTimeout ? 'timeout: ninguém respondeu ao comando' : 'recusa explícita do embed',
+        mensagemDoKit: err.message,
+      })
       const mensagem = err.codigo === 'sem_sessao' && demorouComoTimeout
         ? 'O discador não respondeu em 30s. Não é senha: o widget abriu mas não terminou de carregar nesta máquina. Confira se o painel mostra o seletor "Call From" — se não mostra, este usuário net2phone está sem ramal/linha, ou a rede/navegador desta máquina está bloqueando o discador.'
         : [err.message ?? 'Falha ao ligar', err.dica].filter(Boolean).join(' ')
