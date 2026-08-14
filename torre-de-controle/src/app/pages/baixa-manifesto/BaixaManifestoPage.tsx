@@ -1065,6 +1065,29 @@ function ContatosDialog({
           {contatos.length === 0 && (
             <p className="text-sm text-muted-foreground">Nenhum telefone cadastrado para esta viagem.</p>
           )}
+
+          {/* O widget do net2phone sai da tela sozinho quando a ligação termina — em repouso ele só
+              exibe LOGOUT e o seletor Call From. Mas o Call From precisa continuar ALCANÇÁVEL: é o
+              número que aparece no celular do motorista, e o SDK não permite fixá-lo por código
+              (placeCall aceita só {to}). Esta é a porta de entrada para ele. */}
+          {discador && (
+            <div className="border-t pt-2.5" style={{ borderColor: 'var(--border)' }}>
+              <button
+                type="button"
+                onClick={async () => {
+                  setAviso(null)
+                  const err = await discador.abrirPainel()
+                  if (err) setAviso(err)
+                }}
+                className="text-[11px] font-semibold text-primary hover:underline"
+              >
+                Abrir discador — login e número de origem
+              </button>
+              <p className="mt-0.5 text-[10px] italic text-muted-foreground">
+                Em <b>Call From</b> escolhe-se o número que o motorista vê ao receber a chamada.
+              </p>
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>
