@@ -207,6 +207,12 @@ const PendenciaSchema = t.Object({
   serie: t.Optional(t.String()),
   emissao_local: t.Optional(t.Nullable(t.String())),
   prazo_entrega_local: t.Optional(t.Nullable(t.String())),
+  // false = o DATLME do Rodopar não serve como prazo (nulo, ou <= a emissão). Medido em
+  // 17/08: 4.789 de 23.021 manifestos em 12 meses (21%) — o prazo vem herdado de lote (o
+  // mesmo valor em ~100 manifestos de linhas diferentes), então a viagem que sai depois
+  // daquela data já NASCE vencida. O coletor zera `horas_atraso` nesses casos; a tela usa
+  // este campo pra dizer ⚪ SEM PRAZO em vez de "no prazo". Ausente = confiável (v1/antigo).
+  prazo_confiavel: t.Optional(t.Boolean()),
   // nullable defensivo: coletor manda null quando o manifesto não tem
   // `emissao` (mesmo padrão do bug do sm.* acima — ver montar_item em coletor_v2.py)
   horas_aberto: t.Optional(t.Nullable(t.Number())),
