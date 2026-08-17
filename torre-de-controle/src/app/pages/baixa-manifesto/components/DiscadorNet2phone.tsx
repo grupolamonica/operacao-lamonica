@@ -117,6 +117,8 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
   const preparoRef = useRef<Promise<N2pDialer> | null>(null)
   /** espelha `abertoPeloOperador` para o callback de estado, que tem deps [] e não lê state */
   const abertoPeloOperadorRef = useRef(false)
+  /** já sondamos a sessão desta abertura de painel? (resetado a cada abrirPainel) */
+  const sondouRef = useRef(false)
   /** pernas de chamada vivas, por chave — ver chaveDaChamada() */
   const vivasRef = useRef<Map<string, N2pEstado>>(new Map())
   /** quantos eventos de estado já chegaram; usado para não atropelar um ciclo já encerrado */
@@ -136,6 +138,15 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
   const [ampliado, setAmpliado] = useState(false)
   /** mostra o resultado da última chamada por alguns segundos, depois a barra também sai */
   const [desfecho, setDesfecho] = useState(false)
+  /**
+   * Diagnóstico da sessão do widget. Existe porque o widget mente pela aparência: ele exibe LOGOUT
+   * (dando a entender que está logado) mesmo quando a conta não tem telefonia, e nesse estado o corpo
+   * fica em branco e qualquer ligação é recusada. Um operador passou um dia inteiro nisso.
+   *
+   * 'verificando' cobre também a espera de renderização: o embed leva ~10 s para pintar, e sem aviso o
+   * operador olha um retângulo branco sem saber se travou.
+   */
+  const [sessao, setSessao] = useState<'desconhecida' | 'verificando' | 'pronta' | 'sem_telefonia'>('desconhecida')
 
   const limparTimer = () => {
     if (timerDesfecho.current) {
@@ -287,6 +298,31 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
     return preparoRef.current
   }, [aoMudarEstado, esperarPronto])
 
+  /**
+   * Descobre se a sessão do widget serve para ligar, SEM originar chamada.
+   *
+   * `conferirSessao()` do kit manda `placeCall({to:'nao-e-um-numero'})`: o embed valida a autenticação
+   * ANTES do número, então a resposta separa os dois mundos — `InvalidPhoneNumberError` (sessão boa,
+   * o número é que era inválido) de `AuthenticationError` (não há identidade de telefonia). Medido em
+   * produção: a recusa por falta de telefonia volta em ~7 ms.
+   *
+   * Roda em segundo plano e nunca bloqueia nada: sem sessão alguma pode levar até 30 s (o timeout do
+   * SDK). Só não sondamos com chamada viva — ali o `placeCall` daria 'ocupado' e o resultado mentiria.
+   */
+  const sondarSessao = useCallback(async (d: N2pDialer) => {
+    if (sondouRef.current || vivasRef.current.size > 0) return
+    sondouRef.current = true
+    setSessao('verificando')
+    try {
+      const ok = await d.conferirSessao()
+      setSessao(ok ? 'pronta' : 'sem_telefonia')
+    } catch {
+      // não afirmamos o que não sabemos: volta ao neutro e permite sondar de novo
+      setSessao('desconhecida')
+      sondouRef.current = false
+    }
+  }, [])
+
   const ligar = useCallback(async (numero: string): Promise<string | null> => {
     // normaliza com a NOSSA função (o kit não tira o zero do DDD) e monta E.164
     const d = digitosFone(numero)
@@ -318,6 +354,8 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
       // sobra nenhuma chamada viva — antes ficava aberto para sempre e o widget virava mobília.
       setMinimizado(false)
       setEmUso(true)
+      // a chamada saindo é a prova viva de que a sessão presta — vale mais que qualquer sonda
+      setSessao('pronta')
       // a partir daqui o painel pertence à chamada, não ao ajuste que o operador estivesse fazendo
       marcarDoOperador(false)
       return null
@@ -350,9 +388,17 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
           : demorouComoTimeout ? 'timeout: ninguém respondeu ao comando' : 'recusa explícita do embed',
         mensagemDoKit: err.message,
       })
+      // Recusa IMEDIATA por 'sem_sessao' é diagnóstico, não palpite: o embed checa a identidade de
+      // telefonia localmente e responde em milissegundos. Foi assim que se descobriu que a conta do
+      // operador era administrativa, sem ramal. Timeout é outra história — ali não se sabe.
+      if (err.codigo === 'sem_sessao' && msDaTentativa != null && !demorouComoTimeout) {
+        setSessao('sem_telefonia')
+      }
       const mensagem = err.codigo === 'sem_sessao' && demorouComoTimeout
         ? 'O discador não respondeu em 30s. Não é senha: o widget abriu mas não terminou de carregar nesta máquina. Confira se o painel mostra o seletor "Call From" — se não mostra, este usuário net2phone está sem ramal/linha, ou a rede/navegador desta máquina está bloqueando o discador.'
-        : [err.message ?? 'Falha ao ligar', err.dica].filter(Boolean).join(' ')
+        : err.codigo === 'sem_sessao' && msDaTentativa != null
+          ? 'O discador recusou na hora: esta conta net2phone não tem telefonia (sem ramal). Não é senha nem token — faça LOGOUT no discador e entre com uma conta que tenha ramal.'
+          : [err.message ?? 'Falha ao ligar', err.dica].filter(Boolean).join(' ')
       // sem sessão: o login é feito DENTRO do widget, então abrimos o painel — e ampliado, porque o
       // botão de Login fica abaixo da faixa compacta. Nos outros erros (microfone, número, embed que
       // não carregou) não há nada a fazer ali, e NÃO baixamos visibilidade que outro fluxo criou.
@@ -386,7 +432,11 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
       // O iframe nasce aqui e só devolvemos depois do anúncio do embed. Sem isso o painel abria com
       // 600 px de nada: nenhum Login, nenhum Call From — falhando exatamente nos dois casos que
       // justificam este botão.
-      await garantirDialer()
+      const d = await garantirDialer()
+      // sonda em segundo plano: o operador está abrindo o painel justamente para logar ou trocar o
+      // número de origem, e é aqui que ele precisa saber se a conta serve para ligar
+      sondouRef.current = false
+      void sondarSessao(d)
       return null
     } catch (e: unknown) {
       const err = e as { message?: string; dica?: string | null }
@@ -397,7 +447,7 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
     } finally {
       setPreparando(false)
     }
-  }, [garantirDialer])
+  }, [garantirDialer, sondarSessao])
 
   const aberto = emChamada || emUso || abertoPeloOperador
   const mostrarWidget = aberto && !minimizado
@@ -445,6 +495,10 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
               Discador
               <span className="font-normal text-muted-foreground">
                 {preparando && '· abrindo…'}
+                {!preparando && !emChamada && sessao === 'verificando' && '· carregando…'}
+                {!preparando && !emChamada && sessao === 'sem_telefonia' && (
+                  <span className="font-semibold" style={{ color: 'var(--destructive)' }}>· conta sem ramal</span>
+                )}
                 {!preparando && estado?.estado === 'connecting' && (entrante ? '· recebendo chamada' : '· chamando…')}
                 {!preparando && estado?.estado === 'answered' && '· em ligação'}
                 {/* o desfecho só vale dentro da janela de exibição: fora dela seria o resultado
@@ -487,7 +541,23 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
               )}
             </span>
           </div>
-          {aberto && (
+          {/*
+            Aviso de estado. O widget do fornecedor leva ~10 s para pintar e, pior, exibe LOGOUT
+            mesmo quando a conta não tem telefonia — ficando em branco e recusando toda ligação.
+            Sem este bloco, o operador olha um retângulo branco sem saber se travou, se é senha ou
+            se é a conta. Um dia inteiro se perdeu exatamente aí.
+          */}
+          {aberto && sessao === 'sem_telefonia' && !emChamada && (
+            <p
+              className="px-3 pb-1.5 pt-1.5 text-[10px] font-semibold leading-snug"
+              style={{ color: 'var(--destructive)' }}
+            >
+              Esta conta net2phone <b>não tem telefonia</b> (sem ramal), então nenhuma ligação sai por
+              aqui — mesmo com o <b>LOGOUT</b> aparecendo. Faça <b>LOGOUT</b> e entre com uma conta que
+              tenha ramal. Não é senha nem token.
+            </p>
+          )}
+          {aberto && sessao !== 'sem_telefonia' && (
             <p className="px-3 pb-1.5 pt-1.5 text-[10px] leading-snug text-muted-foreground">
               {emChamada
                 ? (minimizado
@@ -495,12 +565,14 @@ export function DiscadorNet2phoneProvider({ children }: { children: ReactNode })
                     : entrante
                       ? 'Chamada entrando — atenda no widget abaixo.'
                       : 'Para desligar, use o botão vermelho abaixo.')
-                : (
-                  <>
-                    Entre com <b>Login</b>. Em <b>Call From</b>, escolha o número que aparece no
-                    celular do motorista.
-                  </>
-                )}
+                : (preparando || sessao === 'verificando')
+                  ? 'Carregando o discador — pode levar alguns segundos. Ele está pronto quando aparecer o Call From abaixo.'
+                  : (
+                    <>
+                      Entre com <b>Login</b>. Em <b>Call From</b>, escolha o número que aparece no
+                      celular do motorista.
+                    </>
+                  )}
             </p>
           )}
         </>
