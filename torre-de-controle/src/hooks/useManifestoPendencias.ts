@@ -128,6 +128,9 @@ export interface PendenciaManifesto {
   serie?: string
   emissao_local?: string | null
   prazo_entrega_local?: string | null
+  // false = o DATLME do Rodopar não serve como prazo (nulo, ou <= a emissão): vem herdado
+  // de lote, não da viagem, e 21% da base tem esse defeito. Ausente = confiável (v1/antigo).
+  prazo_confiavel?: boolean
   horas_aberto?: number
   horas_atraso?: number
   cavalo?: string

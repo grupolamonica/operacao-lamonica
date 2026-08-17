@@ -125,6 +125,10 @@ export interface ManifestoPendencia {
   serie?: string
   emissao_local?: string | null
   prazo_entrega_local?: string | null
+  // false = o DATLME do Rodopar não serve como prazo (nulo, ou <= a emissão). 21% da
+  // base tem esse defeito — o prazo vem herdado de lote, não da viagem — e o manifesto
+  // nascia "vencido". Ausente em snapshot antigo: tratar como confiável.
+  prazo_confiavel?: boolean
   horas_aberto?: number | null
   horas_atraso?: number
   cavalo?: string

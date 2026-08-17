@@ -78,6 +78,21 @@ function vencido(p: PendenciaManifesto): boolean {
   return (p.horas_atraso ?? 0) > 0
 }
 
+// O DATLME do Rodopar vem herdado de lote, não da viagem: em 21% da base (4.789 de
+// 23.021 em 12 meses, medido 17/08) ele é <= a emissão, e o manifesto NASCIA vencido —
+// 18 dos 63 "atrasados" da tela eram falsos, e como a lista ordena por horas_atraso o
+// lixo (339 h, 336 h...) liderava. O coletor agora zera o atraso nesses casos; aqui a
+// tela precisa dizer que NÃO SABE o prazo, porque exibir "no prazo" seria tão mentiroso
+// quanto o "vencido" que isto corrige. Ausente = confiável (snapshot v1/antigo).
+function prazoConfiavel(p: PendenciaManifesto): boolean {
+  return p.prazo_confiavel !== false
+}
+
+const SEM_PRAZO_CHIP = {
+  label: 'SEM PRAZO',
+  title: 'O prazo cadastrado no Rodopar não serve (vazio, ou anterior à emissão do manifesto) — não dá pra dizer se está atrasado',
+} as const
+
 // FROTA × DEMAIS (decisão Danilo 11/08, ver V2-CONTRATO.md): FROTA tem
 // rastreador Sascar nosso (SM + posição + trava do baú + macro); DEMAIS são
 // agregados/terceiros — só a SM. Snapshot antigo sem o campo: aproxima pela
@@ -737,6 +752,14 @@ function BaixaManifestoConteudo() {
                               atraso {Math.round(p.horas_atraso!)}h
                             </div>
                           )}
+                          {!prazoConfiavel(p) && (
+                            <div
+                              className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                              title={SEM_PRAZO_CHIP.title}
+                            >
+                              ⚪ {SEM_PRAZO_CHIP.label}
+                            </div>
+                          )}
                         </td>
                         <td className="px-3 py-2">
                           <div className="font-mono">{cavaloDe(p)}</div>
@@ -1196,7 +1219,16 @@ function ManifestoDetailPanel({
           <div className="grid grid-cols-2 gap-3 text-xs">
             <Metric label="Emissão" value={fmtLocal(p.emissao_local)} />
             <Metric label="Prazo de entrega" value={fmtLocal(p.prazo_entrega_local)} />
-            <Metric label="Atraso" value={vencido(p) ? `${Math.round(p.horas_atraso!)}h` : 'no prazo'} />
+            <Metric
+              label="Atraso"
+              value={
+                !prazoConfiavel(p)
+                  ? 'sem prazo confiável'
+                  : vencido(p)
+                    ? `${Math.round(p.horas_atraso!)}h`
+                    : 'no prazo'
+              }
+            />
             <Metric label="Aberto há" value={horasAberto == null ? '—' : formatDuration(Math.round(horasAberto * 60))} />
           </div>
         </div>
