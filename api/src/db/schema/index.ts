@@ -33,4 +33,9 @@ export * from './manifesto-tratativas'
 export * from './manifesto-motorista-fones'
 // Validação do sistema pelo operador — mede a precisão do alerta (carrega a foto do momento)
 export * from './manifesto-validacoes'
+
+// Fila de pedidos de baixa: o operador aperta o botão, o robô executa. Também é a
+// memória compartilhada de "Efetuar clicado e não confirmado", que hoje está partida
+// entre os %LOCALAPPDATA% das máquinas dos operadores.
+export * from './manifesto-baixa-pedidos'
 export * from './relations'

@@ -16,11 +16,14 @@ import {
   useAdicionarFoneMotorista,
   useHistoricoTratativas,
   useManifestoPendencias,
+  useLiberarConferencia,
   useMarcarFoneMotorista,
+  usePedirBaixa,
   useRegistrarTratativa,
   type EstadoManifesto,
   type FoneMotoristaRegistro,
   type PendenciaManifesto,
+  type PedidoBaixa,
   type ResumoTratativa,
   type Telefone,
   type ValidacaoRegistro,
@@ -337,11 +340,50 @@ export function BaixaManifestoPage() {
   )
 }
 
+/**
+ * Como o botão de baixa se apresenta, por situação do pedido.
+ *
+ * `conferencia` é o único que NÃO oferece "pedir de novo": rc 6/11 do robô querem dizer que o
+ * Efetuar pode ter sido clicado e o banco do Rodopar não confirmou — e o banco não distingue
+ * "intocado" de "clicado e não processado". Repetir às cegas duplica lançamento. Ver
+ * docs/CONVENCAO-ROBO.md §3 no repo robo-baixa-manifesto.
+ */
+function aparenciaBotaoBaixa(pedido: PedidoBaixa | undefined): {
+  rotulo: string
+  podeClicar: boolean
+  destaque: boolean
+  title: string
+} {
+  switch (pedido?.situacao) {
+    case 'na_fila':
+      return { rotulo: 'NA FILA', podeClicar: false, destaque: false,
+               title: `Pedido por ${pedido.autor ?? 'operador'} — esperando o robô pegar` }
+    case 'executando':
+      return { rotulo: 'EXECUTANDO', podeClicar: false, destaque: false,
+               title: `Robô rodando em ${pedido.agente ?? 'agente'} — um por vez (Rodopar é sessão única)` }
+    case 'concluido':
+      return { rotulo: 'BAIXADO', podeClicar: false, destaque: false,
+               title: 'Baixa confirmada pelo banco do Rodopar — o manifesto sai da tela no próximo ciclo' }
+    case 'conferencia':
+      return { rotulo: 'CONFERIR', podeClicar: false, destaque: true,
+               title: `rc=${pedido.rc}: o Efetuar PODE ter sido clicado e o banco não confirmou. `
+                    + 'Confira este manifesto no Rodopar antes de qualquer nova tentativa.' }
+    case 'falhou':
+      return { rotulo: 'BAIXAR', podeClicar: true, destaque: false,
+               title: `Tentativa anterior falhou (rc=${pedido.rc}): ${pedido.mensagem ?? 'sem mensagem'}` }
+    default:
+      return { rotulo: 'BAIXAR', podeClicar: true, destaque: false,
+               title: 'Manda o robô lançar a entrega e baixar este manifesto no Rodopar' }
+  }
+}
+
 function BaixaManifestoConteudo() {
   const {
     data: snapshot, pendencias, tratativas, motivos,
-    fonesMotorista, rotulosFone, validacoes, motivosErro, isLoading, isError, error,
+    fonesMotorista, rotulosFone, validacoes, motivosErro, baixaPedidos, isLoading, isError, error,
   } = useManifestoPendencias()
+  const pedirBaixa = usePedirBaixa()
+  const liberarConferencia = useLiberarConferencia()
   // 401 = sessão expirada, e o operador só precisa relogar. O AuthGuard valida a sessão apenas
   // no mount, então cookie que vence com a tela aberta não redireciona ninguém — sem separar os
   // dois casos, o operador lê "falha" e conclui que o sistema caiu.
@@ -651,6 +693,9 @@ function BaixaManifestoConteudo() {
                     // descarregado que ninguém validou ainda: é o que sustenta a medição de
                     // precisão, e validação opcional enviesaria o número (valida-se o estranho)
                     const validarPendente = precisaValidar(p)
+                    // pedido de baixa deste manifesto, se houver — governa o botão
+                    const pedidoBaixa = baixaPedidos[chaveTratativa(p) ?? ''] as PedidoBaixa | undefined
+                    const apBaixa = aparenciaBotaoBaixa(pedidoBaixa)
                     const cliente = p.sm?.cliente || p.destino || '—'
                     const destinoLinha = [p.destino, p.destino_uf ?? p.viagem?.destino_uf].filter(Boolean).join('/')
                     return (
@@ -741,6 +786,54 @@ function BaixaManifestoConteudo() {
                                 title="Abrir para confirmar se o sistema acertou — é o que mede a precisão do alerta"
                               >
                                 VALIDAR
+                              </button>
+                            )}
+                            {/* Botão de baixa (20/08): manda o robô lançar a entrega e clicar
+                                Efetuar no Rodopar. IRREVERSÍVEL — por isso confirma antes, com o
+                                número do manifesto na pergunta. Só aparece em item v2 (tem codman);
+                                item v1 não tem o que mandar pro robô. */}
+                            {p.codman != null && p.filial != null && (
+                              <button
+                                type="button"
+                                disabled={!apBaixa.podeClicar || pedirBaixa.isPending}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  // conferência abre o painel em vez de tentar de novo: quem
+                                  // resolve rc 6/11 é uma pessoa olhando o Rodopar
+                                  if (!apBaixa.podeClicar) {
+                                    if (pedidoBaixa?.situacao === 'conferencia') setSelectedKey(key)
+                                    return
+                                  }
+                                  const confirmou = window.confirm(
+                                    `Baixar o manifesto ${p.codman} no Rodopar?
+
+` +
+                                      `${p.cavalo ?? ''}  ${destinoLinha}
+
+` +
+                                      'O robô vai lançar a entrega e clicar Efetuar. Não tem desfazer.',
+                                  )
+                                  if (!confirmou) return
+                                  pedirBaixa.mutate({
+                                    codman: p.codman!,
+                                    filial: p.filial!,
+                                    serie: p.serie ?? '',
+                                    placa: p.cavalo ?? undefined,
+                                    destino: p.destino ?? undefined,
+                                    estado_sistema: estado,
+                                  })
+                                }}
+                                className="rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide whitespace-nowrap hover:opacity-80 disabled:cursor-default disabled:opacity-100"
+                                style={
+                                  apBaixa.destaque
+                                    ? { background: 'var(--status-atrasado-fg)', color: '#fff' }
+                                    : apBaixa.podeClicar
+                                      ? { background: 'var(--foreground)', color: 'var(--background)' }
+                                      : { background: 'var(--muted)', color: 'var(--muted-foreground)' }
+                                }
+                                title={apBaixa.title}
+                              >
+                                {apBaixa.rotulo}
                               </button>
                             )}
                           </div>
@@ -855,6 +948,17 @@ function BaixaManifestoConteudo() {
               validacoes={validacoes}
               motivosErro={motivosErro}
               podeEscrever={podeEscrever}
+              pedidoBaixa={baixaPedidos[chaveTratativa(selected) ?? ''] as PedidoBaixa | undefined}
+              onLiberarConferencia={(id) => {
+                // "Conferi no Rodopar" é declaração de uma PESSOA — por isso confirma de novo:
+                // liberar sem ter olhado devolve o manifesto para a fila com o Efetuar em aberto.
+                const ok = window.confirm(
+                  `Você abriu este manifesto no Rodopar e conferiu se ele recebeu ocorrência?
+
+Liberar sem conferir pode fazer o robô lançar a entrega duas vezes.`,
+                )
+                if (ok) liberarConferencia.mutate({ id })
+              }}
               onClose={() => setSelectedKey(null)}
             />
           </FixedPanel>
@@ -1158,6 +1262,8 @@ function ManifestoDetailPanel({
   validacoes,
   motivosErro,
   podeEscrever,
+  pedidoBaixa,
+  onLiberarConferencia,
 }: {
   pendencia: PendenciaManifesto
   now: Date
@@ -1170,6 +1276,9 @@ function ManifestoDetailPanel({
   validacoes: Record<string, ValidacaoRegistro>
   motivosErro: Record<string, string>
   podeEscrever: boolean
+  // pedido de baixa deste manifesto, quando existir
+  pedidoBaixa?: PedidoBaixa
+  onLiberarConferencia?: (id: string) => void
 }) {
   const estado = deriveEstado(p)
   const info = ESTADO_INFO[estado]
@@ -1231,6 +1340,39 @@ function ManifestoDetailPanel({
             />
             <Metric label="Aberto há" value={horasAberto == null ? '—' : formatDuration(Math.round(horasAberto * 60))} />
           </div>
+          {/* Conferência humana pendente (20/08). rc 6/11 do robô significam que o Efetuar PODE
+              ter sido clicado e o banco do Rodopar não confirmou — e o banco não distingue
+              "intocado" de "clicado e não processado" (SITUAC='E' com DATBAI nula nos dois
+              casos). Então quem resolve é uma PESSOA olhando o Rodopar, e é ela que libera. */}
+          {pedidoBaixa?.situacao === 'conferencia' && (
+            <div
+              className="mt-3 rounded border p-2.5 text-xs"
+              style={{ borderColor: 'var(--status-atrasado-fg)', background: 'var(--status-atrasado-bg)' }}
+            >
+              <div className="font-bold uppercase tracking-wide" style={{ color: 'var(--status-atrasado-fg)' }}>
+                Conferência pendente — rc={pedidoBaixa.rc}
+              </div>
+              <p className="mt-1 text-muted-foreground">
+                O robô clicou <strong>Efetuar</strong> e o banco do Rodopar não confirmou. Pode ter
+                gravado. Abra este manifesto no Rodopar e veja se ele recebeu ocorrência —
+                <strong> não peça a baixa de novo antes disso</strong>.
+              </p>
+              {pedidoBaixa.mensagem && (
+                <p className="mt-1 font-mono text-[11px] text-muted-foreground">{pedidoBaixa.mensagem}</p>
+              )}
+              {podeEscrever && onLiberarConferencia && (
+                <button
+                  type="button"
+                  onClick={() => onLiberarConferencia(pedidoBaixa.id)}
+                  className="mt-2 rounded px-2 py-1 text-[10px] font-bold uppercase tracking-wide hover:opacity-80"
+                  style={{ background: 'var(--status-atrasado-fg)', color: '#fff' }}
+                  title="Confirma que você olhou o Rodopar — libera o manifesto para poder pedir a baixa de novo"
+                >
+                  Conferi no Rodopar — liberar
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* (2) SM Angellira */}

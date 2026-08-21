@@ -18,6 +18,13 @@ import {
   normalizarCodmot,
 } from './motorista-fones.service'
 import { relatorioTratativas } from './tratativas.report.service'
+import {
+  liberarConferencia,
+  pedidosPorManifesto,
+  pedirBaixa,
+  registrarResultado,
+  reivindicarProximo,
+} from './baixa.service'
 import { applySnapshot, getPendencias } from './manifesto.service'
 import {
   chaveManifesto,
@@ -275,7 +282,67 @@ const ingestPlugin = new Elysia({ name: 'manifesto-ingest' }).group('/api/manife
         summary: '[API key] Recebe o snapshot completo de pendências de baixa de manifesto (coletor Sascar)',
       },
     },
-  ),
+  )
+    // ── Fila de baixa: o AGENTE ───────────────────────────────────────────────
+    // Quem chama é o script na máquina Windows que roda o robô, não um browser —
+    // por isso mora aqui, fora do authGuard, com x-api-key igual ao coletor.
+    .post(
+      '/baixa/proximo',
+      async ({ body, set, request }) => {
+        const auth = checkApiKey(request)
+        if (!auth.ok) {
+          set.status = auth.status
+          return { ok: false, error: auth.error }
+        }
+        // null = nada a fazer, OU já existe um executando. O Rodopar é sessão única
+        // por usuário: duas execuções simultâneas derrubam uma à outra (rc=8).
+        const pedido = await reivindicarProximo(body.agente)
+        return { ok: true, pedido }
+      },
+      {
+        body: t.Object({ agente: t.String({ maxLength: 120 }) }),
+        detail: {
+          tags: ['manifesto'],
+          summary: '[API key] Agente reivindica o próximo pedido de baixa (pedido null = nada a fazer)',
+        },
+      },
+    )
+    .post(
+      '/baixa/resultado',
+      async ({ body, set, request }) => {
+        const auth = checkApiKey(request)
+        if (!auth.ok) {
+          set.status = auth.status
+          return { ok: false, error: auth.error }
+        }
+        // O rc decide: 0 concluído · 6/11 conferência humana · resto falhou. Mandar
+        // `efetuar_clicado` é o que permite travar mesmo num rc fora da lista — ver
+        // docs/CONVENCAO-ROBO.md §3 no repo do robô.
+        const pedido = await registrarResultado({
+          id: body.id,
+          rc: body.rc,
+          mensagem: body.mensagem ?? null,
+          efetuarClicado: body.efetuar_clicado ?? null,
+        })
+        if (!pedido) {
+          set.status = 404
+          return { ok: false, error: 'pedido não encontrado' }
+        }
+        return { ok: true, pedido }
+      },
+      {
+        body: t.Object({
+          id: t.String({ maxLength: 40 }),
+          rc: t.Integer(),
+          mensagem: t.Optional(t.Nullable(t.String({ maxLength: 4000 }))),
+          efetuar_clicado: t.Optional(t.Nullable(t.Boolean())),
+        }),
+        detail: {
+          tags: ['manifesto'],
+          summary: '[API key] Agente devolve o resultado da execução (rc 6/11 vira conferência humana)',
+        },
+      },
+    ),
 )
 
 // Quem pode ESCREVER nesta tela (decisão Danilo 12/08, estendida aos telefones em 13/08): os 3
@@ -340,9 +407,24 @@ const readPlugin = new Elysia({ name: 'manifesto-read' })
               )
             }
           }
+          // Pedidos de baixa (20/08), para a tela pintar o botão. try/catch próprio pelo mesmo
+          // motivo dos anteriores: é aditivo. Sem isto a tela cai para "nenhum pedido", que é o
+          // estado seguro — botão disponível, e o índice único do banco recusa duplicata.
+          let baixa_pedidos: Awaited<ReturnType<typeof pedidosPorManifesto>> = {}
+          if (refs.length) {
+            try {
+              baixa_pedidos = await pedidosPorManifesto(refs)
+            } catch (e: any) {
+              logger.error(
+                { error: e?.message ?? String(e) },
+                '[manifesto] falha ao ler pedidos de baixa — seguindo sem eles (tabela ausente?)',
+              )
+            }
+          }
           return {
             ok: true,
             ...view,
+            baixa_pedidos,
             tratativas,
             motivos: MOTIVOS_TRATATIVA,
             fones_motorista,
@@ -639,6 +721,78 @@ const readPlugin = new Elysia({ name: 'manifesto-read' })
           detail: {
             tags: ['manifesto'],
             summary: 'Marca/desmarca telefone como "não funciona" — papel manifesto/supervisor/admin',
+          },
+        },
+      )
+      // ── Botão de baixa (20/08) ──────────────────────────────────────────────
+      // Pedir a baixa é ato IRREVERSÍVEL no ERP: o robô clica Efetuar de verdade.
+      // Mesmo papel que já escreve nesta tela (justificativa e telefone) — uma
+      // lista só, porque duas listas iguais divergem com o tempo.
+      //
+      // Quem pediu SÓ existe aqui: o Rodopar carimba USUEFE='AGENDADOR' na baixa do
+      // robô E na de pessoa clicando Efetuar, sem distinguir os dois.
+      .post(
+        '/baixa/pedidos',
+        async ({ body, user, set }) => {
+          if (!PODE_ESCREVER.includes(user.role as (typeof PODE_ESCREVER)[number])) {
+            set.status = 403
+            return { ok: false, error: `Forbidden: requires role ${PODE_ESCREVER.join('|')}` }
+          }
+          const r = await pedirBaixa({
+            codman: body.codman,
+            filial: body.filial,
+            serie: body.serie ?? '',
+            placa: body.placa ?? null,
+            destino: body.destino ?? null,
+            estadoSistema: body.estado_sistema ?? null,
+            operatorId: user.id,
+          })
+          if (!r.ok) {
+            // 409: não é erro do cliente nem do servidor — é "já tem um em andamento",
+            // e a tela precisa mostrar o motivo, que pode ser conferência pendente.
+            set.status = 409
+            return { ok: false, error: r.motivo, pedido: r.pedido ?? null }
+          }
+          return { ok: true, pedido: r.pedido }
+        },
+        {
+          body: t.Object({
+            codman: t.Integer(),
+            filial: t.Integer(),
+            serie: t.Optional(t.String({ maxLength: 20 })),
+            // foto do momento: o snapshot do Redis é sobrescrito a cada 5 min
+            placa: t.Optional(t.String({ maxLength: 20 })),
+            destino: t.Optional(t.String({ maxLength: 200 })),
+            estado_sistema: t.Optional(t.String({ maxLength: 30 })),
+          }),
+          detail: {
+            tags: ['manifesto'],
+            summary: 'Pede a baixa do manifesto ao robô — papel manifesto/supervisor/admin',
+          },
+        },
+      )
+      // Libera manifesto parado em `conferencia`, DEPOIS de a pessoa conferir no
+      // Rodopar. Espelho do `--liberar-clique` do robô: a dúvida acaba porque alguém
+      // olhou, não porque o tempo passou. Fica registrado quem liberou.
+      .post(
+        '/baixa/liberar',
+        async ({ body, user, set }) => {
+          if (!PODE_ESCREVER.includes(user.role as (typeof PODE_ESCREVER)[number])) {
+            set.status = 403
+            return { ok: false, error: `Forbidden: requires role ${PODE_ESCREVER.join('|')}` }
+          }
+          const pedido = await liberarConferencia(body.id, user.id)
+          if (!pedido) {
+            set.status = 404
+            return { ok: false, error: 'pedido não encontrado ou não está em conferência' }
+          }
+          return { ok: true, pedido }
+        },
+        {
+          body: t.Object({ id: t.String({ maxLength: 40 }) }),
+          detail: {
+            tags: ['manifesto'],
+            summary: 'Libera pedido em conferência após checagem humana — papel manifesto/supervisor/admin',
           },
         },
       ),
