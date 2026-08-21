@@ -239,6 +239,37 @@ export interface ManifestoPendenciasSnapshot {
   validacoes?: Record<string, ValidacaoRegistro>
   // motivos de erro do sistema, para o seletor não divergir do que a API valida
   motivos_erro?: Record<string, string>
+  // último pedido de baixa por manifesto (chaveTratativa) — pinta o botão
+  baixa_pedidos?: Record<string, PedidoBaixa>
+}
+
+/**
+ * Pedido de baixa ao robô. `situacao` governa o botão:
+ *
+ *   na_fila      → esperando o agente pegar
+ *   executando   → robô rodando (Rodopar é sessão única: um por vez no mundo)
+ *   concluido    → baixou (o manifesto sai do snapshot no próximo ciclo do coletor)
+ *   falhou       → pode pedir de novo
+ *   conferencia  → rc 6/11: PODE ter gravado. Uma pessoa tem que olhar o Rodopar.
+ *                  Não volta pra fila sozinho e bloqueia pedido novo.
+ */
+export type SituacaoPedidoBaixa =
+  | 'na_fila'
+  | 'executando'
+  | 'concluido'
+  | 'falhou'
+  | 'conferencia'
+  | 'cancelado'
+
+export interface PedidoBaixa {
+  id: string
+  situacao: SituacaoPedidoBaixa
+  criado_em: string
+  autor: string | null
+  rc: number | null
+  mensagem: string | null
+  concluido_em: string | null
+  agente: string | null
 }
 
 export function useManifestoPendencias() {
@@ -268,6 +299,7 @@ export function useManifestoPendencias() {
     rotulosFone: q.data?.rotulos_fone ?? ['Celular', 'WhatsApp', 'Recado', 'Outro'],
     validacoes: q.data?.validacoes ?? {},
     motivosErro: q.data?.motivos_erro ?? {},
+    baixaPedidos: q.data?.baixa_pedidos ?? {},
     isLoading: q.isLoading,
     isError: q.isError,
     error: q.error,
@@ -493,4 +525,43 @@ export function useHistoricoTratativas(
     staleTime: 10_000,
   })
   return { historico: q.data ?? [], isLoading: q.isLoading, isError: q.isError }
+}
+
+/**
+ * Pede a baixa do manifesto ao robô. IRREVERSÍVEL no ERP — a tela confirma antes.
+ *
+ * 409 não é falha do operador: significa "já existe pedido em andamento", e o motivo pode ser
+ * conferência humana pendente. A mensagem da API é repassada crua porque ela é que sabe qual dos
+ * dois casos é.
+ */
+export function usePedirBaixa() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: {
+      codman: number
+      filial: number
+      serie?: string
+      placa?: string
+      destino?: string
+      estado_sistema?: string
+    }) => {
+      const { data, error } = await (api.api as any).manifesto.baixa.pedidos.post(vars)
+      if (error) throw new Error((error.value as any)?.error ?? 'Falha ao pedir a baixa')
+      return data as { ok: boolean; pedido: PedidoBaixa }
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['manifesto', 'pendencias'] }),
+  })
+}
+
+/** Libera pedido travado em conferência, DEPOIS de a pessoa conferir no Rodopar. */
+export function useLiberarConferencia() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: { id: string }) => {
+      const { data, error } = await (api.api as any).manifesto.baixa.liberar.post(vars)
+      if (error) throw new Error((error.value as any)?.error ?? 'Falha ao liberar a conferência')
+      return data as { ok: boolean; pedido: PedidoBaixa }
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['manifesto', 'pendencias'] }),
+  })
 }
