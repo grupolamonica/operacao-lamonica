@@ -241,6 +241,8 @@ export interface ManifestoPendenciasSnapshot {
   motivos_erro?: Record<string, string>
   // último pedido de baixa por manifesto (chaveTratativa) — pinta o botão
   baixa_pedidos?: Record<string, PedidoBaixa>
+  // quem está de plantão para executar a fila; null = NINGUÉM (o botão só enfileira)
+  agente_fila?: BatidaAgente | null
 }
 
 /**
@@ -260,6 +262,18 @@ export type SituacaoPedidoBaixa =
   | 'falhou'
   | 'conferencia'
   | 'cancelado'
+
+/**
+ * Batida do agente que executa a fila. null = ninguém de plantão.
+ *
+ * Existe porque um pedido em `na_fila` sem agente rodando parece que está andando e não
+ * está — em 21/08 o operador clicou BAIXAR, viu NA FILA e ficou esperando. Vem do Redis
+ * com TTL de 10 min, e o agente bate a cada ~15s.
+ */
+export interface BatidaAgente {
+  agente: string
+  visto_em: string
+}
 
 export interface PedidoBaixa {
   id: string
@@ -300,6 +314,7 @@ export function useManifestoPendencias() {
     validacoes: q.data?.validacoes ?? {},
     motivosErro: q.data?.motivos_erro ?? {},
     baixaPedidos: q.data?.baixa_pedidos ?? {},
+    agenteFila: q.data?.agente_fila ?? null,
     isLoading: q.isLoading,
     isError: q.isError,
     error: q.error,

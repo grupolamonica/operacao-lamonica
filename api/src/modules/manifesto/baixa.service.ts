@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { db } from '../../db/client'
+import { redis } from '../../redis/client'
 import {
   manifestoBaixaPedidos,
   RC_EXIGE_CONFERENCIA,
@@ -38,6 +39,48 @@ export interface PedidoResumo {
   mensagem: string | null
   concluido_em: string | null
   agente: string | null
+}
+
+/**
+ * Batida do agente. Vive no Redis, não no Postgres: é estado efêmero ("alguém está de
+ * plantão agora?"), não fato histórico — e fato efêmero em tabela vira lixo que ninguém
+ * limpa.
+ *
+ * POR QUE EXISTE: sem isso a tela mostra um pedido em `na_fila` com cara de que algo
+ * está acontecendo, quando pode não haver agente nenhum rodando. Foi o que aconteceu
+ * em 21/08: o operador clicou BAIXAR, viu NA FILA e ficou esperando uma janela abrir.
+ * Um botão que promete o que não pode cumprir é pior que um botão desabilitado.
+ *
+ * O agente pede trabalho a cada ~15s, então ausência de batida por poucos minutos já
+ * significa que ele não está de pé. TTL de 10 min: some sozinho, e "sem batida" e
+ * "chave expirada" são a mesma resposta.
+ */
+const REDIS_KEY_AGENTE = 'manifesto:baixa:agente'
+const TTL_AGENTE_SEG = 600
+
+export interface BatidaAgente {
+  agente: string
+  visto_em: string
+}
+
+async function registrarBatidaAgente(agente: string): Promise<void> {
+  const batida: BatidaAgente = { agente, visto_em: new Date().toISOString() }
+  try {
+    await redis.set(REDIS_KEY_AGENTE, JSON.stringify(batida), 'EX', TTL_AGENTE_SEG)
+  } catch {
+    // saber que o agente está vivo é informação de apoio: nunca pode impedir o agente
+    // de pegar trabalho.
+  }
+}
+
+/** Último agente que pediu trabalho, ou null se ninguém pediu nos últimos 10 min. */
+export async function agenteDePlantao(): Promise<BatidaAgente | null> {
+  try {
+    const raw = await redis.get(REDIS_KEY_AGENTE)
+    return raw ? (JSON.parse(raw) as BatidaAgente) : null
+  } catch {
+    return null
+  }
 }
 
 /** Violação de índice único no Postgres. */
@@ -173,6 +216,9 @@ export async function pedidosPorManifesto(
 export async function reivindicarProximo(
   agente: string,
 ): Promise<{ codman: number; filial: number; serie: string; id: string } | null> {
+  // antes de qualquer early return: "pedi trabalho e não tinha" também prova que estou vivo
+  await registrarBatidaAgente(agente)
+
   const emCurso = await db
     .select({ id: manifestoBaixaPedidos.id })
     .from(manifestoBaixaPedidos)

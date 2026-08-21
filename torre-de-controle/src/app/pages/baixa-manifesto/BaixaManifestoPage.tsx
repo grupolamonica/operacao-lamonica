@@ -23,6 +23,7 @@ import {
   type EstadoManifesto,
   type FoneMotoristaRegistro,
   type PendenciaManifesto,
+  type BatidaAgente,
   type PedidoBaixa,
   type ResumoTratativa,
   type Telefone,
@@ -340,6 +341,16 @@ export function BaixaManifestoPage() {
   )
 }
 
+//: Situação do pedido em português, para a tela não mostrar o enum cru.
+const ROTULO_SITUACAO_PEDIDO: Record<string, string> = {
+  na_fila: 'Na fila',
+  executando: 'Executando agora',
+  concluido: 'Baixado',
+  falhou: 'Falhou — pode pedir de novo',
+  conferencia: 'Aguardando conferência humana',
+  cancelado: 'Cancelado',
+}
+
 /**
  * Como o botão de baixa se apresenta, por situação do pedido.
  *
@@ -348,7 +359,10 @@ export function BaixaManifestoPage() {
  * "intocado" de "clicado e não processado". Repetir às cegas duplica lançamento. Ver
  * docs/CONVENCAO-ROBO.md §3 no repo robo-baixa-manifesto.
  */
-function aparenciaBotaoBaixa(pedido: PedidoBaixa | undefined): {
+function aparenciaBotaoBaixa(
+  pedido: PedidoBaixa | undefined,
+  temAgente: boolean,
+): {
   rotulo: string
   podeClicar: boolean
   destaque: boolean
@@ -356,8 +370,14 @@ function aparenciaBotaoBaixa(pedido: PedidoBaixa | undefined): {
 } {
   switch (pedido?.situacao) {
     case 'na_fila':
-      return { rotulo: 'NA FILA', podeClicar: false, destaque: false,
-               title: `Pedido por ${pedido.autor ?? 'operador'} — esperando o robô pegar` }
+      // SEM AGENTE o pedido não anda, e dizer "NA FILA" faz o operador esperar uma
+      // janela que nunca abre (aconteceu em 21/08). Melhor admitir que está parado.
+      return temAgente
+        ? { rotulo: 'NA FILA', podeClicar: false, destaque: false,
+            title: `Pedido por ${pedido.autor ?? 'operador'} — esperando o robô pegar` }
+        : { rotulo: 'SEM ROBÔ', podeClicar: false, destaque: true,
+            title: `Pedido por ${pedido.autor ?? 'operador'}, mas NENHUM agente está de plantão. `
+                 + 'O pedido não vai andar até alguém subir o agente na máquina do robô.' }
     case 'executando':
       return { rotulo: 'EXECUTANDO', podeClicar: false, destaque: false,
                title: `Robô rodando em ${pedido.agente ?? 'agente'} — um por vez (Rodopar é sessão única)` }
@@ -380,10 +400,15 @@ function aparenciaBotaoBaixa(pedido: PedidoBaixa | undefined): {
 function BaixaManifestoConteudo() {
   const {
     data: snapshot, pendencias, tratativas, motivos,
-    fonesMotorista, rotulosFone, validacoes, motivosErro, baixaPedidos, isLoading, isError, error,
+    fonesMotorista, rotulosFone, validacoes, motivosErro, baixaPedidos, agenteFila,
+    isLoading, isError, error,
   } = useManifestoPendencias()
   const pedirBaixa = usePedirBaixa()
   const liberarConferencia = useLiberarConferencia()
+  // Agente vivo = bateu nos últimos 3 min. O TTL no Redis é 10 min (folga para blip de
+  // rede), mas para a TELA 3 min já é "parado": o agente pede trabalho a cada ~15s.
+  const agenteDePlantao =
+    agenteFila != null && Date.now() - new Date(agenteFila.visto_em).getTime() < 3 * 60_000
   // 401 = sessão expirada, e o operador só precisa relogar. O AuthGuard valida a sessão apenas
   // no mount, então cookie que vence com a tela aberta não redireciona ninguém — sem separar os
   // dois casos, o operador lê "falha" e conclui que o sistema caiu.
@@ -573,6 +598,22 @@ function BaixaManifestoConteudo() {
       </Tabs>
 
       {/* KPIs */}
+      {/* Fila pedida sem ninguém para executar. Isto NÃO é decoração: em 21/08 o
+          operador clicou BAIXAR, leu "NA FILA" e ficou esperando uma janela abrir que
+          nunca abriria — o agente não estava rodando em máquina nenhuma. Um botão que
+          promete o que não pode cumprir é pior que um botão desabilitado. */}
+      {!agenteDePlantao && Object.values(baixaPedidos).some((x) => x.situacao === 'na_fila') && (
+        <div
+          className="mb-3 rounded-lg px-4 py-3 text-sm"
+          style={{ background: 'var(--status-atrasado-bg)', border: '1px solid var(--status-atrasado-fg)' }}
+        >
+          <strong style={{ color: 'var(--status-atrasado-fg)' }}>Nenhum robô de plantão.</strong>{' '}
+          Há pedido de baixa na fila e ninguém para executar — o agente não está rodando em
+          nenhuma máquina. Os pedidos ficam parados até alguém subir o
+          <span className="mx-1 font-mono text-xs">Agente-Baixa.ps1</span>
+          na máquina do robô. Nada foi enviado ao Rodopar.
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
         <div className="rounded-xl bg-card px-4 py-3" style={{ border: '1px solid var(--border)' }}>
           <div className="text-3xl font-bold tabular-nums" style={{ color: 'var(--primary)' }}>{total}</div>
@@ -695,7 +736,7 @@ function BaixaManifestoConteudo() {
                     const validarPendente = precisaValidar(p)
                     // pedido de baixa deste manifesto, se houver — governa o botão
                     const pedidoBaixa = baixaPedidos[chaveTratativa(p) ?? ''] as PedidoBaixa | undefined
-                    const apBaixa = aparenciaBotaoBaixa(pedidoBaixa)
+                    const apBaixa = aparenciaBotaoBaixa(pedidoBaixa, agenteDePlantao)
                     const cliente = p.sm?.cliente || p.destino || '—'
                     const destinoLinha = [p.destino, p.destino_uf ?? p.viagem?.destino_uf].filter(Boolean).join('/')
                     return (
@@ -949,6 +990,7 @@ function BaixaManifestoConteudo() {
               motivosErro={motivosErro}
               podeEscrever={podeEscrever}
               pedidoBaixa={baixaPedidos[chaveTratativa(selected) ?? ''] as PedidoBaixa | undefined}
+              agenteFila={agenteFila}
               onLiberarConferencia={(id) => {
                 // "Conferi no Rodopar" é declaração de uma PESSOA — por isso confirma de novo:
                 // liberar sem ter olhado devolve o manifesto para a fila com o Efetuar em aberto.
@@ -1263,6 +1305,7 @@ function ManifestoDetailPanel({
   motivosErro,
   podeEscrever,
   pedidoBaixa,
+  agenteFila,
   onLiberarConferencia,
 }: {
   pendencia: PendenciaManifesto
@@ -1278,6 +1321,8 @@ function ManifestoDetailPanel({
   podeEscrever: boolean
   // pedido de baixa deste manifesto, quando existir
   pedidoBaixa?: PedidoBaixa
+  // quem está de plantão para executar; null = ninguém, e o pedido não anda
+  agenteFila?: BatidaAgente | null
   onLiberarConferencia?: (id: string) => void
 }) {
   const estado = deriveEstado(p)
@@ -1344,6 +1389,41 @@ function ManifestoDetailPanel({
               ter sido clicado e o banco do Rodopar não confirmou — e o banco não distingue
               "intocado" de "clicado e não processado" (SITUAC='E' com DATBAI nula nos dois
               casos). Então quem resolve é uma PESSOA olhando o Rodopar, e é ela que libera. */}
+          {/* Andamento da baixa pelo robô (21/08). O operador esperava "abrir para ir
+              vendo" — e não abre: o robô roda no Chrome da MÁQUINA EXECUTORA, não no
+              navegador dele. Então o acompanhamento tem que estar aqui. */}
+          {pedidoBaixa && (
+            <div className="mt-3 rounded border p-2.5 text-xs" style={{ borderColor: 'var(--border)' }}>
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Baixa pelo robô
+              </div>
+              <div className="mt-1 grid grid-cols-2 gap-2">
+                <Metric label="Situação" value={ROTULO_SITUACAO_PEDIDO[pedidoBaixa.situacao] ?? pedidoBaixa.situacao} />
+                <Metric label="Pedido por" value={pedidoBaixa.autor ?? '—'} />
+                <Metric label="Pedido em" value={fmtLocal(pedidoBaixa.criado_em)} />
+                {pedidoBaixa.agente && <Metric label="Executando em" value={pedidoBaixa.agente} />}
+                {pedidoBaixa.concluido_em && <Metric label="Terminou em" value={fmtLocal(pedidoBaixa.concluido_em)} />}
+                {pedidoBaixa.rc != null && <Metric label="Código de saída" value={`rc=${pedidoBaixa.rc}`} />}
+              </div>
+              {pedidoBaixa.mensagem && pedidoBaixa.situacao !== 'conferencia' && (
+                <p className="mt-2 font-mono text-[11px] text-muted-foreground">{pedidoBaixa.mensagem}</p>
+              )}
+              {/* fila parada porque não há quem execute — a causa mais provável de
+                  "cliquei e não aconteceu nada" */}
+              {pedidoBaixa.situacao === 'na_fila' && !agenteFila && (
+                <p className="mt-2 font-semibold" style={{ color: 'var(--status-atrasado-fg)' }}>
+                  Nenhum robô de plantão: este pedido não vai andar até alguém subir o agente na
+                  máquina do robô. Nada foi enviado ao Rodopar.
+                </p>
+              )}
+              {pedidoBaixa.situacao === 'na_fila' && agenteFila && (
+                <p className="mt-2 text-muted-foreground">
+                  Robô de plantão em <span className="font-mono">{agenteFila.agente}</span> — ele pega
+                  um manifesto por vez, porque o Rodopar é sessão única.
+                </p>
+              )}
+            </div>
+          )}
           {pedidoBaixa?.situacao === 'conferencia' && (
             <div
               className="mt-3 rounded border p-2.5 text-xs"
