@@ -19,6 +19,7 @@ import {
 } from './motorista-fones.service'
 import { relatorioTratativas } from './tratativas.report.service'
 import {
+  agenteDePlantao,
   liberarConferencia,
   pedidosPorManifesto,
   pedirBaixa,
@@ -421,10 +422,14 @@ const readPlugin = new Elysia({ name: 'manifesto-read' })
               )
             }
           }
+          // Há agente de plantão? Sem isto a tela mostra "NA FILA" com cara de que algo
+          // está acontecendo mesmo quando não existe ninguém para pegar o pedido.
+          const agente_fila = await agenteDePlantao()
           return {
             ok: true,
             ...view,
             baixa_pedidos,
+            agente_fila,
             tratativas,
             motivos: MOTIVOS_TRATATIVA,
             fones_motorista,
