@@ -151,6 +151,28 @@ function fmtLocal(iso: string | null | undefined): string {
 // Tempo decorrido (compat v1) é calculado por *_gmt (UTC, sem sufixo 'Z' no
 // payload) — anexa o 'Z' antes de criar o Date para não reinterpretar como
 // horário local do navegador.
+/**
+ * Formata um INSTANTE vindo do Postgres (timestamptz), como os campos do pedido de baixa.
+ *
+ * NÃO é o mesmo que `fmtLocal`, e a diferença é semântica, não de estilo: `fmtLocal` serve
+ * aos campos `*_local` do coletor, que são wall-clock SEM fuso e por isso jamais devem
+ * passar por `new Date()`. Aqui é o oposto — o valor é um instante real, com fuso, e
+ * converter para o relógio de quem olha é exatamente o certo.
+ *
+ * ⚠️ Aceita `Date` além de string porque o Eden Treaty REVIVE strings ISO com fuso em
+ * objetos Date na resposta. Foi assim que `fmtLocal(pedido.criado_em)` estourou em produção
+ * com "a.match is not a function" (21/08): o campo chega como Date, não string, e o código
+ * antigo nunca tropeçou nisso porque formatava com `new Date(...)`, que aceita os dois.
+ */
+function fmtInstante(v: string | Date | null | undefined): string {
+  if (!v) return '—'
+  const d = v instanceof Date ? v : new Date(v)
+  if (isNaN(d.getTime())) return String(v)
+  return d.toLocaleString('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
+}
+
 function parseGmt(iso: string | null | undefined): Date | null {
   if (!iso) return null
   const d = new Date(`${iso}Z`)
@@ -1400,9 +1422,9 @@ function ManifestoDetailPanel({
               <div className="mt-1 grid grid-cols-2 gap-2">
                 <Metric label="Situação" value={ROTULO_SITUACAO_PEDIDO[pedidoBaixa.situacao] ?? pedidoBaixa.situacao} />
                 <Metric label="Pedido por" value={pedidoBaixa.autor ?? '—'} />
-                <Metric label="Pedido em" value={fmtLocal(pedidoBaixa.criado_em)} />
+                <Metric label="Pedido em" value={fmtInstante(pedidoBaixa.criado_em)} />
                 {pedidoBaixa.agente && <Metric label="Executando em" value={pedidoBaixa.agente} />}
-                {pedidoBaixa.concluido_em && <Metric label="Terminou em" value={fmtLocal(pedidoBaixa.concluido_em)} />}
+                {pedidoBaixa.concluido_em && <Metric label="Terminou em" value={fmtInstante(pedidoBaixa.concluido_em)} />}
                 {pedidoBaixa.rc != null && <Metric label="Código de saída" value={`rc=${pedidoBaixa.rc}`} />}
               </div>
               {pedidoBaixa.mensagem && pedidoBaixa.situacao !== 'conferencia' && (

@@ -272,17 +272,27 @@ export type SituacaoPedidoBaixa =
  */
 export interface BatidaAgente {
   agente: string
-  visto_em: string
+  // Date, não string: ver a nota em PedidoBaixa
+  visto_em: string | Date
 }
 
 export interface PedidoBaixa {
   id: string
   situacao: SituacaoPedidoBaixa
-  criado_em: string
+  /**
+   * ⚠️ `string | Date` porque o Eden Treaty REVIVE strings ISO com fuso em objetos Date na
+   * resposta. A API manda string; o que chega aqui é Date.
+   *
+   * O tipo antes dizia só `string`, e essa mentira deixou passar um `fmtLocal(criado_em)` que
+   * quebrou a tela em produção com "a.match is not a function" (21/08). Formate com
+   * `fmtInstante`, nunca com `fmtLocal` — este último é para os campos `*_local` do coletor,
+   * que são wall-clock sem fuso e chegam como string de verdade.
+   */
+  criado_em: string | Date
   autor: string | null
   rc: number | null
   mensagem: string | null
-  concluido_em: string | null
+  concluido_em: string | Date | null
   agente: string | null
 }
 
