@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { MessageSquare, PackageCheck, Phone, Volume2, VolumeX } from 'lucide-react'
+import { Bot, MessageSquare, PackageCheck, Phone, Volume2, VolumeX } from 'lucide-react'
 import { PanelCard } from '@/components/domain/PanelCard'
 import { RelatorioMotivos } from './components/RelatorioMotivos'
 import { ValidacaoSecao } from './components/ValidacaoSecao'
@@ -560,6 +560,31 @@ function BaixaManifestoConteudo() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {/* Estado do robô de baixa — SEMPRE visível (22/08).
+              Antes o operador só descobria que o robô estava fora se tivesse um pedido
+              na fila: o chip SEM ROBÔ aparecia na linha. Sem pedido, nenhum sinal — e a
+              pergunta "o robô está ligado?" não tem como ser respondida clicando e
+              esperando. Agora responde antes de clicar. */}
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold"
+            style={
+              // tokens do design system, sem hex de fallback: cor fixa aqui quebraria no
+              // tema escuro. 'sem-sinal' é o token certo para o desconectado — é
+              // literalmente o que é.
+              agenteDePlantao
+                ? { background: 'var(--status-ok-bg)', color: 'var(--status-ok-fg)' }
+                : { background: 'var(--status-sem-sinal-bg)', color: 'var(--status-sem-sinal-fg)' }
+            }
+            title={
+              agenteDePlantao
+                ? `Robô rodando em ${agenteFila?.agente ?? '—'} — o botão BAIXAR funciona`
+                : 'Nenhum robô de plantão: dê dois cliques em Iniciar-Robo.bat na máquina do robô. '
+                  + 'Sem ele, BAIXAR só enfileira e nada é enviado ao Rodopar.'
+            }
+          >
+            <Bot className="h-3.5 w-3.5" />
+            {agenteDePlantao ? 'Robô conectado' : 'Robô desconectado'}
+          </span>
           <Button
             size="sm"
             variant="outline"
