@@ -12,7 +12,7 @@
  *
  * Regra ao mexer: nada de I/O e nada de componente neste arquivo — só dado.
  */
-import type { EstadoManifesto } from '@/lib/api/manifesto'
+import type { EstadoManifesto } from '@/hooks/useManifestoPendencias'
 
 export const ESTADOS: { key: EstadoManifesto; emoji: string; label: string; bg: string; fg: string }[] = [
   { key: 'descarregado', emoji: '🔴', label: 'Descarregado', bg: 'var(--status-atrasado-bg)', fg: 'var(--status-atrasado-fg)' },

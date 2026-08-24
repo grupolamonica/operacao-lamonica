@@ -227,7 +227,36 @@ export function GuiaBaixaManifestoPage() {
         </div>
       </Secao>
 
-      <Secao n={4} titulo="O botão BAIXAR e o robô">
+      <Secao n={4} titulo="O aviso mais importante da tela">
+        <p>
+          No topo, um ponto verde pulsando com <strong>Atualizado</strong> quer dizer que o coletor está
+          enviando. Quando ele para, aparece no lugar uma faixa amarela:
+        </p>
+        {/* MESMAS classes do banner real na BaixaManifestoPage — se o estilo de lá
+            mudar, este exemplo passa a mentir. Vale conferir junto. */}
+        <div className="flex items-center gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+          <span>⚠ Coletor sem enviar há 47 min</span>
+        </div>
+        <p className="text-xs">
+          Enquanto essa faixa estiver na tela, <strong>tudo abaixo dela é foto antiga</strong>. As cores, os
+          selos e os quilômetros são o que era verdade quando o número diz. Um caminhão marcado "em trânsito"
+          pode já ter descarregado; um 🔴 pode já ter sido baixado por outra pessoa.
+        </p>
+        <p className="text-xs">
+          Ela aparece a partir de <strong>15 minutos</strong> — três ciclos perdidos, o que já não é atraso
+          normal. Se ela ficar, avise quem cuida do coletor; não adianta atualizar a página, porque o problema
+          não está no navegador.
+        </p>
+        <p
+          className="rounded-lg p-3 text-xs"
+          style={{ background: 'var(--muted)', color: 'var(--muted-foreground)' }}
+        >
+          Aconteceu em <strong>24/08</strong>: o coletor travou e a tela ficou 80 minutos parada. O aviso
+          estava lá o tempo todo — é a diferença entre uma tela velha e uma tela mentirosa.
+        </p>
+      </Secao>
+
+      <Secao n={5} titulo="O botão BAIXAR e o robô">
         <p>
           O robô roda em <strong>um PC específico</strong>, não no servidor: ele precisa abrir o Rodopar como
           se fosse gente. O selo no topo da tela diz se ele está de plantão.
@@ -257,7 +286,7 @@ export function GuiaBaixaManifestoPage() {
         </p>
       </Secao>
 
-      <Secao n={5} titulo="Como o sistema decide a cor">
+      <Secao n={6} titulo="Como o sistema decide a cor">
         <p className="text-xs text-muted-foreground">
           Na ordem. A primeira regra que se aplica decide, e as de baixo nem são consultadas.
         </p>
@@ -297,7 +326,7 @@ export function GuiaBaixaManifestoPage() {
         </p>
       </Secao>
 
-      <Secao n={6} titulo="O que cada evidência quer dizer">
+      <Secao n={7} titulo="O que cada evidência quer dizer">
         <p className="text-xs text-muted-foreground">
           Abrindo a linha, o painel lista as evidências com o nome técnico. Esta é a tradução.
         </p>
@@ -311,7 +340,7 @@ export function GuiaBaixaManifestoPage() {
         </div>
       </Secao>
 
-      <Secao n={7} titulo="Os números">
+      <Secao n={8} titulo="Os números">
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
@@ -334,7 +363,7 @@ export function GuiaBaixaManifestoPage() {
         </div>
       </Secao>
 
-      <Secao n={8} titulo="Quando NÃO confiar na tela">
+      <Secao n={9} titulo="Quando NÃO confiar na tela">
         <p>
           Três casos deste mês só se resolveram por telefone. Vale conhecê-los, porque a forma de todos
           vai se repetir.
