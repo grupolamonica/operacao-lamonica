@@ -49,6 +49,9 @@ const GRPage = lazy(() =>
 const BaixaManifestoPage = lazy(() =>
   import('./pages/baixa-manifesto/BaixaManifestoPage').then(m => ({ default: m.BaixaManifestoPage })),
 )
+const GuiaBaixaManifestoPage = lazy(() =>
+  import('./pages/baixa-manifesto/GuiaBaixaManifestoPage').then(m => ({ default: m.GuiaBaixaManifestoPage })),
+)
 
 /**
  * Suspense wrapper for lazy route chunks.
@@ -77,6 +80,10 @@ export const router = createBrowserRouter([
           { path: 'viagens',           element: <L><ViagensPage /></L> },
           { path: 'controle-operacional', element: <L><ControleOperacionalPage /></L> },
           { path: 'baixa-manifesto',   element: <L><BaixaManifestoPage /></L> },
+          // Filha de /baixa-manifesto por necessidade, não por estética: o AppLayout
+          // manda o papel 'manifesto' de volta pra tela dele em qualquer rota que não
+          // comece com esse prefixo. '/guia-manifesto' deixaria o operador sem guia.
+          { path: 'baixa-manifesto/guia', element: <L><GuiaBaixaManifestoPage /></L> },
           { path: 'motoristas',        element: <L><MotoristasPage /></L> },
           { path: 'geofences',         element: <L><GeofencesPage /></L> },
           { path: 'alertas',           element: <L><AlertasPage /></L> },

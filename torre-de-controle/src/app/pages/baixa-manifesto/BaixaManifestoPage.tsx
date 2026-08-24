@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { Bot, MessageSquare, PackageCheck, Phone, Volume2, VolumeX } from 'lucide-react'
+import { BookOpen, Bot, MessageSquare, PackageCheck, Phone, Volume2, VolumeX } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ESTADOS, ESTADO_INFO, JA_SAIU_CHIP, SEM_PRAZO_CHIP, TRAVA_CHIP } from './chips'
 import { PanelCard } from '@/components/domain/PanelCard'
 import { RelatorioMotivos } from './components/RelatorioMotivos'
 import { ValidacaoSecao } from './components/ValidacaoSecao'
@@ -58,16 +60,6 @@ import { unlockAudio, beep, speak, primeSpeech } from '@/lib/audioAlert'
  *     exige ação)
  */
 
-const ESTADOS: { key: EstadoManifesto; emoji: string; label: string; bg: string; fg: string }[] = [
-  { key: 'descarregado', emoji: '🔴', label: 'Descarregado', bg: 'var(--status-atrasado-bg)', fg: 'var(--status-atrasado-fg)' },
-  { key: 'descarregando', emoji: '🟠', label: 'Descarregando', bg: 'var(--status-em-risco-bg)', fg: 'var(--status-em-risco-fg)' },
-  // sem token CSS pronto para amarelo (--status-* só tem verde/laranja/vermelho/cinza) — inline aqui mesmo
-  { key: 'aguardando_descarga', emoji: '🟡', label: 'Aguardando descarga', bg: 'oklch(0.870 0.165 95.0 / 0.20)', fg: 'oklch(0.450 0.130 95.0)' },
-  { key: 'em_transito', emoji: '🚚', label: 'Em trânsito', bg: 'rgba(26,79,196,0.12)', fg: 'var(--primary)' },
-  { key: 'sem_rastreio', emoji: '❓', label: 'Sem rastreio', bg: 'var(--status-sem-sinal-bg)', fg: 'var(--status-sem-sinal-fg)' },
-]
-const ESTADO_INFO = Object.fromEntries(ESTADOS.map((e) => [e.key, e])) as Record<EstadoManifesto, typeof ESTADOS[number]>
-
 const ORIGEM_LABEL: Record<'sm' | 'sascar' | 'macro', string> = { sm: 'SM', sascar: 'GPS', macro: 'MACRO' }
 
 // v1 não manda `estado` — deriva do `estagio` antigo (compatibilidade, ver TAREFA 2).
@@ -92,11 +84,6 @@ function prazoConfiavel(p: PendenciaManifesto): boolean {
   return p.prazo_confiavel !== false
 }
 
-const SEM_PRAZO_CHIP = {
-  label: 'SEM PRAZO',
-  title: 'O prazo cadastrado no Rodopar não serve (vazio, ou anterior à emissão do manifesto) — não dá pra dizer se está atrasado',
-} as const
-
 // FROTA × DEMAIS (decisão Danilo 11/08, ver V2-CONTRATO.md): FROTA tem
 // rastreador Sascar nosso (SM + posição + trava do baú + macro); DEMAIS são
 // agregados/terceiros — só a SM. Snapshot antigo sem o campo: aproxima pela
@@ -105,20 +92,6 @@ function naFrota(p: PendenciaManifesto): boolean {
   if (p.na_frota_sascar != null) return p.na_frota_sascar
   return p.posicao != null
 }
-
-// Selo de comprovação da trava (coluna Estado, só relevante na FROTA — ver
-// V2-CONTRATO.md "Regra da comprovação pela trava"). null (DEMAIS/sem
-// rastreador) não mostra selo nenhum.
-const TRAVA_CHIP = {
-  sim: {
-    label: 'TRAVA ✓', bg: 'var(--status-no-prazo-bg)', fg: 'var(--status-no-prazo-fg)',
-    title: 'A trava do baú comprovou a descarga no destino',
-  },
-  nao: {
-    label: 'SEM TRAVA', bg: 'var(--status-em-risco-bg)', fg: 'var(--status-em-risco-fg)',
-    title: 'A SM confirmou a entrega, mas a trava do baú não comprovou descarga no destino — confirme antes de baixar',
-  },
-} as const
 
 // Furo real (11/08): caminhão chega no cliente, descarrega, fecha o baú e vai
 // embora — mas o manifesto continua aberto por morosidade do operador. Antes o
@@ -129,13 +102,6 @@ function jaSaiuDoCliente(p: PendenciaManifesto): boolean {
   const estado = deriveEstado(p)
   return !!p.destino_historico?.saiu_local && (estado === 'descarregado' || estado === 'descarregando')
 }
-
-const JA_SAIU_CHIP = {
-  label: 'JÁ SAIU',
-  bg: 'var(--status-atrasado-bg)',
-  fg: 'var(--status-atrasado-fg)',
-  title: 'O caminhão já descarregou e deixou o cliente — o manifesto continua aberto',
-} as const
 
 // *_local é literal "wall-clock" (já em horário local) — nunca reinterpretar via
 // `new Date(str)` (o fuso do navegador pode não bater com o do servidor). Extrai
@@ -560,6 +526,17 @@ function BaixaManifestoConteudo() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {/* Guia da tela (24/08). As evidências são exibidas ao operador como chave
+              crua ("sm_sem_comprovacao_trava") e as regras que produzem as cores vivem
+              num repositório que ele não abre. O guia é a tradução, e fica a um clique
+              da tela em vez de num .md. Rota filha de /baixa-manifesto de propósito: o
+              papel 'manifesto' é barrado em tudo que não comece com esse prefixo. */}
+          <Button asChild size="sm" variant="outline" className="gap-1.5 text-xs">
+            <Link to="/baixa-manifesto/guia">
+              <BookOpen className="h-3.5 w-3.5" />
+              Guia
+            </Link>
+          </Button>
           {/* Estado do robô de baixa — SEMPRE visível (22/08).
               Antes o operador só descobria que o robô estava fora se tivesse um pedido
               na fila: o chip SEM ROBÔ aparecia na linha. Sem pedido, nenhum sinal — e a
