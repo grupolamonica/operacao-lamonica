@@ -19,7 +19,7 @@ import {
 } from './motorista-fones.service'
 import { relatorioTratativas } from './tratativas.report.service'
 import {
-  agenteDePlantao,
+  agentesDePlantao,
   liberarConferencia,
   pedidosPorManifesto,
   pedirBaixa,
@@ -424,12 +424,18 @@ const readPlugin = new Elysia({ name: 'manifesto-read' })
           }
           // Há agente de plantão? Sem isto a tela mostra "NA FILA" com cara de que algo
           // está acontecendo mesmo quando não existe ninguém para pegar o pedido.
-          const agente_fila = await agenteDePlantao()
+          //
+          // Vão os DOIS: `agente_fila` é o mais recente e mantém o contrato que a tela
+          // já consome; `agentes_fila` é a lista inteira, porque com uma máquina por
+          // operador "tem robô?" e "quantos robôs?" deixaram de ser a mesma pergunta.
+          const agentes_fila = await agentesDePlantao()
+          const agente_fila = agentes_fila[0] ?? null
           return {
             ok: true,
             ...view,
             baixa_pedidos,
             agente_fila,
+            agentes_fila,
             tratativas,
             motivos: MOTIVOS_TRATATIVA,
             fones_motorista,

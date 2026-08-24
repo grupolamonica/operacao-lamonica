@@ -55,7 +55,12 @@ export interface PedidoResumo {
  * significa que ele não está de pé. TTL de 10 min: some sozinho, e "sem batida" e
  * "chave expirada" são a mesma resposta.
  */
-const REDIS_KEY_AGENTE = 'manifesto:baixa:agente'
+// UMA CHAVE POR AGENTE (24/08). Era uma chave só, e com mais de uma máquina isso
+// mentia de um jeito difícil de perceber: os agentes sobrescreviam a batida um do
+// outro, a tela mostrava o último que falou, e se o robô daquela máquina caísse o
+// selo continuava verde por causa das outras. "Robô conectado" respondia sobre o
+// conjunto quando a pergunta do operador é sobre a fila dele.
+const PREFIXO_AGENTE = 'manifesto:baixa:agente:'
 const TTL_AGENTE_SEG = 600
 
 export interface BatidaAgente {
@@ -63,24 +68,61 @@ export interface BatidaAgente {
   visto_em: string
 }
 
+/** Nome do agente vira parte da chave: `:` quebraria o namespace do Redis. */
+function chaveDoAgente(agente: string): string {
+  return PREFIXO_AGENTE + agente.replace(/:/g, '_').slice(0, 120)
+}
+
 async function registrarBatidaAgente(agente: string): Promise<void> {
   const batida: BatidaAgente = { agente, visto_em: new Date().toISOString() }
   try {
-    await redis.set(REDIS_KEY_AGENTE, JSON.stringify(batida), 'EX', TTL_AGENTE_SEG)
+    await redis.set(chaveDoAgente(agente), JSON.stringify(batida), 'EX', TTL_AGENTE_SEG)
   } catch {
     // saber que o agente está vivo é informação de apoio: nunca pode impedir o agente
     // de pegar trabalho.
   }
 }
 
-/** Último agente que pediu trabalho, ou null se ninguém pediu nos últimos 10 min. */
-export async function agenteDePlantao(): Promise<BatidaAgente | null> {
+/** Todos os agentes que pediram trabalho nos últimos 10 min, mais recente primeiro. */
+export async function agentesDePlantao(): Promise<BatidaAgente[]> {
   try {
-    const raw = await redis.get(REDIS_KEY_AGENTE)
-    return raw ? (JSON.parse(raw) as BatidaAgente) : null
+    // `scan` e não `keys`: o Redis é compartilhado e `keys` percorre o keyspace
+    // inteiro travando o servidor. Aqui são poucas chaves, mas o hábito é o que
+    // evita a surpresa quando deixarem de ser poucas.
+    const encontradas: string[] = []
+    let cursor = '0'
+    do {
+      const [proximo, lote] = await redis.scan(cursor, 'MATCH', `${PREFIXO_AGENTE}*`, 'COUNT', 100)
+      cursor = proximo
+      encontradas.push(...lote)
+    } while (cursor !== '0')
+    if (!encontradas.length) return []
+
+    const brutos = await redis.mget(...encontradas)
+    return brutos
+      .flatMap((raw) => {
+        if (!raw) return []
+        try {
+          return [JSON.parse(raw) as BatidaAgente]
+        } catch {
+          return []
+        }
+      })
+      .sort((a, b) => b.visto_em.localeCompare(a.visto_em))
   } catch {
-    return null
+    return []
   }
+}
+
+/**
+ * O agente mais recente, ou null se ninguém bateu ponto nos últimos 10 min.
+ *
+ * Mantido porque a tela pergunta "tem robô de plantão?" antes de perguntar quantos —
+ * e porque o contrato do snapshot (`agente_fila`) já é consumido assim.
+ */
+export async function agenteDePlantao(): Promise<BatidaAgente | null> {
+  const todos = await agentesDePlantao()
+  return todos[0] ?? null
 }
 
 /** Violação de índice único no Postgres. */
@@ -209,9 +251,14 @@ export async function pedidosPorManifesto(
 /**
  * O agente pega o próximo da fila.
  *
- * Devolve null quando a fila está vazia OU quando já existe um `executando` — o Rodopar é sessão
- * única por usuário e duas execuções simultâneas derrubam uma à outra (rc=8). O índice parcial
- * `_um_por_vez_idx` é o insurance de verdade; a checagem aqui só evita gastar a tentativa.
+ * Devolve null quando a fila está vazia OU quando ESTE agente já tem um `executando`. O limite é
+ * por máquina, não global: o robô dirige um Chrome visível numa sessão interativa, e dois de uma
+ * vez na mesma máquina disputariam o mesmo canvas. Máquinas diferentes rodam em paralelo, desde
+ * que cada uma tenha a própria conta do Rodopar — sessão única é por usuário, e dois logins
+ * distintos não se derrubam (era global até 24/08, quando todas usavam o mesmo login).
+ *
+ * O índice parcial `_um_por_agente_idx` é o insurance de verdade; a checagem aqui só evita gastar
+ * a tentativa.
  */
 export async function reivindicarProximo(
   agente: string,
@@ -219,10 +266,23 @@ export async function reivindicarProximo(
   // antes de qualquer early return: "pedi trabalho e não tinha" também prova que estou vivo
   await registrarBatidaAgente(agente)
 
+  // "ESTE agente já tem algo em curso?", não "existe algum executando no mundo".
+  //
+  // Era global até 24/08, quando todas as máquinas usavam o mesmo login do robô e
+  // a sessão única do Rodopar obrigava a serializar tudo. Com uma conta por
+  // operador isso deixou de valer, e manter a checagem global faria o segundo
+  // agente receber `null` para sempre — ele ficaria batendo ponto, aparecendo
+  // como conectado na tela, e nunca pegaria trabalho. Uma fila parada sem
+  // nenhuma mensagem de erro.
   const emCurso = await db
     .select({ id: manifestoBaixaPedidos.id })
     .from(manifestoBaixaPedidos)
-    .where(eq(manifestoBaixaPedidos.situacao, 'executando'))
+    .where(
+      and(
+        eq(manifestoBaixaPedidos.situacao, 'executando'),
+        eq(manifestoBaixaPedidos.agente, agente.slice(0, 120)),
+      ),
+    )
     .limit(1)
   if (emCurso.length) return null
 

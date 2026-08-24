@@ -388,15 +388,21 @@ function aparenciaBotaoBaixa(
 function BaixaManifestoConteudo() {
   const {
     data: snapshot, pendencias, tratativas, motivos,
-    fonesMotorista, rotulosFone, validacoes, motivosErro, baixaPedidos, agenteFila,
+    fonesMotorista, rotulosFone, validacoes, motivosErro, baixaPedidos, agenteFila, agentesFila,
     isLoading, isError, error,
   } = useManifestoPendencias()
   const pedirBaixa = usePedirBaixa()
   const liberarConferencia = useLiberarConferencia()
   // Agente vivo = bateu nos últimos 3 min. O TTL no Redis é 10 min (folga para blip de
   // rede), mas para a TELA 3 min já é "parado": o agente pede trabalho a cada ~15s.
-  const agenteDePlantao =
-    agenteFila != null && Date.now() - new Date(agenteFila.visto_em).getTime() < 3 * 60_000
+  // `visto_em` é `string | Date`, não string: o Eden revive ISO com fuso em Date antes
+  // de a tela ver. Anotar como string aqui compila localmente e quebra em produção —
+  // foi o que derrubou esta página em 22/08. `new Date()` aceita os dois.
+  const vivo = (b: BatidaAgente) =>
+    Date.now() - new Date(b.visto_em).getTime() < 3 * 60_000
+  // A lista só existe na API nova; sem ela cai no agente único, que é o contrato antigo.
+  const roboVivos = (agentesFila ?? (agenteFila ? [agenteFila] : [])).filter(vivo)
+  const agenteDePlantao = roboVivos.length > 0
   // 401 = sessão expirada, e o operador só precisa relogar. O AuthGuard valida a sessão apenas
   // no mount, então cookie que vence com a tela aberta não redireciona ninguém — sem separar os
   // dois casos, o operador lê "falha" e conclui que o sistema caiu.
@@ -554,13 +560,20 @@ function BaixaManifestoConteudo() {
             }
             title={
               agenteDePlantao
-                ? `Robô rodando em ${agenteFila?.agente ?? '—'} — o botão BAIXAR funciona`
+                ? `O botão BAIXAR funciona. Rodando em:\n${roboVivos.map((a) => `• ${a.agente}`).join('\n')}`
                 : 'Nenhum robô de plantão: dê dois cliques em Iniciar-Robo.bat na máquina do robô. '
                   + 'Sem ele, BAIXAR só enfileira e nada é enviado ao Rodopar.'
             }
           >
             <Bot className="h-3.5 w-3.5" />
-            {agenteDePlantao ? 'Robô conectado' : 'Robô desconectado'}
+            {/* Mostra o NÚMERO quando há mais de um. Com uma máquina por operador, um
+                selo que diz só "conectado" não distingue "os três de pé" de "dois
+                caíram" — e é a segunda situação que muda o que o operador faz. */}
+            {!agenteDePlantao
+              ? 'Robô desconectado'
+              : roboVivos.length === 1
+                ? 'Robô conectado'
+                : `${roboVivos.length} robôs conectados`}
           </span>
           <Button
             size="sm"

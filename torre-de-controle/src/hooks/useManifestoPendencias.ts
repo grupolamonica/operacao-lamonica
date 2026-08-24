@@ -243,6 +243,9 @@ export interface ManifestoPendenciasSnapshot {
   baixa_pedidos?: Record<string, PedidoBaixa>
   // quem está de plantão para executar a fila; null = NINGUÉM (o botão só enfileira)
   agente_fila?: BatidaAgente | null
+  // lista inteira (24/08): com uma máquina por operador, "tem robô?" e
+  // "quantos robôs?" deixaram de ser a mesma pergunta. Ausente na API antiga.
+  agentes_fila?: BatidaAgente[] | null
 }
 
 /**
@@ -325,6 +328,7 @@ export function useManifestoPendencias() {
     motivosErro: q.data?.motivos_erro ?? {},
     baixaPedidos: q.data?.baixa_pedidos ?? {},
     agenteFila: q.data?.agente_fila ?? null,
+    agentesFila: q.data?.agentes_fila ?? null,
     isLoading: q.isLoading,
     isError: q.isError,
     error: q.error,
