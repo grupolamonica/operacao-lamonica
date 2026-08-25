@@ -39,3 +39,4 @@ export * from './manifesto-validacoes'
 // entre os %LOCALAPPDATA% das máquinas dos operadores.
 export * from './manifesto-baixa-pedidos'
 export * from './relations'
+export * from './manifesto-agente-tokens'

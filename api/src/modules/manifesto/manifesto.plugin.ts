@@ -26,6 +26,7 @@ import {
   registrarResultado,
   reivindicarProximo,
 } from './baixa.service'
+import { donoDoToken, marcarUso, gerarToken, tokenAtivo, revogarToken } from './agente-token.service'
 import { applySnapshot, getPendencias } from './manifesto.service'
 import {
   chaveManifesto,
@@ -55,6 +56,45 @@ import {
  * chamar a ingestão a partir de um browser/frontend; se algum dia precisar,
  * adicionar x-api-key ao allowedHeaders primeiro.
  */
+
+/**
+ * Autenticação do AGENTE — aceita token de pessoa OU a chave global.
+ *
+ * Separada de `checkApiKey` de propósito, e a separação é o ponto: a chave global
+ * também autoriza `POST /pendencias`, que INGERE o snapshot do coletor. Se o token de
+ * um operador servisse lá, o PC dele poderia inventar a tela inteira de pendências.
+ * Token de agente entra só aqui.
+ *
+ * A chave global continua aceita durante a transição, sem identidade — é o que mantém
+ * as instalações existentes funcionando enquanto os operadores não geram o token
+ * deles. Quando todas tiverem migrado, este ramo sai.
+ */
+async function checkAgenteAuth(
+  request: Request,
+): Promise<
+  | { ok: true; dono: { user_id: string; nome: string; token_id: string } | null }
+  | { ok: false; status: number; error: string }
+> {
+  const apresentado =
+    request.headers.get('x-api-key') ||
+    request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ||
+    null
+  if (!apresentado) {
+    return { ok: false, status: 401, error: 'x-api-key/Bearer ausente' }
+  }
+
+  const dono = await donoDoToken(apresentado)
+  if (dono) {
+    void marcarUso(dono.token_id)
+    return { ok: true, dono }
+  }
+
+  const global = process.env.MANIFESTO_API_KEY
+  if (global && apresentado === global) {
+    return { ok: true, dono: null }
+  }
+  return { ok: false, status: 401, error: 'token inválido, revogado, ou chave incorreta' }
+}
 
 function checkApiKey(request: Request): { ok: true } | { ok: false; status: number; error: string } {
   const expected = process.env.MANIFESTO_API_KEY
@@ -290,14 +330,16 @@ const ingestPlugin = new Elysia({ name: 'manifesto-ingest' }).group('/api/manife
     .post(
       '/baixa/proximo',
       async ({ body, set, request }) => {
-        const auth = checkApiKey(request)
+        const auth = await checkAgenteAuth(request)
         if (!auth.ok) {
           set.status = auth.status
           return { ok: false, error: auth.error }
         }
-        // null = nada a fazer, OU já existe um executando. O Rodopar é sessão única
-        // por usuário: duas execuções simultâneas derrubam uma à outra (rc=8).
-        const pedido = await reivindicarProximo(body.agente)
+        // Com token, a identidade vem do SERVIDOR e o pedido é roteado para o robô de
+        // quem clicou (decisão Danilo 25/08: a baixa roda sob a conta Rodopar de quem
+        // pediu, então ERP e torre contam a mesma história). Sem token — instalação
+        // ainda na chave global — segue a fila antiga, primeiro-a-chegar.
+        const pedido = await reivindicarProximo(body.agente, auth.dono?.user_id ?? null)
         return { ok: true, pedido }
       },
       {
@@ -311,7 +353,7 @@ const ingestPlugin = new Elysia({ name: 'manifesto-ingest' }).group('/api/manife
     .post(
       '/baixa/resultado',
       async ({ body, set, request }) => {
-        const auth = checkApiKey(request)
+        const auth = await checkAgenteAuth(request)
         if (!auth.ok) {
           set.status = auth.status
           return { ok: false, error: auth.error }
@@ -779,6 +821,62 @@ const readPlugin = new Elysia({ name: 'manifesto-read' })
           detail: {
             tags: ['manifesto'],
             summary: 'Pede a baixa do manifesto ao robô — papel manifesto/supervisor/admin',
+          },
+        },
+      )
+      // ── Token do agente: liga a pessoa que usa a tela ao robô do PC dela ─────────
+      .get(
+        '/agente/token',
+        async ({ user, set }) => {
+          // Mesmo portao de PODE_ESCREVER: quem nao pode pedir baixa nao precisa de robo.
+          if (!PODE_ESCREVER.includes(user.role as (typeof PODE_ESCREVER)[number])) {
+            set.status = 403
+            return { ok: false, error: `Forbidden: requires role ${PODE_ESCREVER.join('|')}` }
+          }
+          return { ok: true, token: await tokenAtivo(user.id) }
+        },
+        {
+          detail: {
+            tags: ['manifesto'],
+            summary: 'Token de agente da propria pessoa (sem o valor — so prefixo e datas)',
+          },
+        },
+      )
+      .post(
+        '/agente/token',
+        async ({ body, user, set }) => {
+          if (!PODE_ESCREVER.includes(user.role as (typeof PODE_ESCREVER)[number])) {
+            set.status = 403
+            return { ok: false, error: `Forbidden: requires role ${PODE_ESCREVER.join('|')}` }
+          }
+          // SEMPRE para a propria pessoa: `user.id` vem do JWT, nunca do corpo. Aceitar
+          // um userId do cliente aqui deixaria qualquer operador gerar token no nome de
+          // outro -- e, com o roteamento, sequestrar a fila dele.
+          const gerado = await gerarToken(user.id, body?.apelido ?? null)
+          return { ok: true, ...gerado }
+        },
+        {
+          body: t.Optional(t.Object({ apelido: t.Optional(t.String({ maxLength: 60 })) })),
+          detail: {
+            tags: ['manifesto'],
+            summary: 'Gera o token desta pessoa e REVOGA o anterior. O valor aparece so nesta resposta',
+          },
+        },
+      )
+      .delete(
+        '/agente/token',
+        async ({ user, set }) => {
+          if (!PODE_ESCREVER.includes(user.role as (typeof PODE_ESCREVER)[number])) {
+            set.status = 403
+            return { ok: false, error: `Forbidden: requires role ${PODE_ESCREVER.join('|')}` }
+          }
+          await revogarToken(user.id, user.id)
+          return { ok: true }
+        },
+        {
+          detail: {
+            tags: ['manifesto'],
+            summary: 'Revoga o token desta pessoa — o robo da maquina dela para de pegar trabalho',
           },
         },
       )

@@ -6,6 +6,7 @@ import { ESTADOS, ESTADO_INFO, JA_SAIU_CHIP, SEM_PRAZO_CHIP, TRAVA_CHIP } from '
 import { PanelCard } from '@/components/domain/PanelCard'
 import { RelatorioMotivos } from './components/RelatorioMotivos'
 import { ValidacaoSecao } from './components/ValidacaoSecao'
+import { TokenDoAgente } from './components/TokenDoAgente'
 import { DiscadorNet2phoneProvider, useDiscador } from './components/DiscadorNet2phone'
 import { SidePanelLayout } from '@/components/domain/SidePanelLayout'
 import { FixedPanel } from '@/components/domain/FixedPanel'
@@ -364,8 +365,12 @@ function aparenciaBotaoBaixa(
         ? { rotulo: 'NA FILA', podeClicar: false, destaque: false,
             title: `Pedido por ${pedido.autor ?? 'operador'} — esperando o robô pegar` }
         : { rotulo: 'SEM ROBÔ', podeClicar: false, destaque: true,
-            title: `Pedido por ${pedido.autor ?? 'operador'}, mas NENHUM agente está de plantão. `
-                 + 'O pedido não vai andar até alguém subir o agente na máquina do robô.' }
+            // O texto mudou de "nenhum agente" para "o SEU robô" quando a fila virou
+            // roteada (25/08): o pedido só é pego pela máquina de quem o criou, então
+            // o robô de outro operador estar ligado não ajuda em nada aqui.
+            title: `Pedido por ${pedido.autor ?? 'operador'}, mas o robô DESTA máquina não está `
+                 + 'de plantão. Com a fila roteada, só ele pega este pedido — robô de outro '
+                 + 'operador não resolve. Abra o Iniciar-Robo.bat no seu computador.' }
     case 'executando':
       return { rotulo: 'EXECUTANDO', podeClicar: false, destaque: false,
                title: `Robô rodando em ${pedido.agente ?? 'agente'} — um por vez (Rodopar é sessão única)` }
@@ -400,9 +405,19 @@ function BaixaManifestoConteudo() {
   // foi o que derrubou esta página em 22/08. `new Date()` aceita os dois.
   const vivo = (b: BatidaAgente) =>
     Date.now() - new Date(b.visto_em).getTime() < 3 * 60_000
+  const meuId = useAuthStore((s) => s.user?.id)
   // A lista só existe na API nova; sem ela cai no agente único, que é o contrato antigo.
   const roboVivos = (agentesFila ?? (agenteFila ? [agenteFila] : [])).filter(vivo)
   const agenteDePlantao = roboVivos.length > 0
+  // O MEU robô, que desde o roteamento é outra pergunta. Com a fila roteada, o pedido
+  // que eu crio só é pego pelo robô da minha máquina — então "3 robôs conectados" com
+  // o meu desligado é um selo verde mentindo sobre a minha fila.
+  //
+  // `user_id` só existe nas batidas autenticadas por token. Enquanto houver máquina na
+  // chave global (batida sem dono), não dá para saber de quem ela é: nesse caso a tela
+  // não afirma nada e trata como antes, "tem robô".
+  const algumSemDono = roboVivos.some((a) => !a.user_id)
+  const meuRoboVivo = algumSemDono || roboVivos.some((a) => a.user_id === meuId)
   // 401 = sessão expirada, e o operador só precisa relogar. O AuthGuard valida a sessão apenas
   // no mount, então cookie que vence com a tela aberta não redireciona ninguém — sem separar os
   // dois casos, o operador lê "falha" e conclui que o sistema caiu.
@@ -561,7 +576,7 @@ function BaixaManifestoConteudo() {
             title={
               agenteDePlantao
                 ? `O botão BAIXAR funciona. Rodando em:\n${roboVivos.map((a) => `• ${a.agente}`).join('\n')}`
-                : 'Nenhum robô de plantão: dê dois cliques em Iniciar-Robo.bat na máquina do robô. '
+                : 'Nenhum robô de plantão: dê dois cliques em Iniciar-Robo.bat na sua máquina. '
                   + 'Sem ele, BAIXAR só enfileira e nada é enviado ao Rodopar.'
             }
           >
@@ -773,7 +788,7 @@ function BaixaManifestoConteudo() {
                     const validarPendente = precisaValidar(p)
                     // pedido de baixa deste manifesto, se houver — governa o botão
                     const pedidoBaixa = baixaPedidos[chaveTratativa(p) ?? ''] as PedidoBaixa | undefined
-                    const apBaixa = aparenciaBotaoBaixa(pedidoBaixa, agenteDePlantao)
+                    const apBaixa = aparenciaBotaoBaixa(pedidoBaixa, meuRoboVivo)
                     const cliente = p.sm?.cliente || p.destino || '—'
                     const destinoLinha = [p.destino, p.destino_uf ?? p.viagem?.destino_uf].filter(Boolean).join('/')
                     return (
@@ -1006,6 +1021,13 @@ function BaixaManifestoConteudo() {
               manifestos é a função crítica da tela e não pode dividir atenção nem carga com ele. */}
           <div className="mt-3">
             <RelatorioMotivos />
+          </div>
+          {/* Token do robô: abaixo do relatório de propósito. É configuração, feita uma
+              vez por máquina — não pode competir por atenção com a fila, que é a função
+              crítica da tela. Quem precisa dele vai procurá-lo; quem não precisa nunca
+              deveria esbarrar. */}
+          <div className="mt-3">
+            <TokenDoAgente />
           </div>
         </div>
 
