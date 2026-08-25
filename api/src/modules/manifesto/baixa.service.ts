@@ -262,6 +262,7 @@ export async function pedidosPorManifesto(
  */
 export async function reivindicarProximo(
   agente: string,
+  donoUserId: string | null = null,
 ): Promise<{ codman: number; filial: number; serie: string; id: string } | null> {
   // antes de qualquer early return: "pedi trabalho e não tinha" também prova que estou vivo
   await registrarBatidaAgente(agente)
@@ -286,10 +287,26 @@ export async function reivindicarProximo(
     .limit(1)
   if (emCurso.length) return null
 
+  // ROTEAMENTO (25/08). Com token, o pedido vai para o robô de QUEM CLICOU; sem token
+  // — instalação ainda na chave global — a fila segue primeiro-a-chegar.
+  //
+  // O motivo não é organização: a baixa roda sob a conta Rodopar da máquina que
+  // executa. Se a Maria pede e o robô do João executa, o rastro no ERP fica no nome do
+  // João enquanto o torre registra Maria. Rotear mantém os dois alinhados.
+  //
+  // O custo é real e foi aceito: robô da Maria desligado = pedido da Maria parado,
+  // mesmo com o do João livre. A tela precisa dizer isso — ver `aparenciaBotaoBaixa`.
+  const filtro = donoUserId
+    ? and(
+        eq(manifestoBaixaPedidos.situacao, 'na_fila'),
+        eq(manifestoBaixaPedidos.operatorId, donoUserId),
+      )
+    : eq(manifestoBaixaPedidos.situacao, 'na_fila')
+
   const [proximo] = await db
     .select({ id: manifestoBaixaPedidos.id })
     .from(manifestoBaixaPedidos)
-    .where(eq(manifestoBaixaPedidos.situacao, 'na_fila'))
+    .where(filtro)
     .orderBy(asc(manifestoBaixaPedidos.createdAt))
     .limit(1)
   if (!proximo) return null
