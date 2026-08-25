@@ -412,12 +412,20 @@ function BaixaManifestoConteudo() {
   // O MEU robô, que desde o roteamento é outra pergunta. Com a fila roteada, o pedido
   // que eu crio só é pego pelo robô da minha máquina — então "3 robôs conectados" com
   // o meu desligado é um selo verde mentindo sobre a minha fila.
+  // TRÊS estados, não dois. Antes eram dois e o resultado mentia: eu tratava
+  // "existe máquina sem identificação" como "todo mundo tem robô", achando que
+  // era o lado cauteloso. É o oposto — em 25/08 uma operadora que nunca abriu o
+  // programa viu o selo VERDE e o botão BAIXAR habilitado.
   //
-  // `user_id` só existe nas batidas autenticadas por token. Enquanto houver máquina na
-  // chave global (batida sem dono), não dá para saber de quem ela é: nesse caso a tela
-  // não afirma nada e trata como antes, "tem robô".
-  const algumSemDono = roboVivos.some((a) => !a.user_id)
-  const meuRoboVivo = algumSemDono || roboVivos.some((a) => a.user_id === meuId)
+  //   meuRoboVivo   uma máquina que se identificou como MINHA está de pé
+  //   roboAnonimo   há máquina de pé, mas sem dizer de quem é (chave global)
+  //
+  // O botão continua funcionando no caso anônimo, e isso é verdade: sem
+  // identidade a fila não roteia, então QUALQUER agente pega o pedido. O que
+  // não pode é a tela deixar a pessoa achar que o robô é dela — porque a baixa
+  // vai rodar na máquina de outro, sob a conta Rodopar daquela pessoa.
+  const meuRoboVivo = roboVivos.some((a) => a.user_id === meuId)
+  const roboAnonimo = !meuRoboVivo && roboVivos.some((a) => !a.user_id)
   // 401 = sessão expirada, e o operador só precisa relogar. O AuthGuard valida a sessão apenas
   // no mount, então cookie que vence com a tela aberta não redireciona ninguém — sem separar os
   // dois casos, o operador lê "falha" e conclui que o sistema caiu.
@@ -569,26 +577,35 @@ function BaixaManifestoConteudo() {
               // tokens do design system, sem hex de fallback: cor fixa aqui quebraria no
               // tema escuro. 'sem-sinal' é o token certo para o desconectado — é
               // literalmente o que é.
-              agenteDePlantao
+              meuRoboVivo
                 ? { background: 'var(--status-ok-bg)', color: 'var(--status-ok-fg)' }
-                : { background: 'var(--status-sem-sinal-bg)', color: 'var(--status-sem-sinal-fg)' }
+                : roboAnonimo
+                  // âmbar, não verde: funciona, mas não é o robô desta pessoa.
+                  ? { background: 'var(--status-em-risco-bg)', color: 'var(--status-em-risco-fg)' }
+                  : { background: 'var(--status-sem-sinal-bg)', color: 'var(--status-sem-sinal-fg)' }
             }
             title={
-              agenteDePlantao
+              meuRoboVivo
                 ? `O botão BAIXAR funciona. Rodando em:\n${roboVivos.map((a) => `• ${a.agente}`).join('\n')}`
-                : 'Nenhum robô de plantão: dê dois cliques em Iniciar-Robo.bat na sua máquina. '
-                  + 'Sem ele, BAIXAR só enfileira e nada é enviado ao Rodopar.'
+                : roboAnonimo
+                  ? 'Há robô de plantão, mas ele não se identificou — está usando a chave '
+                    + 'antiga em vez do token. O botão BAIXAR funciona, porém a baixa vai '
+                    + 'rodar na máquina de outra pessoa, sob a conta Rodopar DELA. Para o '
+                    + 'seu manifesto ser baixado pela sua máquina, abra o programa e '
+                    + 'cadastre o seu token.'
+                  : 'Nenhum robô de plantão: abra o programa na sua máquina. '
+                    + 'Sem ele, BAIXAR só enfileira e nada é enviado ao Rodopar.'
             }
           >
             <Bot className="h-3.5 w-3.5" />
             {/* Mostra o NÚMERO quando há mais de um. Com uma máquina por operador, um
                 selo que diz só "conectado" não distingue "os três de pé" de "dois
                 caíram" — e é a segunda situação que muda o que o operador faz. */}
-            {!agenteDePlantao
-              ? 'Robô desconectado'
-              : roboVivos.length === 1
-                ? 'Robô conectado'
-                : `${roboVivos.length} robôs conectados`}
+            {meuRoboVivo
+              ? (roboVivos.length === 1 ? 'Robô conectado' : `${roboVivos.length} robôs conectados`)
+              : roboAnonimo
+                ? 'Robô sem identificação'
+                : 'Robô desconectado'}
           </span>
           <Button
             size="sm"
@@ -788,7 +805,7 @@ function BaixaManifestoConteudo() {
                     const validarPendente = precisaValidar(p)
                     // pedido de baixa deste manifesto, se houver — governa o botão
                     const pedidoBaixa = baixaPedidos[chaveTratativa(p) ?? ''] as PedidoBaixa | undefined
-                    const apBaixa = aparenciaBotaoBaixa(pedidoBaixa, meuRoboVivo)
+                    const apBaixa = aparenciaBotaoBaixa(pedidoBaixa, meuRoboVivo || roboAnonimo)
                     const cliente = p.sm?.cliente || p.destino || '—'
                     const destinoLinha = [p.destino, p.destino_uf ?? p.viagem?.destino_uf].filter(Boolean).join('/')
                     return (
