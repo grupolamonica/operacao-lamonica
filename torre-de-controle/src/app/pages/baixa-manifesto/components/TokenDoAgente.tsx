@@ -9,7 +9,7 @@
  * gerado é o único lugar onde ele existe, e fechar sem copiar significa gerar de novo.
  */
 import { useState } from 'react'
-import { Check, Copy, KeyRound, RotateCw, Trash2 } from 'lucide-react'
+import { Check, Copy, RotateCw, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   useGerarTokenAgente,
@@ -44,11 +44,9 @@ export function TokenDoAgente() {
   }
 
   return (
-    <div className="rounded-xl bg-card p-5" style={{ border: '1px solid var(--border)' }}>
-      <h3 className="mb-1 flex items-center gap-2 text-sm font-bold text-primary">
-        <KeyRound className="h-4 w-4" />
-        Token do meu robô
-      </h3>
+    // Sem cartão nem borda: desde 25/08 isto vive DENTRO de um diálogo, que já é um
+    // cartão. Moldura dentro de moldura só rouba largura do conteúdo.
+    <div>
       <p className="mb-4 text-xs text-muted-foreground">
         Liga esta conta ao robô que roda no seu computador. Com ele, os manifestos que{' '}
         <strong>você</strong> mandar baixar vão para o <strong>seu</strong> robô — e não para o de

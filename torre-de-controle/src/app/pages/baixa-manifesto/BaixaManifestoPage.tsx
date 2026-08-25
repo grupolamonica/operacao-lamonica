@@ -436,6 +436,11 @@ function BaixaManifestoConteudo() {
   const podeEscrever = role === 'manifesto' || role === 'supervisor' || role === 'admin'
   const now = useNow(30_000)
   const [soundOn, setSoundOn] = useState(true)
+  // O token abre em diálogo pelo SELO do robô: é ele que fica âmbar chamando
+  // atenção, então clicar nele para resolver é o caminho mais curto entre ver o
+  // problema e corrigi-lo. Antes o painel morava no rodapé da página, abaixo do
+  // relatório — longe de onde o aviso aparece.
+  const [tokenAberto, setTokenAberto] = useState(false)
   const seenKeys = useRef<Set<string> | null>(null)
   const [aba, setAba] = useState<'frota' | 'demais'>('frota')
   const [estadoFiltro, setEstadoFiltro] = useState<EstadoManifesto | 'todos'>('todos')
@@ -571,8 +576,11 @@ function BaixaManifestoConteudo() {
               na fila: o chip SEM ROBÔ aparecia na linha. Sem pedido, nenhum sinal — e a
               pergunta "o robô está ligado?" não tem como ser respondida clicando e
               esperando. Agora responde antes de clicar. */}
-          <span
-            className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold"
+          <button
+            type="button"
+            onClick={() => setTokenAberto(true)}
+            aria-label="Abrir o token do meu robô"
+            className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1"
             style={
               // tokens do design system, sem hex de fallback: cor fixa aqui quebraria no
               // tema escuro. 'sem-sinal' é o token certo para o desconectado — é
@@ -606,7 +614,7 @@ function BaixaManifestoConteudo() {
               : roboAnonimo
                 ? 'Robô sem identificação'
                 : 'Robô desconectado'}
-          </span>
+          </button>
           <Button
             size="sm"
             variant="outline"
@@ -1039,13 +1047,7 @@ function BaixaManifestoConteudo() {
           <div className="mt-3">
             <RelatorioMotivos />
           </div>
-          {/* Token do robô: abaixo do relatório de propósito. É configuração, feita uma
-              vez por máquina — não pode competir por atenção com a fila, que é a função
-              crítica da tela. Quem precisa dele vai procurá-lo; quem não precisa nunca
-              deveria esbarrar. */}
-          <div className="mt-3">
-            <TokenDoAgente />
-          </div>
+
         </div>
 
         {selected && (
@@ -1094,6 +1096,19 @@ Liberar sem conferir pode fazer o robô lançar a entrega duas vezes.`,
         rotulos={rotulosFone}
         podeEscrever={podeEscrever}
       />
+
+      {/* Token do robô. Em diálogo, e aberto pelo SELO — não é coisa do dia a dia:
+          cadastra uma vez por máquina e não se toca mais. Ocupar espaço fixo na tela
+          que o operador usa o expediente inteiro seria cobrar atenção permanente por
+          algo que se resolve uma vez. */}
+      <Dialog open={tokenAberto} onOpenChange={setTokenAberto}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="text-base">Meu robô</DialogTitle>
+          </DialogHeader>
+          <TokenDoAgente />
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
