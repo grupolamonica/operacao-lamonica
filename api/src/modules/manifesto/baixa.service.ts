@@ -66,6 +66,12 @@ const TTL_AGENTE_SEG = 600
 export interface BatidaAgente {
   agente: string
   visto_em: string
+  /** Dono do token que autenticou. Null nas instalações ainda na chave global.
+   *
+   *  É o que permite a tela responder "o MEU robô está de pé?" — pergunta que passou
+   *  a importar quando a fila virou roteada: com 3 robôs conectados e o seu desligado,
+   *  o seu pedido fica parado, e um selo verde dizendo "3 conectados" mentiria. */
+  user_id?: string | null
 }
 
 /** Nome do agente vira parte da chave: `:` quebraria o namespace do Redis. */
@@ -73,8 +79,8 @@ function chaveDoAgente(agente: string): string {
   return PREFIXO_AGENTE + agente.replace(/:/g, '_').slice(0, 120)
 }
 
-async function registrarBatidaAgente(agente: string): Promise<void> {
-  const batida: BatidaAgente = { agente, visto_em: new Date().toISOString() }
+async function registrarBatidaAgente(agente: string, userId: string | null = null): Promise<void> {
+  const batida: BatidaAgente = { agente, visto_em: new Date().toISOString(), user_id: userId }
   try {
     await redis.set(chaveDoAgente(agente), JSON.stringify(batida), 'EX', TTL_AGENTE_SEG)
   } catch {
@@ -265,7 +271,7 @@ export async function reivindicarProximo(
   donoUserId: string | null = null,
 ): Promise<{ codman: number; filial: number; serie: string; id: string } | null> {
   // antes de qualquer early return: "pedi trabalho e não tinha" também prova que estou vivo
-  await registrarBatidaAgente(agente)
+  await registrarBatidaAgente(agente, donoUserId)
 
   // "ESTE agente já tem algo em curso?", não "existe algum executando no mundo".
   //

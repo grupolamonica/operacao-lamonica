@@ -277,6 +277,10 @@ export interface BatidaAgente {
   agente: string
   // Date, não string: ver a nota em PedidoBaixa
   visto_em: string | Date
+  // Dono do token que autenticou a máquina. Ausente nas instalações ainda na chave
+  // global — e a AUSÊNCIA importa: sem dono não dá para dizer de quem é o robô, então
+  // a tela não afirma "o seu está de pé" nem "não está".
+  user_id?: string | null
 }
 
 export interface PedidoBaixa {
@@ -592,5 +596,54 @@ export function useLiberarConferencia() {
       return data as { ok: boolean; pedido: PedidoBaixa }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['manifesto', 'pendencias'] }),
+  })
+}
+
+// ── Token do agente: liga esta pessoa ao robô do PC dela ──────────────────────
+//
+// O valor completo existe SÓ na resposta do POST — o servidor guarda apenas o hash.
+// Por isso ele não é cacheado nem revalidado: quem perder, gera outro.
+
+export interface TokenAgente {
+  id: string
+  prefixo: string
+  apelido: string | null
+  criado_em: string
+  usado_em: string | null
+}
+
+export function useTokenAgente() {
+  return useQuery({
+    queryKey: ['manifesto', 'agente-token'],
+    queryFn: async () => {
+      const { data, error } = await (api.api as any).manifesto.agente.token.get()
+      if (error) throw new Error((error.value as any)?.error ?? 'Falha ao ler o token')
+      return (data as { ok: boolean; token: TokenAgente | null }).token
+    },
+    staleTime: 60_000,
+  })
+}
+
+export function useGerarTokenAgente() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: { apelido?: string }) => {
+      const { data, error } = await (api.api as any).manifesto.agente.token.post(vars)
+      if (error) throw new Error((error.value as any)?.error ?? 'Falha ao gerar o token')
+      return data as { ok: boolean; token: string; prefixo: string; criado_em: string }
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['manifesto', 'agente-token'] }),
+  })
+}
+
+export function useRevogarTokenAgente() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const { data, error } = await (api.api as any).manifesto.agente.token.delete()
+      if (error) throw new Error((error.value as any)?.error ?? 'Falha ao revogar o token')
+      return data as { ok: boolean }
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['manifesto', 'agente-token'] }),
   })
 }
