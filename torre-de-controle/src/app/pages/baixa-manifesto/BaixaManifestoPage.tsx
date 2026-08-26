@@ -348,6 +348,30 @@ const ROTULO_SITUACAO_PEDIDO: Record<string, string> = {
  * "intocado" de "clicado e não processado". Repetir às cegas duplica lançamento. Ver
  * docs/CONVENCAO-ROBO.md §3 no repo robo-baixa-manifesto.
  */
+/**
+ * O que cada código de saída do robô quer dizer, em duas ou três palavras.
+ *
+ * Existe porque a mensagem que vem do robô são as últimas 12 linhas da execução,
+ * juntadas por " | " — texto de diagnóstico, útil no balão, ilegível num chip de
+ * 9px ao lado do botão. O `rc` cabe.
+ *
+ * A tabela completa mora no LEIA-ME.md do robô; aqui ficam só os que aparecem
+ * numa falha comum. Um rc fora da lista mostra o número cru, que ainda é mais
+ * informativo que nada.
+ */
+const RC_CURTO: Record<number, string> = {
+  3: 'login',
+  4: 'já baixado',
+  5: 'tela não abriu',
+  8: 'sessão caiu',
+  9: 'tela travou',
+  10: 'ambiente errado',
+  12: 'não reconheceu a tela',
+  13: 'validação',
+  15: 'falta pré-requisito',
+  16: 'sem banco',
+}
+
 function aparenciaBotaoBaixa(
   pedido: PedidoBaixa | undefined,
   temAgente: boolean,
@@ -382,8 +406,21 @@ function aparenciaBotaoBaixa(
                title: `rc=${pedido.rc}: o Efetuar PODE ter sido clicado e o banco não confirmou. `
                     + 'Confira este manifesto no Rodopar antes de qualquer nova tentativa.' }
     case 'falhou':
-      return { rotulo: 'BAIXAR', podeClicar: true, destaque: false,
-               title: `Tentativa anterior falhou (rc=${pedido.rc}): ${pedido.mensagem ?? 'sem mensagem'}` }
+      // FALHOU, e não "BAIXAR" como se nada tivesse acontecido (corrigido 26/08).
+      //
+      // Antes o botão voltava ao estado inicial e a única pista era o balão do
+      // mouse — que ninguém passa. O robô rodava quatro minutos, falhava, e a
+      // tela ficava idêntica a um manifesto intocado. Quem não estivesse com o
+      // aplicativo aberto não tinha como saber que houve tentativa.
+      //
+      // Continua CLICÁVEL: falha comum não gravou nada no Rodopar, então repetir
+      // é seguro e costuma resolver (rede, sessão, uma tela que demorou). O que
+      // exige gente é rc 6/11, e esse tem estado próprio.
+      return { rotulo: 'FALHOU', podeClicar: true, destaque: true,
+               title: `Tentativa anterior falhou (rc=${pedido.rc}). Nada foi gravado no Rodopar — `
+                    + `clique para tentar de novo.
+
+${pedido.mensagem ?? 'sem mensagem'}` }
     default:
       return { rotulo: 'BAIXAR', podeClicar: true, destaque: false,
                title: 'Manda o robô lançar a entrega e baixar este manifesto no Rodopar' }
@@ -953,6 +990,18 @@ function BaixaManifestoConteudo() {
                               >
                                 {apBaixa.rotulo}
                               </button>
+                            )}
+                            {/* O motivo ao lado do botão, sem depender de hover. O texto do
+                                robô é diagnóstico e não cabe aqui; o rc traduzido cabe e diz
+                                o suficiente para a pessoa decidir entre repetir e chamar ajuda. */}
+                            {pedidoBaixa?.situacao === 'falhou' && (
+                              <span
+                                className="rounded px-1 py-0.5 text-[9px] font-semibold whitespace-nowrap"
+                                style={{ background: 'var(--status-atrasado-bg)', color: 'var(--status-atrasado-fg)' }}
+                                title={pedidoBaixa.mensagem ?? undefined}
+                              >
+                                {pedidoBaixa.rc != null ? (RC_CURTO[pedidoBaixa.rc] ?? `rc=${pedidoBaixa.rc}`) : 'sem código'}
+                              </span>
                             )}
                           </div>
                         </td>
