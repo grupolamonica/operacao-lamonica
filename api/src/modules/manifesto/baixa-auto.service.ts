@@ -18,7 +18,7 @@
  *   4. (F3) posto ativo, teto diário, kill switch
  * Nada aqui pula direto para a 3: evidência sem fonte confiável não é evidência.
  */
-import { and, eq, gte, sql } from 'drizzle-orm'
+import { and, gte, inArray, sql } from 'drizzle-orm'
 
 import { db } from '../../db/client'
 import { manifestoBaixaAutoAvaliacoes, manifestoBaixaPedidos, type ModoBaixaAuto } from '../../db/schema'
@@ -98,6 +98,24 @@ function paraData(valor: string | null): Date | null {
  * Sem isso, um retry inflaria a série histórica e a taxa de acerto medida sobre
  * ela ficaria errada em silêncio.
  */
+/**
+ * Tabela ausente (42P01) quase sempre significa uma coisa só: a migration
+ * `manifesto-baixa-automacao.sql` ainda não foi aplicada. Vale trocar o stack
+ * trace por essa frase — o job repete a cada 10 min, e um erro que se explica
+ * sozinho poupa a investigação inteira.
+ */
+function comMensagemDeMigration(e: unknown): Error {
+  const codigo = (e as { code?: string })?.code
+  const msg = e instanceof Error ? e.message : String(e)
+  if (codigo === '42P01' || /manifesto_baixa_auto_avaliacoes.*does not exist/i.test(msg)) {
+    return new Error(
+      'manifesto_baixa_auto_avaliacoes não existe — aplique drizzle/manifesto-baixa-automacao.sql ' +
+        'pelo workflow db-migrate.yml (dry-run primeiro) antes de esperar avaliação nenhuma',
+    )
+  }
+  return e instanceof Error ? e : new Error(msg)
+}
+
 export async function avaliarCiclo(): Promise<ResumoCiclo> {
   const modo = modoAtual()
   const ciclo = inicioDoCiclo()
@@ -190,14 +208,18 @@ export async function avaliarCiclo(): Promise<ResumoCiclo> {
 
   let gravadas = 0
   if (linhas.length) {
-    // onConflictDoNothing: o índice único (codman, filial, serie, ciclo) é o que
-    // garante idempotência de verdade — dois workers sobrepostos não duplicam.
-    const inseridas = await db
-      .insert(manifestoBaixaAutoAvaliacoes)
-      .values(linhas)
-      .onConflictDoNothing()
-      .returning({ id: manifestoBaixaAutoAvaliacoes.id })
-    gravadas = inseridas.length
+    try {
+      // onConflictDoNothing: o índice único (codman, filial, serie, ciclo) é o que
+      // garante idempotência de verdade — dois workers sobrepostos não duplicam.
+      const inseridas = await db
+        .insert(manifestoBaixaAutoAvaliacoes)
+        .values(linhas)
+        .onConflictDoNothing()
+        .returning({ id: manifestoBaixaAutoAvaliacoes.id })
+      gravadas = inseridas.length
+    } catch (e) {
+      throw comMensagemDeMigration(e)
+    }
   }
 
   // Ordenados por horas em aberto — NÃO é cosmético. Em F3 esta é a ordem de
@@ -243,21 +265,51 @@ function vaziaOk(): LeituraFonte<never> {
   return { estado: 'ok', motivo: null, porChave: new Map(), idadeSeg: null }
 }
 
-/** Última avaliação de cada manifesto, para a tela mostrar o chip. */
-export async function ultimaAvaliacao(codman: number, filial: number, serie: string) {
-  const [linha] = await db
+/** O que a tela mostra no chip. Só o essencial — o detalhe fica na auditoria. */
+export interface ResumoAvaliacao {
+  elegivel: boolean
+  regra: string | null
+  reprovas: string[]
+  cliente_status: string | null
+  cliente_carimbo: string | null
+  modo: string
+  avaliado_em: string
+}
+
+/**
+ * Última avaliação de cada manifesto pedido, em UMA consulta.
+ *
+ * Uma query por manifesto seriam ~65 idas ao banco a cada polling de 30 s da tela.
+ * Aqui é um SELECT só, filtrado por codman e ordenado por avaliado_em desc — a
+ * primeira linha de cada chave é a mais recente. Mesmo desenho de
+ * pedidosPorManifesto, inclusive no motivo.
+ */
+export async function avaliacoesPorManifesto(
+  refs: { codman: number; filial: number; serie?: string | null }[],
+): Promise<Record<string, ResumoAvaliacao>> {
+  if (!refs.length) return {}
+  const linhas = await db
     .select()
     .from(manifestoBaixaAutoAvaliacoes)
-    .where(
-      and(
-        eq(manifestoBaixaAutoAvaliacoes.codman, codman),
-        eq(manifestoBaixaAutoAvaliacoes.filial, filial),
-        eq(manifestoBaixaAutoAvaliacoes.serie, serie.trim().slice(0, 10)),
-      ),
-    )
+    .where(inArray(manifestoBaixaAutoAvaliacoes.codman, refs.map((r) => r.codman)))
     .orderBy(sql`${manifestoBaixaAutoAvaliacoes.avaliadoEm} DESC`)
-    .limit(1)
-  return linha ?? null
+
+  const querido = new Set(refs.map((r) => `${r.codman}|${r.filial}|${(r.serie ?? '').trim().slice(0, 10)}`))
+  const saida: Record<string, ResumoAvaliacao> = {}
+  for (const l of linhas) {
+    const chave = `${l.codman}|${l.filial}|${l.serie}`
+    if (!querido.has(chave) || saida[chave]) continue
+    saida[chave] = {
+      elegivel: l.elegivel,
+      regra: l.regra,
+      reprovas: l.reprovas ?? [],
+      cliente_status: l.clienteStatus,
+      cliente_carimbo: l.clienteCarimbo ? l.clienteCarimbo.toISOString() : null,
+      modo: l.modo,
+      avaliado_em: l.avaliadoEm.toISOString(),
+    }
+  }
+  return saida
 }
 
 export { chaveDe as chaveDaPendencia }

@@ -19,6 +19,7 @@ import { syncCargas } from '../modules/cargas/cargas.sync'
 import { syncRankTrips } from '../adapters/spx-portal/rank-trips-sync.adapter'
 import { syncSpxGeofences } from '../adapters/spx-portal/spx-geofences.adapter'
 import { trackOpStatusTransitions } from '../modules/operacional/operacional.service'
+import { avaliarCiclo } from '../modules/manifesto/baixa-auto.service'
 
 const QUEUE_NAME = 'angellira-cron'
 
@@ -70,6 +71,7 @@ export function startAngelliraJobs(): void {
     if (job.name === 'rank-sync') return syncRankTrips()
     if (job.name === 'op-tracker') return trackOpStatusTransitions()
     if (job.name === 'spx-geofences') return syncSpxGeofences()
+    if (job.name === 'baixa-auto') return avaliarCiclo()
     if (job.name === 'close-stale') { const r = await closeStaleTrips(); await recomputeCanonicalKeys(); return r }
   }, { connection })
 
@@ -122,6 +124,18 @@ export function startAngelliraJobs(): void {
   // Phase 16 — docas SPX (carregamento/descarga) → geofences de estação, 1x/dia (04:00).
   // Geofence de estação quase nunca muda; diário basta e captura estações de rotas novas.
   void queue.add('spx-geofences', {}, { repeat: { pattern: '0 4 * * *' }, jobId: 'spx-geofences-sync' })
+  // F2 — baixa automática de manifesto, a cada 10min. Roda em SOMBRA por padrão:
+  // grava o que TERIA feito em manifesto_baixa_auto_avaliacoes e não enfileira nada.
+  // Só age de verdade com MANIFESTO_BAIXA_AUTO_ENABLED=true (decisão de deploy).
+  //
+  // Agendado incondicionalmente de propósito: a sombra é o objetivo desta fase, e um
+  // job que só liga por flag é um job que ninguém liga. Se a migration ainda não foi
+  // aplicada, o ciclo falha com mensagem explícita a cada 10min — barulhento, mas é
+  // exatamente o aviso que se quer nesse caso.
+  //
+  // A cadência é a mesma do ciclo do coletor (~5min) dobrada: avaliar mais rápido que
+  // o snapshot chega só produziria a mesma leitura duas vezes.
+  void queue.add('baixa-auto', {}, { repeat: { pattern: '*/10 * * * *' }, jobId: 'manifesto-baixa-auto' })
 
-  logger.info('[angellira] jobs agendados — positions */3min, monitoring */5min, painel */3min, cargas */15min, rank-sync */10min, op-tracker */2min, close-stale */5min, detectors */30min, spx-geofences 04:00')
+  logger.info('[angellira] jobs agendados — positions */3min, monitoring */5min, painel */3min, cargas */15min, rank-sync */10min, op-tracker */2min, close-stale */5min, detectors */30min, spx-geofences 04:00, baixa-auto */10min')
 }

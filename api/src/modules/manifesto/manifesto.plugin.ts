@@ -28,6 +28,7 @@ import {
 } from './baixa.service'
 import { donoDoToken, marcarUso, gerarToken, tokenAtivo, revogarToken } from './agente-token.service'
 import { applySnapshot, getPendencias } from './manifesto.service'
+import { avaliacoesPorManifesto } from './baixa-auto.service'
 import {
   chaveManifesto,
   historicoManifesto,
@@ -495,6 +496,21 @@ const readPlugin = new Elysia({ name: 'manifesto-read' })
               )
             }
           }
+          // Avaliação da baixa automática (F2). try/catch próprio pelo mesmo motivo dos
+          // anteriores — e aqui ele importa mais: em SOMBRA a tabela pode nem existir
+          // ainda (migration não aplicada), e isso não pode derrubar a fila de manifestos.
+          // Sem ela a tela simplesmente não mostra o chip, que é o estado seguro.
+          let baixa_auto: Awaited<ReturnType<typeof avaliacoesPorManifesto>> = {}
+          if (refs.length) {
+            try {
+              baixa_auto = await avaliacoesPorManifesto(refs)
+            } catch (e: any) {
+              logger.error(
+                { error: e?.message ?? String(e) },
+                '[manifesto] falha ao ler avaliações da baixa automática — seguindo sem elas (tabela ausente?)',
+              )
+            }
+          }
           // Há agente de plantão? Sem isto a tela mostra "NA FILA" com cara de que algo
           // está acontecendo mesmo quando não existe ninguém para pegar o pedido.
           //
@@ -507,6 +523,7 @@ const readPlugin = new Elysia({ name: 'manifesto-read' })
             ok: true,
             ...view,
             baixa_pedidos,
+            baixa_auto,
             agente_fila,
             agentes_fila,
             tratativas,
