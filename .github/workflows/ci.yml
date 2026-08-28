@@ -2,7 +2,11 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    # 'feature/**' junto com main: PR EMPILHADO (base numa feature branch, nao em
+    # main) nao disparava CI nenhum — nem detect, nem backend, nem frontend. O PR
+    # aparecia sem check algum e passava por revisado. Foi o caso do #115, que
+    # ficou verificado so localmente ate o #114 mergear.
+    branches: [main, 'feature/**']
 
 # dorny/paths-filter usa a API de PRs (listFiles) — precisa de pull-requests:read.
 # Sem isto o job 'detect' falha com "Resource not accessible by integration".
