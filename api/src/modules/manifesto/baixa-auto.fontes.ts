@@ -91,12 +91,15 @@ function inteiroDoEnv(nome: string, padrao: number): number {
  *
  * Por isso exigimos `errors.length === 0` E `byTab.concluido > 0`.
  */
-export async function lerSpx(): Promise<LeituraFonte<LinhaSpx>> {
+export async function lerSpx(
+  buscar: typeof fetchAspRows = fetchAspRows,
+  agora: () => number = Date.now,
+): Promise<LeituraFonte<LinhaSpx>> {
   if (circuitoAberto('spx')) return vazia('indisponivel', 'circuito aberto após falhas repetidas')
 
   let resultado: Awaited<ReturnType<typeof fetchAspRows>>
   try {
-    resultado = await fetchAspRows({
+    resultado = await buscar({
       daysBack: inteiroDoEnv('MANIFESTO_BAIXA_AUTO_SPX_DIAS_ATRAS', 90),
       daysFwd: inteiroDoEnv('MANIFESTO_BAIXA_AUTO_SPX_DIAS_FRENTE', 15),
     })
@@ -141,7 +144,7 @@ export async function lerSpx(): Promise<LeituraFonte<LinhaSpx>> {
   // Frescor INFORMATIVO, não portão: a entrega mais recente pode ser legitimamente
   // de algumas horas atrás num período calmo. Vai para a auditoria porque, olhando
   // a série depois, uma fonte que parou de avançar aparece imediatamente.
-  const idadeSeg = carimboMaisNovo ? Math.round((Date.now() - carimboMaisNovo) / 1000) : null
+  const idadeSeg = carimboMaisNovo ? Math.round((agora() - carimboMaisNovo) / 1000) : null
 
   return { estado: 'ok', motivo: null, porChave, idadeSeg }
 }
@@ -158,6 +161,62 @@ function msDeDataBr(valor: unknown): number | null {
 // ── Nestlé / Galileu ────────────────────────────────────────────────────────
 
 const LOTE = 40
+
+/**
+ * A porta do Galileu. Existe para que as GUARDAS sejam testáveis com falha
+ * injetada — o plano exige que nenhuma linha de F3 seja escrita antes de as
+ * salvaguardas terem sido exercitadas com a fonte quebrada de propósito, e não dá
+ * para injetar falha num módulo que importa o cliente direto.
+ *
+ * Separar também deixa a mecânica da consulta (lotes, colunas, supabase-js) longe
+ * da regra de quando NÃO agir, que é a parte que importa.
+ */
+export interface PortaGalileu {
+  /** max(atualizado_em) da TABELA INTEIRA. ISO, ou null se não houver. */
+  frescor(): Promise<string | null>
+  ofertas(grupos: string[]): Promise<{ grupos_id: string; codembarque: string | null }[]>
+  embarques(cods: string[]): Promise<EmbarqueGalileu[]>
+}
+
+/** Implementação real, sobre o Supabase do cargas. */
+export const portaSupabase: PortaGalileu = {
+  async frescor() {
+    const { data, error } = await cargasSupabase
+      .from('nestle_embarques')
+      .select('atualizado_em')
+      .order('atualizado_em', { ascending: false })
+      .limit(1)
+    if (error) throw new Error(`frescor: ${error.message}`)
+    return (data?.[0] as { atualizado_em?: string } | undefined)?.atualizado_em ?? null
+  },
+  async ofertas(grupos) {
+    const saida: { grupos_id: string; codembarque: string | null }[] = []
+    for (let i = 0; i < grupos.length; i += LOTE) {
+      const { data, error } = await cargasSupabase
+        .from('nestle_ofertas')
+        .select('grupos_id, codembarque')
+        .in('grupos_id', grupos.slice(i, i + LOTE))
+      if (error) throw new Error(`nestle_ofertas: ${error.message}`)
+      saida.push(...((data ?? []) as unknown as { grupos_id: string; codembarque: string | null }[]))
+    }
+    return saida
+  },
+  async embarques(cods) {
+    const saida: EmbarqueGalileu[] = []
+    for (let i = 0; i < cods.length; i += LOTE) {
+      const { data, error } = await cargasSupabase
+        .from('nestle_embarques')
+        .select(
+          'codembarque, codstatembarque, descrstatembarque, entrega_dtahrfim, ' +
+            'entrega_dtahrchegada, entrega_cidade, mot1_nome, placacarreta',
+        )
+        .in('codembarque', cods.slice(i, i + LOTE))
+      if (error) throw new Error(`nestle_embarques: ${error.message}`)
+      saida.push(...((data ?? []) as unknown as EmbarqueGalileu[]))
+    }
+    return saida
+  },
+}
 
 /**
  * Resolve `grupos_id` -> embarque, em dois saltos:
@@ -177,28 +236,26 @@ const LOTE = 40
  * TESTE em vez do de produção: lá os dados estão parados, o portão fecha, e a
  * automação fica inerte em vez de errada.
  */
-export async function lerGalileu(gruposIds: string[]): Promise<LeituraFonte<EmbarqueGalileu>> {
+export async function lerGalileu(
+  gruposIds: string[],
+  porta: PortaGalileu = portaSupabase,
+  agora: () => number = Date.now,
+): Promise<LeituraFonte<EmbarqueGalileu>> {
   if (circuitoAberto('galileu')) return vazia('indisponivel', 'circuito aberto após falhas repetidas')
   if (!gruposIds.length) return { estado: 'ok', motivo: null, porChave: new Map(), idadeSeg: null }
 
   const limiteMin = inteiroDoEnv('MANIFESTO_BAIXA_AUTO_GALILEU_FRESCOR_MIN', 120)
 
   try {
-    // 1. Frescor da tabela inteira — ANTES de qualquer outra leitura. Se a fonte
-    //    está parada, nem vale gastar as consultas seguintes.
-    const { data: maisNovo, error: erroFrescor } = await cargasSupabase
-      .from('nestle_embarques')
-      .select('atualizado_em')
-      .order('atualizado_em', { ascending: false })
-      .limit(1)
-    if (erroFrescor) throw new Error(`frescor: ${erroFrescor.message}`)
-
-    const ultimo = maisNovo?.[0]?.atualizado_em ? Date.parse(maisNovo[0].atualizado_em) : NaN
+    // 1. Frescor da tabela inteira — ANTES de qualquer outra leitura. Fonte parada
+    //    não merece as consultas seguintes.
+    const ultimoIso = await porta.frescor()
+    const ultimo = ultimoIso ? Date.parse(ultimoIso) : NaN
     if (!Number.isFinite(ultimo)) {
       registrarFalha('galileu')
       return vazia('congelada', 'nestle_embarques sem nenhum atualizado_em legível')
     }
-    const idadeSeg = Math.round((Date.now() - ultimo) / 1000)
+    const idadeSeg = Math.round((agora() - ultimo) / 1000)
     if (idadeSeg > limiteMin * 60) {
       // Não é falha de rede — a fonte respondeu. Não conta para o breaker.
       logger.warn({ idadeSeg, limiteMin }, '[baixa-auto] Galileu congelado — nenhum pedido neste ciclo')
@@ -210,47 +267,26 @@ export async function lerGalileu(gruposIds: string[]): Promise<LeituraFonte<Emba
 
     // 2. grupos_id -> codembarque
     const codPorGrupo = new Map<string, Set<string>>()
-    for (let i = 0; i < gruposIds.length; i += LOTE) {
-      const lote = gruposIds.slice(i, i + LOTE)
-      const { data, error } = await cargasSupabase
-        .from('nestle_ofertas')
-        .select('grupos_id, codembarque')
-        .in('grupos_id', lote)
-      if (error) throw new Error(`nestle_ofertas: ${error.message}`)
-      for (const o of data ?? []) {
-        if (!o.codembarque) continue
-        const chave = String(o.grupos_id).trim().toUpperCase()
-        const set = codPorGrupo.get(chave) ?? new Set<string>()
-        set.add(String(o.codembarque).trim())
-        codPorGrupo.set(chave, set)
-      }
+    for (const o of await porta.ofertas(gruposIds)) {
+      if (!o.codembarque) continue
+      const chave = String(o.grupos_id).trim().toUpperCase()
+      const set = codPorGrupo.get(chave) ?? new Set<string>()
+      set.add(String(o.codembarque).trim())
+      codPorGrupo.set(chave, set)
     }
 
     // 3. codembarque -> embarque
-    const todosCods = [...new Set([...codPorGrupo.values()].flatMap((s) => [...s]))]
+    const todosCods = [...new Set([...codPorGrupo.values()].flatMap((s2) => [...s2]))]
     const embarquePorCod = new Map<string, EmbarqueGalileu>()
-    for (let i = 0; i < todosCods.length; i += LOTE) {
-      const lote = todosCods.slice(i, i + LOTE)
-      const { data, error } = await cargasSupabase
-        .from('nestle_embarques')
-        .select(
-          'codembarque, codstatembarque, descrstatembarque, entrega_dtahrfim, ' +
-            'entrega_dtahrchegada, entrega_cidade, mot1_nome, placacarreta',
-        )
-        .in('codembarque', lote)
-      if (error) throw new Error(`nestle_embarques: ${error.message}`)
-      // cast explícito: com select() de muitas colunas o supabase-js não infere o
-      // shape e cai num union com GenericStringError
-      for (const e of (data ?? []) as unknown as EmbarqueGalileu[]) {
-        embarquePorCod.set(String(e.codembarque).trim(), e)
-      }
+    for (const e of await porta.embarques(todosCods)) {
+      embarquePorCod.set(String(e.codembarque).trim(), e)
     }
 
     registrarSucesso('galileu')
 
     // Grupo sem oferta e grupo sem embarque ficam AUSENTES do mapa, não com lista
-    // vazia: quem avalia distingue "não encontrei" de "encontrei e não serve", e
-    // as duas reprovam por motivos diferentes na auditoria.
+    // vazia: quem avalia distingue "não encontrei" de "encontrei e não serve", e as
+    // duas reprovam por motivos diferentes na auditoria.
     const porChave = new Map<string, EmbarqueGalileu[]>()
     for (const [grupo, cods] of codPorGrupo) {
       const embarques = [...cods].map((c) => embarquePorCod.get(c)).filter((e): e is EmbarqueGalileu => Boolean(e))
