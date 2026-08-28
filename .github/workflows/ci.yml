@@ -40,6 +40,11 @@ jobs:
         run: cd api && bun install --frozen-lockfile
       - name: Typecheck
         run: cd api && bun --bun tsc --noEmit
+      # Os *.test.ts da api existiam desde sempre e NUNCA rodavam em lugar nenhum:
+      # o job só fazia typecheck e build. Teste que não roda não protege nada — e
+      # pior, dá a impressão de que protege. `bun test` acha os arquivos sozinho.
+      - name: Tests
+        run: cd api && bun test
       - name: Backend image builds
         run: docker build -f api/Dockerfile -t torre-backend:ci ./api
 
