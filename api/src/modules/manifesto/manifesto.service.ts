@@ -68,6 +68,21 @@ export interface ManifestoDestinoHistorico {
 }
 
 /**
+ * F1 — referência do cliente (RODCON.ORDCOM) e as guardas do lado ERP.
+ * Só exibição nesta fase. Ver ReferenciaClienteSchema em manifesto.plugin.ts.
+ */
+export interface ManifestoReferenciaCliente {
+  valor?: string | null
+  formato?: string | null
+  qtd_no_manifesto?: number | null
+  manifestos_com_a_ref?: number | null
+  local_entrega_cte?: string | null
+  guardas_erp_ok?: boolean | null
+  guardas_reprovadas?: string[] | null
+  [key: string]: unknown
+}
+
+/**
  * v1 e v2 coexistem no mesmo snapshot armazenado (Redis) — ver manifesto.plugin.ts
  * para o detalhe de por que TODOS os campos são opcionais (o coletor.py v1 e o
  * coletor_v2.py enviam formatos diferentes no mesmo endpoint, ver V2-CONTRATO.md).
@@ -148,6 +163,7 @@ export interface ManifestoPendencia {
   trava_bau?: ManifestoTravaBau | null
   macro?: ManifestoMacro | null
   destino_historico?: ManifestoDestinoHistorico | null
+  referencia_cliente?: ManifestoReferenciaCliente | null
 }
 
 export interface ManifestoSnapshotInput {

@@ -1049,6 +1049,25 @@ function BaixaManifestoConteudo() {
                         <td className="px-3 py-2">
                           <div className="text-foreground">{cliente}</div>
                           <div className="text-[10px] text-muted-foreground">{destinoLinha || '—'}</div>
+                          {/* F1 — referência do cliente (RODCON.ORDCOM): a chave que liga este
+                              manifesto ao status no portal do cliente. Só aparece quando existe —
+                              manifesto sem CTe não tem referência, e um "—" a mais em 65 linhas
+                              é ruído, não informação. */}
+                          {p.referencia_cliente?.valor && (
+                            <div
+                              className="text-[10px] font-mono tracking-tight text-muted-foreground"
+                              title={
+                                p.referencia_cliente.guardas_erp_ok === false
+                                  ? `Não serve como chave: ${(p.referencia_cliente.guardas_reprovadas ?? []).join(', ')}`
+                                  : 'Referência do cliente (ORDCOM)'
+                              }
+                            >
+                              {p.referencia_cliente.valor}
+                              {p.referencia_cliente.guardas_erp_ok === false && (
+                                <span style={{ color: 'var(--status-atrasado-fg)' }}> ⚠</span>
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td className="px-3 py-2">{fmtKm(kmDestinoDe(p))}</td>
                         <td className="px-3 py-2">
@@ -1629,6 +1648,20 @@ function ManifestoDetailPanel({
             <Metric label="Cavalo" value={cavaloDe(p)} />
             <Metric label="Carreta" value={carretaDe(p)} />
             <Metric label="Destino" value={[p.destino, p.destino_uf ?? p.viagem?.destino_uf].filter(Boolean).join('/') || '—'} />
+            {/* F1 — o operador precisa deste número para conferir o manifesto no portal
+                do cliente à mão. Quando a referência não serve como chave, dizer POR QUE
+                vale mais que escondê-la: o número continua útil para a conferência manual. */}
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Referência do cliente</p>
+              <div className="text-sm font-medium font-mono text-foreground">
+                {p.referencia_cliente?.valor || '—'}
+              </div>
+              {p.referencia_cliente?.guardas_erp_ok === false && (
+                <p className="text-[10px]" style={{ color: 'var(--status-atrasado-fg)' }}>
+                  {(p.referencia_cliente.guardas_reprovadas ?? []).join(' · ')}
+                </p>
+              )}
+            </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Motorista(s)</p>
               <div className="text-sm font-medium text-foreground">

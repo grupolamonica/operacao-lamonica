@@ -57,6 +57,22 @@ export interface ManifestoDestinoHistorico {
   macro_fim_no_destino_local?: string | null
 }
 
+/**
+ * F1 — a referência que o CLIENTE usa para a viagem, vinda de RODCON.ORDCOM.
+ * `LT0Q8J02DXVF1` = LH Trip Number do SPX; `B101487201` = grupos_id do Galileu.
+ * As guardas dizem se a referência é utilizável como chave (uma só no manifesto,
+ * um só manifesto aberto com ela). Nesta fase é apenas exibição.
+ */
+export interface ManifestoReferenciaCliente {
+  valor?: string | null
+  formato?: string | null
+  qtd_no_manifesto?: number | null
+  manifestos_com_a_ref?: number | null
+  local_entrega_cte?: string | null
+  guardas_erp_ok?: boolean | null
+  guardas_reprovadas?: string[] | null
+}
+
 export interface PendenciaManifesto {
   // ── v1 ──────────────────────────────────────────────────────────────────
   codlpr?: number
@@ -150,6 +166,8 @@ export interface PendenciaManifesto {
   trava_bau?: ManifestoTravaBau | null
   macro?: ManifestoMacro | null
   destino_historico?: ManifestoDestinoHistorico | null
+  // F1 — referência que o cliente usa para a viagem (RODCON.ORDCOM), só exibição
+  referencia_cliente?: ManifestoReferenciaCliente | null
 }
 
 // ── Justificativa do operador (12/08) ──────────────────────────────────────
