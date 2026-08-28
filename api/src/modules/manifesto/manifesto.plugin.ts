@@ -186,6 +186,36 @@ const DestinoHistoricoSchema = t.Object({
 }, { additionalProperties: true })
 
 /**
+ * F1 — a referência que o CLIENTE usa para a viagem, lida de RODCON.ORDCOM pelo
+ * coletor (join por CODMAN+SERMAN+FILMAN). É a chave que liga o manifesto do
+ * Rodopar ao status no portal do cliente: `LT0Q8J02DXVF1` é o LH Trip Number do
+ * SPX/Shopee; `B101487201` é o grupos_id do Galileu/Nestlé.
+ *
+ * Aqui é SÓ EXIBIÇÃO — nesta fase nada decide nada. As guardas do lado ERP viajam
+ * junto porque quem consegue calculá-las é o coletor (único com acesso ao Rodopar);
+ * sem elas o torre não teria como conferir a cardinalidade da referência depois.
+ *
+ * `additionalProperties: true` de propósito: o bloco cresce em F2 sem novo deploy
+ * de schema, no mesmo padrão dos irmãos acima.
+ */
+const ReferenciaClienteSchema = t.Object({
+  /** ORDCOM cru, já com TRIM e UPPER. Null quando o manifesto não tem CTe vinculado. */
+  valor: t.Optional(t.Nullable(t.String())),
+  /** Família reconhecida: 'LT' (SPX), 'B1' (Nestlé), 'outro' (remessa, reversa, ...). */
+  formato: t.Optional(t.Nullable(t.String())),
+  /** Quantas referências DISTINTAS este manifesto tem. >1 reprova: o TOP 1 esconderia carga. */
+  qtd_no_manifesto: t.Optional(t.Nullable(t.Number())),
+  /** Quantos manifestos ABERTOS carregam esta mesma referência. >1 reprova: casaria o errado. */
+  manifestos_com_a_ref: t.Optional(t.Nullable(t.Number())),
+  /** RODCON.LOCENT — destino do CTe, para conferir contra a cidade de entrega do cliente. */
+  local_entrega_cte: t.Optional(t.Nullable(t.String())),
+  /** Todas as guardas do lado ERP passaram. Não diz nada sobre o status no cliente. */
+  guardas_erp_ok: t.Optional(t.Nullable(t.Boolean())),
+  /** Quais reprovaram — para a tela explicar em vez de apenas negar. */
+  guardas_reprovadas: t.Optional(t.Nullable(t.Array(t.String()))),
+}, { additionalProperties: true })
+
+/**
  * v1 e v2 coexistem no MESMO endpoint enquanto o coletor_v2.py não substitui o
  * coletor.py em produção (ver V2-CONTRATO.md). Por isso TODOS os campos — dos
  * dois formatos — são t.Optional aqui: um snapshot v1 não traz os campos v2
@@ -294,6 +324,7 @@ const PendenciaSchema = t.Object({
   trava_bau: t.Optional(t.Nullable(TravaBauSchema)),
   macro: t.Optional(t.Nullable(MacroSchema)),
   destino_historico: t.Optional(t.Nullable(DestinoHistoricoSchema)),
+  referencia_cliente: t.Optional(t.Nullable(ReferenciaClienteSchema)),
 })
 
 const ingestPlugin = new Elysia({ name: 'manifesto-ingest' }).group('/api/manifesto', (app) =>
