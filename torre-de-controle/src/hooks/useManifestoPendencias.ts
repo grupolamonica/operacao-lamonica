@@ -73,6 +73,20 @@ export interface ManifestoReferenciaCliente {
   guardas_reprovadas?: string[] | null
 }
 
+/**
+ * F2 — o que a automação decidiu sobre este manifesto no último ciclo.
+ * `modo === 'sombra'` significa que NADA foi enfileirado: é uma afirmação, não um ato.
+ */
+export interface AvaliacaoBaixaAuto {
+  elegivel: boolean
+  regra: string | null
+  reprovas: string[]
+  cliente_status: string | null
+  cliente_carimbo: string | null
+  modo: string
+  avaliado_em: string
+}
+
 export interface PendenciaManifesto {
   // ── v1 ──────────────────────────────────────────────────────────────────
   codlpr?: number
@@ -259,6 +273,10 @@ export interface ManifestoPendenciasSnapshot {
   motivos_erro?: Record<string, string>
   // último pedido de baixa por manifesto (chaveTratativa) — pinta o botão
   baixa_pedidos?: Record<string, PedidoBaixa>
+  // F2 — última avaliação da baixa automática por manifesto. Em SOMBRA nada é
+  // enfileirado: o chip só mostra o que o robô TERIA feito, para o operador
+  // conferir contra o próprio julgamento antes de a automação ligar.
+  baixa_auto?: Record<string, AvaliacaoBaixaAuto>
   // quem está de plantão para executar a fila; null = NINGUÉM (o botão só enfileira)
   agente_fila?: BatidaAgente | null
   // lista inteira (24/08): com uma máquina por operador, "tem robô?" e
@@ -349,6 +367,7 @@ export function useManifestoPendencias() {
     validacoes: q.data?.validacoes ?? {},
     motivosErro: q.data?.motivos_erro ?? {},
     baixaPedidos: q.data?.baixa_pedidos ?? {},
+    baixaAuto: q.data?.baixa_auto ?? {},
     agenteFila: q.data?.agente_fila ?? null,
     agentesFila: q.data?.agentes_fila ?? null,
     isLoading: q.isLoading,

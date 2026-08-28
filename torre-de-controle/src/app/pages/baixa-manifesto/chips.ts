@@ -49,3 +49,23 @@ export const JA_SAIU_CHIP = {
   fg: 'var(--status-atrasado-fg)',
   title: 'O caminhão já descarregou e deixou o cliente — o manifesto continua aberto',
 } as const
+
+// F2 — selo da baixa automática. Dois estados de propósito, e a diferença entre
+// eles é a coisa mais importante da tela nesta fase:
+//
+//   sombra → a automação BAIXARIA este manifesto, mas não fez nada. É uma
+//            afirmação para o operador conferir contra o próprio julgamento.
+//   real   → a automação está agindo.
+//
+// Um selo só para os dois estados seria mentira em um deles. Enquanto a sombra
+// roda, o operador precisa saber que a fila continua sendo dele.
+export const AUTO_CHIP = {
+  sombra: {
+    label: 'AUTO • SOMBRA', bg: 'oklch(0.870 0.165 95.0 / 0.20)', fg: 'oklch(0.450 0.130 95.0)',
+    title: 'A automação baixaria este manifesto — mas está em modo sombra: NADA foi enfileirado. Serve para conferir a regra antes de ligá-la.',
+  },
+  real: {
+    label: 'AUTO', bg: 'var(--status-no-prazo-bg)', fg: 'var(--status-no-prazo-fg)',
+    title: 'Elegível para baixa automática pelo status confirmado no portal do cliente',
+  },
+} as const
