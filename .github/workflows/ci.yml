@@ -22,10 +22,16 @@ jobs:
         uses: dorny/paths-filter@v3
         with:
           filters: |
+            # O proprio ci.yml entra nos DOIS filtros: sem isso, mudar o
+            # pipeline nao dispara os jobs que o pipeline define — os dois pulam,
+            # o PR fica verde, e da para mergear um CI quebrado sem aviso. Foi o
+            # que aconteceu na primeira versao deste PR.
             backend:
               - 'api/**'
+              - '.github/workflows/ci.yml'
             frontend:
               - 'torre-de-controle/**'
+              - '.github/workflows/ci.yml'
 
   backend:
     needs: detect
