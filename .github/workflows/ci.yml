@@ -2,7 +2,11 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    # 'feature/**' junto com main: PR EMPILHADO (base numa feature branch, nao em
+    # main) nao disparava CI nenhum — nem detect, nem backend, nem frontend. O PR
+    # aparecia sem check algum e passava por revisado. Foi o caso do #115, que
+    # ficou verificado so localmente ate o #114 mergear.
+    branches: [main, 'feature/**']
 
 # dorny/paths-filter usa a API de PRs (listFiles) — precisa de pull-requests:read.
 # Sem isto o job 'detect' falha com "Resource not accessible by integration".
@@ -22,10 +26,16 @@ jobs:
         uses: dorny/paths-filter@v3
         with:
           filters: |
+            # O proprio ci.yml entra nos DOIS filtros: sem isso, mudar o
+            # pipeline nao dispara os jobs que o pipeline define — os dois pulam,
+            # o PR fica verde, e da para mergear um CI quebrado sem aviso. Foi o
+            # que aconteceu na primeira versao deste PR.
             backend:
               - 'api/**'
+              - '.github/workflows/ci.yml'
             frontend:
               - 'torre-de-controle/**'
+              - '.github/workflows/ci.yml'
 
   backend:
     needs: detect
@@ -40,6 +50,11 @@ jobs:
         run: cd api && bun install --frozen-lockfile
       - name: Typecheck
         run: cd api && bun --bun tsc --noEmit
+      # Os *.test.ts da api existiam desde sempre e NUNCA rodavam em lugar nenhum:
+      # o job só fazia typecheck e build. Teste que não roda não protege nada — e
+      # pior, dá a impressão de que protege. `bun test` acha os arquivos sozinho.
+      - name: Tests
+        run: cd api && bun test
       - name: Backend image builds
         run: docker build -f api/Dockerfile -t torre-backend:ci ./api
 
