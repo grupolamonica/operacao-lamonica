@@ -92,6 +92,12 @@ services:
       INTEGRATION_API_KEY: ${INTEGRATION_API_KEY:-}
       # F3 alerta-manifesto — POST /api/manifesto/pendencias (coletor Sascar+Rodopar, máquina-a-máquina)
       MANIFESTO_API_KEY: ${MANIFESTO_API_KEY:-}
+      # F3 baixa automática — o .env da VPS já tinha estas duas desde 29/08, mas sem
+      # esta linha elas NÃO chegavam ao container: process.env vinha undefined e
+      # modoAtual() caía no default 'sombra'. O flag parecia ligado no deploy e a
+      # automação seguia sem agir. Provisionar no .env e mapear aqui são DUAS coisas.
+      MANIFESTO_BAIXA_AUTO_ENABLED: ${MANIFESTO_BAIXA_AUTO_ENABLED:-}
+      MANIFESTO_BAIXA_AUTO_TETO: ${MANIFESTO_BAIXA_AUTO_TETO:-}
       TZ: America/Sao_Paulo
     depends_on:
       redis:
