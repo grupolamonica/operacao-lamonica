@@ -5,10 +5,23 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  * Client Supabase server-side para o sistema de Cargas (Lamonica).
  *
  * D-14-01 (PROXY): a Torre LÊ o Cargas server-side, mesmo padrão do ranking
- * (ver ranking.supabase.ts). Por enquanto aponta para o projeto de TESTE
- * `oklksqvrexiypectfsod` (CARGAS_SUPABASE_URL) com a service_role key
- * (CARGAS_SUPABASE_KEY) — o backend do Cargas usa esse mesmo projeto no setup
- * de teste, então leitura e auth do operador ficam no mesmo lugar.
+ * (ver ranking.supabase.ts), via CARGAS_SUPABASE_URL + a service_role key
+ * (CARGAS_SUPABASE_KEY).
+ *
+ * ⚠️ ESTE COMENTÁRIO JÁ MENTIU. Ele dizia "aponta para o projeto de TESTE
+ * `oklksqvrexiypectfsod`" — verdade quando foi escrito, e falso desde alguma
+ * troca de secret que ninguém anotou. Conferido no `.env` da VPS em 28/08/2026:
+ * o valor real é `lbpzkdecwraipbjbaajs`, o projeto de PRODUÇÃO do Cargas, o
+ * mesmo que o backend de lá usa.
+ *
+ * Isso importa muito mais do que parece: a baixa automática de manifesto
+ * (baixa-auto.fontes.ts) lê `nestle_ofertas`/`nestle_embarques` POR AQUI para
+ * decidir se um manifesto pode ser fechado no ERP. Ler o banco errado seria
+ * decidir sobre dados que não são os da operação.
+ *
+ * O project-ref vive num secret e pode mudar de novo sem que este arquivo saiba.
+ * Por isso a defesa NÃO é este comentário: é o portão de frescor do leitor, que
+ * fecha sozinho se os dados estiverem parados. Comentário apodrece; portão não.
  *
  * SEGURANÇA: a key é lida SÓ de process.env, NUNCA logada, nunca prefixada com
  * VITE_ (não chega ao bundle). Sem sessão de browser.
