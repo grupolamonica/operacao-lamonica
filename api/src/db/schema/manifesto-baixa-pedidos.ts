@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, integer, boolean, timestamp, index } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, varchar, text, integer, boolean, timestamp, jsonb, index } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { users } from './users'
 
@@ -39,6 +39,20 @@ export const manifestoBaixaPedidos = pgTable(
     placa: varchar('placa', { length: 10 }),
     destino: varchar('destino', { length: 120 }),
     estadoSistema: varchar('estado_sistema', { length: 30 }),
+
+    // ── baixa automática (F2/F3) — ver drizzle/manifesto-baixa-automacao.sql ──
+    // Inertes até F3. 'humano' como default NOT NULL para que todo pedido que já
+    // existe continue contando como humano em qualquer consulta, sem UPDATE.
+    origem: varchar('origem', { length: 12 }).notNull().default('humano'),
+    regra: varchar('regra', { length: 40 }),
+    // a referência que casou (ORDCOM): é o que permite auditar um pedido meses
+    // depois, quando o snapshot do Redis que o originou já foi sobrescrito mil vezes
+    referenciaCliente: varchar('referencia_cliente', { length: 60 }),
+    // o status LITERAL do cliente e o carimbo dele, não a conclusão que tiramos —
+    // "por que este manifesto foi baixado?" precisa da afirmação original
+    clienteStatus: varchar('cliente_status', { length: 40 }),
+    clienteCarimbo: timestamp('cliente_carimbo', { withTimezone: true }),
+    guardas: jsonb('guardas').$type<Record<string, unknown>>(),
   },
   (t) => [
     index('manifesto_baixa_pedidos_chave_idx').on(t.codman, t.filial, t.serie, t.createdAt.desc()),

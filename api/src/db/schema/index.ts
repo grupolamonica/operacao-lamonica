@@ -38,5 +38,6 @@ export * from './manifesto-validacoes'
 // memória compartilhada de "Efetuar clicado e não confirmado", que hoje está partida
 // entre os %LOCALAPPDATA% das máquinas dos operadores.
 export * from './manifesto-baixa-pedidos'
+export * from './manifesto-baixa-auto'
 export * from './relations'
 export * from './manifesto-agente-tokens'

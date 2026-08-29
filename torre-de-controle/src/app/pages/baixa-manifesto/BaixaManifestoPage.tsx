@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { BookOpen, Bot, MessageSquare, PackageCheck, Phone, Volume2, VolumeX } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { ESTADOS, ESTADO_INFO, JA_SAIU_CHIP, SEM_PRAZO_CHIP, TRAVA_CHIP } from './chips'
+import { AUTO_CHIP, ESTADOS, ESTADO_INFO, JA_SAIU_CHIP, SEM_PRAZO_CHIP, TRAVA_CHIP } from './chips'
 import { PanelCard } from '@/components/domain/PanelCard'
 import { RelatorioMotivos } from './components/RelatorioMotivos'
 import { ValidacaoSecao } from './components/ValidacaoSecao'
@@ -430,7 +430,7 @@ ${pedido.mensagem ?? 'sem mensagem'}` }
 function BaixaManifestoConteudo() {
   const {
     data: snapshot, pendencias, tratativas, motivos,
-    fonesMotorista, rotulosFone, validacoes, motivosErro, baixaPedidos, agenteFila, agentesFila,
+    fonesMotorista, rotulosFone, validacoes, motivosErro, baixaPedidos, baixaAuto, agenteFila, agentesFila,
     isLoading, isError, error,
   } = useManifestoPendencias()
   const pedirBaixa = usePedirBaixa()
@@ -929,6 +929,24 @@ function BaixaManifestoConteudo() {
                                 {JA_SAIU_CHIP.label}
                               </span>
                             )}
+                            {/* F2 — o que a automação decidiu. Em SOMBRA o selo diz
+                                explicitamente que nada foi enfileirado: enquanto a regra
+                                está sendo medida, a fila continua sendo do operador, e um
+                                selo ambíguo aqui faria ele parar de agir esperando o robô. */}
+                            {(() => {
+                              const auto = baixaAuto[chaveTratativa(p) ?? '']
+                              if (!auto?.elegivel) return null
+                              const c = auto.modo === 'real' ? AUTO_CHIP.real : AUTO_CHIP.sombra
+                              return (
+                                <span
+                                  className="rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide whitespace-nowrap"
+                                  style={{ background: c.bg, color: c.fg }}
+                                  title={`${c.title}${auto.cliente_status ? ` — cliente diz ${auto.cliente_status}` : ''}`}
+                                >
+                                  {c.label}
+                                </span>
+                              )
+                            })()}
                             {/* validação pedida em TODOS os descarregados (decisão Danilo):
                                 validação opcional enviesaria a precisão medida, porque se valida
                                 o caso estranho e se ignora o óbvio */}
