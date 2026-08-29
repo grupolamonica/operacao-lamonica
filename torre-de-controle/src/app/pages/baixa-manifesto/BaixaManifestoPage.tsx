@@ -827,6 +827,7 @@ function BaixaManifestoConteudo() {
                       <Phone className="mx-auto h-3.5 w-3.5" />
                     </th>
                     <th className="px-3 py-2.5 font-medium">Cliente/Destino</th>
+                    <th className="px-3 py-2.5 font-medium" title="Referência que o cliente usa para a viagem (ORDCOM do CTe) — a chave para conferir no portal dele">Referência</th>
                     <th className="px-3 py-2.5 font-medium">Km do destino</th>
                     <th className="px-3 py-2.5 font-medium">Aberto há</th>
                   </tr>
@@ -1067,16 +1068,21 @@ function BaixaManifestoConteudo() {
                         <td className="px-3 py-2">
                           <div className="text-foreground">{cliente}</div>
                           <div className="text-[10px] text-muted-foreground">{destinoLinha || '—'}</div>
-                          {/* F1 — referência do cliente (RODCON.ORDCOM): a chave que liga este
-                              manifesto ao status no portal do cliente. Só aparece quando existe —
-                              manifesto sem CTe não tem referência, e um "—" a mais em 65 linhas
-                              é ruído, não informação. */}
-                          {p.referencia_cliente?.valor && (
-                            <div
-                              className="text-[10px] font-mono tracking-tight text-muted-foreground"
+                        </td>
+                        {/* Coluna própria (29/08): a referência saiu de baixo do cliente porque
+                            aquela célula já empilhava três linhas, e porque em coluna ela deixa de
+                            ser só um número para consultar — a FAMÍLIA fica visível de relance
+                            (LT = Shopee, B1 = Nestlé, texto livre = sem portal), que é o que separa
+                            o que a automação alcança do que ela nunca vai alcançar.
+                            Aqui o '—' é informação, não ruído: marca o manifesto sem CTe. */}
+                        <td className="px-3 py-2">
+                          {p.referencia_cliente?.valor ? (
+                            <span
+                              className="font-mono text-[11px] tracking-tight"
+                              style={p.referencia_cliente.guardas_erp_ok === false ? { color: 'var(--muted-foreground)' } : undefined}
                               title={
                                 p.referencia_cliente.guardas_erp_ok === false
-                                  ? `Não serve como chave: ${(p.referencia_cliente.guardas_reprovadas ?? []).join(', ')}`
+                                  ? `Não serve como chave: ${(p.referencia_cliente.guardas_reprovadas ?? []).join(' · ')}`
                                   : 'Referência do cliente (ORDCOM)'
                               }
                             >
@@ -1084,7 +1090,9 @@ function BaixaManifestoConteudo() {
                               {p.referencia_cliente.guardas_erp_ok === false && (
                                 <span style={{ color: 'var(--status-atrasado-fg)' }}> ⚠</span>
                               )}
-                            </div>
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
                           )}
                         </td>
                         <td className="px-3 py-2">{fmtKm(kmDestinoDe(p))}</td>
@@ -1102,7 +1110,7 @@ function BaixaManifestoConteudo() {
                   })}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={9} className="px-3 py-8 text-center text-muted-foreground">
+                      <td colSpan={10} className="px-3 py-8 text-center text-muted-foreground">
                         {/* nunca afirmar "nenhum manifesto" sem ter conseguido ler: lista vazia
                             e leitura falhada são coisas diferentes para quem opera a fila */}
                         {isError ? (
