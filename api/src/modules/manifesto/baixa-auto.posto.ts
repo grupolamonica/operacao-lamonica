@@ -24,7 +24,6 @@
  * o posto em ≤ 2 min sem ninguém precisar limpar nada — e "sem batida" e "chave
  * expirada" viram a mesma resposta, que é o que se quer.
  */
-import { redis } from '../../redis/client'
 import { logger } from '../../lib/logger'
 
 /**
@@ -35,6 +34,22 @@ export interface RedisPosto {
   get(chave: string): Promise<string | null>
   set(chave: string, valor: string, ex: 'EX', ttl: number, nx?: 'NX'): Promise<string | null>
   del(chave: string): Promise<number>
+}
+
+/**
+ * Import TARDIO do cliente Redis, e não no topo do arquivo.
+ *
+ * `redis/client.ts` lança na importação quando REDIS_URL não existe. Importando no
+ * topo, este módulo derrubava qualquer contexto sem Redis — inclusive o `bun test`
+ * do CI, que injeta o próprio cliente e nunca chega a usar o real. O teste morria na
+ * linha de import, antes de exercitar uma linha sequer da exclusão mútua.
+ *
+ * Com o import aqui dentro, quem injeta nunca carrega o módulo; quem não injeta
+ * carrega na primeira chamada, em runtime, onde REDIS_URL existe de verdade.
+ */
+async function clienteRedis(): Promise<RedisPosto> {
+  const { redis } = await import('../../redis/client')
+  return redis as unknown as RedisPosto
 }
 
 const CHAVE = 'manifesto:baixa:auto:posto'
@@ -67,9 +82,10 @@ function parse(bruto: string | null): Posto | null {
 }
 
 /** Quem está no posto agora, ou null. Nunca lança: leitura de apoio. */
-export async function postoAtual(r: RedisPosto = redis as unknown as RedisPosto): Promise<Posto | null> {
+export async function postoAtual(r?: RedisPosto): Promise<Posto | null> {
   try {
-    return parse(await r.get(CHAVE))
+    const cli = r ?? (await clienteRedis())
+    return parse(await cli.get(CHAVE))
   } catch {
     return null
   }
@@ -87,23 +103,24 @@ export async function assumirPosto(
   agente: string,
   userId: string | null,
   nome: string | null,
-  r: RedisPosto = redis as unknown as RedisPosto,
+  r?: RedisPosto,
 ): Promise<{ ok: true; posto: Posto } | { ok: false; posto: Posto | null; motivo: string }> {
   const agora = new Date().toISOString()
   const novo: Posto = { agente, user_id: userId, nome, desde: agora, visto_em: agora }
 
   try {
-    const gravou = await r.set(CHAVE, JSON.stringify(novo), 'EX', TTL_SEG, 'NX')
+    const cli = r ?? (await clienteRedis())
+    const gravou = await cli.set(CHAVE, JSON.stringify(novo), 'EX', TTL_SEG, 'NX')
     if (gravou) {
       logger.info({ agente, userId }, '[baixa-auto] posto assumido')
       return { ok: true, posto: novo }
     }
 
-    const dono = await postoAtual(r)
+    const dono = await postoAtual(cli)
     if (dono?.agente === agente) {
       // mesmo agente: renova mantendo `desde`, para a tela não zerar o "ativo desde"
       const renovado: Posto = { ...dono, user_id: userId, nome, visto_em: agora }
-      await r.set(CHAVE, JSON.stringify(renovado), 'EX', TTL_SEG)
+      await cli.set(CHAVE, JSON.stringify(renovado), 'EX', TTL_SEG)
       return { ok: true, posto: renovado }
     }
     return {
@@ -129,12 +146,13 @@ export async function assumirPosto(
  * Silencioso por natureza: o agente que não é dono do posto bate igual (ele continua
  * pegando pedidos humanos), e isso não é erro nenhum.
  */
-export async function renovarPosto(agente: string, r: RedisPosto = redis as unknown as RedisPosto): Promise<void> {
+export async function renovarPosto(agente: string, r?: RedisPosto): Promise<void> {
   try {
-    const dono = await postoAtual(r)
+    const cli = r ?? (await clienteRedis())
+    const dono = await postoAtual(cli)
     if (!dono || dono.agente !== agente) return
     const renovado: Posto = { ...dono, visto_em: new Date().toISOString() }
-    await r.set(CHAVE, JSON.stringify(renovado), 'EX', TTL_SEG)
+    await cli.set(CHAVE, JSON.stringify(renovado), 'EX', TTL_SEG)
   } catch {
     // renovação é best-effort: se falhar, o TTL expira e o posto fica livre — de novo,
     // o lado seguro do erro
@@ -147,15 +165,16 @@ export async function renovarPosto(agente: string, r: RedisPosto = redis as unkn
  */
 export async function largarPosto(
   agente: string,
-  r: RedisPosto = redis as unknown as RedisPosto,
+  r?: RedisPosto,
 ): Promise<{ ok: true } | { ok: false; motivo: string }> {
   try {
-    const dono = await postoAtual(r)
+    const cli = r ?? (await clienteRedis())
+    const dono = await postoAtual(cli)
     if (!dono) return { ok: true }
     if (dono.agente !== agente) {
       return { ok: false, motivo: `O posto é de ${dono.agente} — só essa máquina pode desativar.` }
     }
-    await r.del(CHAVE)
+    await cli.del(CHAVE)
     logger.info({ agente }, '[baixa-auto] posto liberado')
     return { ok: true }
   } catch (e) {
