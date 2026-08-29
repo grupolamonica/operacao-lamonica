@@ -164,11 +164,18 @@ jobs:
           # Phase 12/14 — garante credenciais no .env (upsert idempotente).
           # CARGAS_WRITE_ENABLED fixo em false: produção só LÊ do Cargas até autorização explícita de escrita.
           #
-          # MANIFESTO_BAIXA_AUTO_ENABLED fixo em false pelo MESMO motivo, e o "fixo" é o
-          # ponto: como o upsert reescreve toda chave conhecida a cada deploy, editar o
-          # .env na mão seria desfeito no deploy seguinte — em silêncio, e justamente na
-          # chave que decide se um robô fecha manifesto sozinho. Ligar a automação é
-          # trocar este literal por true, num PR revisável. TETO=3 é o piloto.
+          # MANIFESTO_BAIXA_AUTO_ENABLED: LIGADO em 29/08/2026, com TETO=3 (piloto).
+          # O literal mora aqui e não no .env porque o upsert reescreve toda chave
+          # conhecida a cada deploy — editar na máquina seria desfeito em silêncio,
+          # justamente na chave que decide se um robô fecha manifesto sozinho.
+          #
+          # DESLIGAR É O MESMO CAMINHO: trocar por false e deployar. É o kill switch,
+          # e ele é intencionalmente um PR: quem desliga fica no histórico, e ninguém
+          # desliga por engano mexendo num arquivo na VPS.
+          #
+          # TETO=3/dia é o piloto e existe para o primeiro dia ser CONFERÍVEL — três
+          # baixas, três conferências. Subir o teto é outra decisão, com os números
+          # da sombra na mão.
           touch .env
           for kv in "ANGELLIRA_USER=${ANGELLIRA_USER}" "ANGELLIRA_PASS=${ANGELLIRA_PASS}" "ANGELLIRA_EMPRESA=${ANGELLIRA_EMPRESA}" \
                     "CARGAS_SUPABASE_URL=${CARGAS_SUPABASE_URL}" "CARGAS_SUPABASE_KEY=${CARGAS_SUPABASE_KEY}" \
@@ -177,7 +184,7 @@ jobs:
                     "SPX_ASP_API_KEY=${SPX_ASP_API_KEY}" \
                     "INTEGRATION_API_KEY=${INTEGRATION_API_KEY}" \
                     "MANIFESTO_API_KEY=${MANIFESTO_API_KEY}" \
-                    "MANIFESTO_BAIXA_AUTO_ENABLED=false" "MANIFESTO_BAIXA_AUTO_TETO=3"; do
+                    "MANIFESTO_BAIXA_AUTO_ENABLED=true" "MANIFESTO_BAIXA_AUTO_TETO=3"; do
             key="${kv%%=*}"
             if grep -q "^${key}=" .env; then
               sed -i "s|^${key}=.*|${kv}|" .env
