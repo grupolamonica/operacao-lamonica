@@ -87,6 +87,19 @@ export interface AvaliacaoBaixaAuto {
   avaliado_em: string
 }
 
+/**
+ * F3 — o posto de automação. UMA máquina por vez executa a baixa automática; as
+ * outras telas só veem que está ativo e onde. `agente` é a máquina, e é ele que
+ * identifica o posto — o nome da pessoa aparece no autor de cada pedido.
+ */
+export interface PostoAutomacao {
+  agente: string
+  user_id: string | null
+  nome: string | null
+  desde: string
+  visto_em: string
+}
+
 export interface PendenciaManifesto {
   // ── v1 ──────────────────────────────────────────────────────────────────
   codlpr?: number
@@ -277,6 +290,8 @@ export interface ManifestoPendenciasSnapshot {
   // enfileirado: o chip só mostra o que o robô TERIA feito, para o operador
   // conferir contra o próprio julgamento antes de a automação ligar.
   baixa_auto?: Record<string, AvaliacaoBaixaAuto>
+  // F3 — quem está com o posto de automação. null = ninguém, e a tela oferece ativar.
+  posto_auto?: PostoAutomacao | null
   // quem está de plantão para executar a fila; null = NINGUÉM (o botão só enfileira)
   agente_fila?: BatidaAgente | null
   // lista inteira (24/08): com uma máquina por operador, "tem robô?" e
@@ -368,6 +383,7 @@ export function useManifestoPendencias() {
     motivosErro: q.data?.motivos_erro ?? {},
     baixaPedidos: q.data?.baixa_pedidos ?? {},
     baixaAuto: q.data?.baixa_auto ?? {},
+    postoAuto: q.data?.posto_auto ?? null,
     agenteFila: q.data?.agente_fila ?? null,
     agentesFila: q.data?.agentes_fila ?? null,
     isLoading: q.isLoading,
@@ -384,6 +400,34 @@ export interface NovaTratativaInput {
   destino?: string
   motivo: string
   notes?: string
+}
+
+/**
+ * F3 — liga/desliga o posto de automação NESTA máquina.
+ *
+ * Só quem tem robô de plantão consegue ativar: a baixa roda sob a conta Rodopar da
+ * máquina que executa, então ativar sem robô de pé criaria pedidos que ninguém pode
+ * cumprir — e pedido órfão ainda bloqueia o pedido humano do mesmo manifesto.
+ */
+export function usePostoAutomacao() {
+  const qc = useQueryClient()
+  const ativar = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await (api.api as any).manifesto.baixa.posto.post({})
+      if (error) throw new Error((error as any)?.value?.error ?? 'Falha ao ativar a automação')
+      return data
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['manifesto', 'pendencias'] }),
+  })
+  const desativar = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await (api.api as any).manifesto.baixa.posto.delete({})
+      if (error) throw new Error((error as any)?.value?.error ?? 'Falha ao desativar a automação')
+      return data
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['manifesto', 'pendencias'] }),
+  })
+  return { ativar, desativar }
 }
 
 /** Registra justificativa (append-only). Invalida o snapshot para o resumo aparecer na tela. */

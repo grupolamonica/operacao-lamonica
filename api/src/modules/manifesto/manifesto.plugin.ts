@@ -29,6 +29,7 @@ import {
 import { donoDoToken, marcarUso, gerarToken, tokenAtivo, revogarToken } from './agente-token.service'
 import { applySnapshot, getPendencias } from './manifesto.service'
 import { avaliacoesPorManifesto } from './baixa-auto.service'
+import { assumirPosto, largarPosto, postoAtual } from './baixa-auto.posto'
 import {
   chaveManifesto,
   historicoManifesto,
@@ -519,11 +520,15 @@ const readPlugin = new Elysia({ name: 'manifesto-read' })
           // operador "tem robô?" e "quantos robôs?" deixaram de ser a mesma pergunta.
           const agentes_fila = await agentesDePlantao()
           const agente_fila = agentes_fila[0] ?? null
+          // F3 — quem está com o posto de automação. null = ninguém, e a tela mostra
+          // o botão de ativar em vez de "ativo em X".
+          const posto_auto = await postoAtual()
           return {
             ok: true,
             ...view,
             baixa_pedidos,
             baixa_auto,
+            posto_auto,
             agente_fila,
             agentes_fila,
             tratativas,
@@ -870,6 +875,66 @@ const readPlugin = new Elysia({ name: 'manifesto-read' })
             tags: ['manifesto'],
             summary: 'Pede a baixa do manifesto ao robô — papel manifesto/supervisor/admin',
           },
+        },
+      )
+
+      // ── F3: POSTO DE AUTOMAÇÃO ───────────────────────────────────────────────
+      // UMA máquina por vez executa a baixa automática. Quem ativa passa a executar;
+      // as outras telas só veem que está ativo e onde.
+      //
+      // Só dá para assumir se o SEU robô estiver de plantão: a baixa roda sob a conta
+      // Rodopar da máquina que executa, então ativar sem robô de pé criaria pedidos
+      // que ninguém pode cumprir — e pedido órfão ainda bloqueia o pedido humano do
+      // mesmo manifesto pelo índice único.
+      .post(
+        '/baixa/posto',
+        async ({ user, set }) => {
+          if (!PODE_ESCREVER.includes(user.role as (typeof PODE_ESCREVER)[number])) {
+            set.status = 403
+            return { ok: false, error: `Forbidden: requires role ${PODE_ESCREVER.join('|')}` }
+          }
+          const meus = (await agentesDePlantao()).filter((a) => a.user_id === user.id)
+          if (!meus.length) {
+            set.status = 409
+            return {
+              ok: false,
+              error:
+                'Seu robô não está de plantão. Abra o Agente-Baixa.ps1 na máquina (com o token trm_) antes de ativar a automação.',
+            }
+          }
+          // nome vai null: o JWT carrega só id/role/jti. E a MÁQUINA é o
+          // identificador que importa aqui ("ativo em ORION-05") — o nome da pessoa
+          // aparece onde pesa de verdade, no autor de cada pedido, que pedirBaixa
+          // resolve com "Fulano (automação)".
+          const r = await assumirPosto(meus[0].agente, user.id, null)
+          if (!r.ok) {
+            set.status = 409
+            return { ok: false, error: r.motivo, posto: r.posto }
+          }
+          return { ok: true, posto: r.posto }
+        },
+      )
+      .delete(
+        '/baixa/posto',
+        async ({ user, set }) => {
+          if (!PODE_ESCREVER.includes(user.role as (typeof PODE_ESCREVER)[number])) {
+            set.status = 403
+            return { ok: false, error: `Forbidden: requires role ${PODE_ESCREVER.join('|')}` }
+          }
+          const dono = await postoAtual()
+          if (!dono) return { ok: true }
+          // só o dono desativa: sem isto um operador desligaria a automação da máquina
+          // de outro sem perceber, e o único sinal seria a fila parando
+          if (dono.user_id !== user.id) {
+            set.status = 409
+            return { ok: false, error: `O posto é de ${dono.agente}${dono.nome ? ` (${dono.nome})` : ''}.` }
+          }
+          const r = await largarPosto(dono.agente)
+          if (!r.ok) {
+            set.status = 409
+            return { ok: false, error: r.motivo }
+          }
+          return { ok: true }
         },
       )
       // ── Token do agente: liga a pessoa que usa a tela ao robô do PC dela ─────────

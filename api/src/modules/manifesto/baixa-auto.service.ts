@@ -26,6 +26,8 @@ import { logger } from '../../lib/logger'
 import { getPendencias, type ManifestoPendencia } from './manifesto.service'
 import { lerGalileu, lerSpx, podeAgir, type LeituraFonte } from './baixa-auto.fontes'
 import { avaliar, ordenarParaFila, type Avaliacao } from './baixa-auto.regras'
+import { postoAtual } from './baixa-auto.posto'
+import { pedirBaixa } from './baixa.service'
 
 const CICLO_MIN = 10
 
@@ -40,6 +42,9 @@ export interface ResumoCiclo {
   paraFila: { codman: number; filial: number; serie: string; regra: string; horas_aberto: number }[]
   fontes: { spx: string; galileu: string }
   tetoDiario: { limite: number; usadoHoje: number }
+  /** só em modo real: o que foi efetivamente enfileirado, e por que o resto não foi */
+  enfileirados: number
+  naoEnfileirados: string | null
 }
 
 /** Instante do ciclo, truncado em 10 min — a identidade que dedupe usa. */
@@ -235,6 +240,80 @@ export async function avaliarCiclo(): Promise<ResumoCiclo> {
     })),
   )
 
+  // ── MODO REAL: as barreiras que faltavam ────────────────────────────────────
+  // Em sombra nada disto roda. Aqui a ordem importa e é de fora para dentro: sem
+  // posto não há máquina para executar, sem teto não há limite, e só então age.
+  let enfileirados = 0
+  let naoEnfileirados: string | null = null
+
+  if (modo === 'real' && paraFila.length) {
+    const posto = await postoAtual()
+    if (!posto) {
+      // Sem posto ativo NÃO enfileira. É a lição de 21/08: o operador clicou BAIXAR,
+      // viu NA FILA e ficou esperando uma janela que nunca abriu porque não havia
+      // agente. Pedido que ninguém pode executar é pior que pedido nenhum — ele
+      // ainda bloqueia o pedido humano do mesmo manifesto pelo índice único.
+      naoEnfileirados = 'nenhuma máquina com o posto de automação ativo'
+    } else {
+      const usados = await usadoHoje()
+      const vagas = Math.max(0, limite - usados)
+      if (vagas === 0) {
+        naoEnfileirados = `teto diário atingido (${usados}/${limite})`
+      } else {
+        if (paraFila.length > vagas) {
+          // Diz em voz alta o que ficou de fora. Truncar em silêncio faria o log
+          // parecer "cobrimos tudo" quando cobriu parte — e a fila do dia seguinte
+          // herdaria o resto sem ninguém saber por quê.
+          naoEnfileirados = `${paraFila.length - vagas} acima do teto (${usados}/${limite}) — ficam para o próximo ciclo`
+        }
+        // paraFila JÁ vem ordenado por horas em aberto: como a fila do robô é servida
+        // por createdAt ASC, inserir nesta ordem é o que dá prioridade ao manifesto
+        // mais antigo. Sem isso o de 229 h competiria de igual para igual com o de 9 h.
+        // Índice pela chave COMPLETA (codman|filial|serie), não só por codman: em 365
+        // dias existem 1.240 pares codman+filial repetidos com séries diferentes, e
+        // casar pelo número do manifesto pegaria a evidência de outra viagem.
+        const porChaveElegivel = new Map(
+          elegiveis.map(({ p, a }) => [`${p.codman}|${p.filial}|${(p.serie ?? '').trim()}`, { p, a }]),
+        )
+
+        for (const item of paraFila.slice(0, vagas)) {
+          const achado = porChaveElegivel.get(`${item.codman}|${item.filial}|${item.serie}`)
+          if (!achado) continue
+          const { p, a } = achado
+          const r = await pedirBaixa({
+            codman: item.codman,
+            filial: item.filial,
+            serie: item.serie,
+            operatorId: posto.user_id,
+            origem: a.regra === 'galileu_finalizado' ? 'galileu' : 'spx',
+            regra: a.regra,
+            referenciaCliente: p.referencia_cliente?.valor ?? null,
+            clienteStatus: a.evidencia?.status ?? null,
+            clienteCarimbo: paraData(a.evidencia?.carimbo ?? null),
+            guardas: {
+              regra: a.regra,
+              destino_cliente: a.evidencia?.destino ?? null,
+              local_entrega_cte: p.referencia_cliente?.local_entrega_cte ?? null,
+              horas_aberto: p.horas_aberto ?? null,
+              estado_coletor: p.estado ?? null,
+              posto: posto.agente,
+            },
+          })
+          if (r.ok) {
+            enfileirados += 1
+            logger.info({ codman: item.codman, regra: a.regra, pedido: r.pedido.id },
+              '[baixa-auto] baixa AUTOMATICA enfileirada')
+          } else {
+            // Recusa aqui é quase sempre "já existe pedido ativo" — inclusive um
+            // pedido HUMANO criado entre a avaliação e agora. Não é erro: é o índice
+            // único fazendo o trabalho dele.
+            logger.info({ codman: item.codman, motivo: r.motivo }, '[baixa-auto] pedido recusado')
+          }
+        }
+      }
+    }
+  }
+
   const resumo: ResumoCiclo = {
     modo,
     ciclo: ciclo.toISOString(),
@@ -247,6 +326,8 @@ export async function avaliarCiclo(): Promise<ResumoCiclo> {
       galileu: galileu.estado + (galileu.motivo ? ` (${galileu.motivo})` : ''),
     },
     tetoDiario: { limite, usadoHoje: await usadoHoje() },
+    enfileirados,
+    naoEnfileirados,
   }
 
   logger.info(

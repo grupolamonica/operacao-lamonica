@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { redis } from '../../redis/client'
 import {
@@ -10,6 +10,7 @@ import {
 } from '../../db/schema'
 import { logger } from '../../lib/logger'
 import { chaveManifesto, normalizarSerie } from './tratativas.service'
+import { renovarPosto } from './baixa-auto.posto'
 
 /**
  * Fila de pedidos de baixa — ver drizzle/manifesto-baixa-pedidos.sql para o "por quê".
@@ -28,6 +29,19 @@ export interface NovoPedido {
   destino?: string | null
   estadoSistema?: string | null
   operatorId: string | null
+
+  // ── F3: baixa automática ────────────────────────────────────────────────
+  // 'humano' (default) | 'spx' | 'galileu'. O default vale para todo pedido que
+  // já existia e para todo clique — só o job preenche outra coisa.
+  origem?: string
+  regra?: string | null
+  /** ORDCOM que casou. Auditar um pedido meses depois exige isto: o snapshot do
+   *  Redis que o originou já foi sobrescrito milhares de vezes. */
+  referenciaCliente?: string | null
+  /** status LITERAL do cliente e o carimbo dele — a afirmação, não a conclusão */
+  clienteStatus?: string | null
+  clienteCarimbo?: Date | null
+  guardas?: Record<string, unknown> | null
 }
 
 export interface PedidoResumo {
@@ -195,7 +209,12 @@ export async function pedirBaixa(
   { ok: true; pedido: PedidoResumo } | { ok: false; motivo: string; pedido?: PedidoResumo }
 > {
   const serie = normalizarSerie(input.serie)
-  const autor = await nomeDoOperador(input.operatorId)
+  const ehAuto = (input.origem ?? 'humano') !== 'humano'
+  // Nome do dono do posto + sufixo. NÃO deixar cair em null: pedido sem autor nenhum
+  // é indistinguível na tela de um pedido antigo, e some da auditoria justamente na
+  // categoria que mais precisa dela.
+  const base = await nomeDoOperador(input.operatorId)
+  const autor = ehAuto ? `${base ?? 'automação'} (automação)`.slice(0, 120) : base
   try {
     const [row] = await db
       .insert(manifestoBaixaPedidos)
@@ -209,6 +228,12 @@ export async function pedirBaixa(
         placa: input.placa?.slice(0, 10) ?? null,
         destino: input.destino?.slice(0, 120) ?? null,
         estadoSistema: input.estadoSistema?.slice(0, 30) ?? null,
+        origem: input.origem ?? 'humano',
+        regra: input.regra?.slice(0, 40) ?? null,
+        referenciaCliente: input.referenciaCliente?.slice(0, 60) ?? null,
+        clienteStatus: input.clienteStatus?.slice(0, 40) ?? null,
+        clienteCarimbo: input.clienteCarimbo ?? null,
+        guardas: input.guardas ?? null,
       })
       .returning()
     logger.info({ codman: input.codman, filial: input.filial, serie, autor }, '[manifesto] baixa pedida')
@@ -272,6 +297,9 @@ export async function reivindicarProximo(
 ): Promise<{ codman: number; filial: number; serie: string; id: string } | null> {
   // antes de qualquer early return: "pedi trabalho e não tinha" também prova que estou vivo
   await registrarBatidaAgente(agente, donoUserId)
+  // F3 — renova o posto de automação PELO POLLING que o agente já faz (a cada ~15 s),
+  // sem tráfego novo. Só tem efeito se este agente for o dono; para os outros é no-op.
+  await renovarPosto(agente)
 
   // "ESTE agente já tem algo em curso?", não "existe algum executando no mundo".
   //
@@ -313,7 +341,12 @@ export async function reivindicarProximo(
     .select({ id: manifestoBaixaPedidos.id })
     .from(manifestoBaixaPedidos)
     .where(filtro)
-    .orderBy(asc(manifestoBaixaPedidos.createdAt))
+    // PRIORIDADE HUMANA (F3). Antes era só createdAt: com o job criando dezenas de
+    // pedidos no mesmo instante, o operador que clicasse BAIXAR entraria ATRÁS deles
+    // e esperaria até ~90 min por uma baixa urgente (uma máquina drena ~10/hora). É a
+    // mesma frustração de 21/08 — botão que promete e não cumpre — agora por excesso
+    // de fila em vez de falta de agente. Booleano DESC no Postgres põe `true` primeiro.
+    .orderBy(sql`(${manifestoBaixaPedidos.origem} = 'humano') DESC`, asc(manifestoBaixaPedidos.createdAt))
     .limit(1)
   if (!proximo) return null
 

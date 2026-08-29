@@ -31,6 +31,7 @@ import {
   type ResumoTratativa,
   type Telefone,
   type ValidacaoRegistro,
+  usePostoAutomacao,
 } from '@/hooks/useManifestoPendencias'
 import { useNow } from '@/hooks/useNow'
 import { useAuthStore } from '@/stores/useAuthStore'
@@ -430,7 +431,7 @@ ${pedido.mensagem ?? 'sem mensagem'}` }
 function BaixaManifestoConteudo() {
   const {
     data: snapshot, pendencias, tratativas, motivos,
-    fonesMotorista, rotulosFone, validacoes, motivosErro, baixaPedidos, baixaAuto, agenteFila, agentesFila,
+    fonesMotorista, rotulosFone, validacoes, motivosErro, baixaPedidos, baixaAuto, postoAuto, agenteFila, agentesFila,
     isLoading, isError, error,
   } = useManifestoPendencias()
   const pedirBaixa = usePedirBaixa()
@@ -446,6 +447,11 @@ function BaixaManifestoConteudo() {
   // A lista só existe na API nova; sem ela cai no agente único, que é o contrato antigo.
   const roboVivos = (agentesFila ?? (agenteFila ? [agenteFila] : [])).filter(vivo)
   const agenteDePlantao = roboVivos.length > 0
+  // F3 — o posto é MEU quando o robô que o segura é um dos meus. Comparar por
+  // user_id e não por nome de máquina: o nome vem do agente e pode repetir entre
+  // instalações, o user_id vem do token trm_ e é a conta que executa no Rodopar.
+  const { ativar: ativarPosto, desativar: desativarPosto } = usePostoAutomacao()
+  const ehMeuPosto = Boolean(postoAuto && roboVivos.some((a) => a.agente === postoAuto.agente))
   // O MEU robô, que desde o roteamento é outra pergunta. Com a fila roteada, o pedido
   // que eu crio só é pego pelo robô da minha máquina — então "3 robôs conectados" com
   // o meu desligado é um selo verde mentindo sobre a minha fila.
@@ -652,6 +658,42 @@ function BaixaManifestoConteudo() {
                 ? 'Robô sem identificação'
                 : 'Robô desconectado'}
           </button>
+          {/* F3 — POSTO DE AUTOMAÇÃO. Uma máquina por vez executa a baixa automática;
+              as outras só veem que está ativo e onde.
+
+              O botão só aparece para quem tem robô de plantão: a baixa roda sob a conta
+              Rodopar da máquina que executa, e ativar sem robô de pé criaria pedidos que
+              ninguém pode cumprir — que ainda por cima bloqueiam o pedido humano do mesmo
+              manifesto pelo índice único. Quem não é dono vê o estado, não o controle. */}
+          {postoAuto ? (
+            <button
+              type="button"
+              disabled={!ehMeuPosto || desativarPosto.isPending}
+              className="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs disabled:opacity-70"
+              style={{ borderColor: 'var(--status-no-prazo-fg)', color: 'var(--status-no-prazo-fg)' }}
+              title={
+                ehMeuPosto
+                  ? 'A automação está ativa NESTA máquina. Clique para desativar.'
+                  : `Automação ativa em ${postoAuto.agente}${postoAuto.nome ? ` (${postoAuto.nome})` : ''} — só aquela máquina pode desativar.`
+              }
+              onClick={() => { if (ehMeuPosto) desativarPosto.mutate() }}
+            >
+              <Bot className="h-3.5 w-3.5" />
+              {ehMeuPosto ? 'Automação ligada (aqui)' : `Automação em ${postoAuto.agente}`}
+            </button>
+          ) : meuRoboVivo ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-xs"
+              disabled={ativarPosto.isPending}
+              title="Assume a baixa automática NESTA máquina. Enquanto estiver ligada, não abra o Rodopar no seu login — o robô perde a sessão."
+              onClick={() => ativarPosto.mutate()}
+            >
+              <Bot className="h-3.5 w-3.5" />
+              {ativarPosto.isPending ? 'Ativando…' : 'Ativar automação'}
+            </Button>
+          ) : null}
           <Button
             size="sm"
             variant="outline"
