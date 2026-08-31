@@ -1741,6 +1741,44 @@ function ManifestoDetailPanel({
               {pedidoBaixa.mensagem && (
                 <p className="mt-1 font-mono text-[11px] text-muted-foreground">{pedidoBaixa.mensagem}</p>
               )}
+              {/* A RESPOSTA, em vez do dever de casa (31/08).
+                  Até aqui o aviso mandava a pessoa abrir o Rodopar e procurar ocorrência —
+                  e não dizia o que procurar nem onde. O coletor agora pergunta ao ERP pela
+                  cadeia que o próprio Rodopar usa (RODIMA→RODCON→RODNFC→RODOCH→RODOCO com
+                  FINMAN='S') e traz a resposta.
+                  Os TRÊS estados são distintos de propósito: sem evidência ainda, evidência
+                  de que não foi lançado, e evidência de que FOI. Tratar "ausente" como
+                  "não tem" seria o mesmo erro que este bloco existe para evitar. */}
+              {(() => {
+                const oco = p.ocorrencia_entrega
+                if (!oco || oco.erro) {
+                  return (
+                    <p className="mt-2 text-[11px] text-muted-foreground">
+                      <strong>Ocorrência no Rodopar: ainda não verificada.</strong>{' '}
+                      {oco?.erro
+                        ? `A consulta falhou (${oco.erro}).`
+                        : 'O coletor pergunta no próximo ciclo (até 5 min).'}{' '}
+                      Até lá, confira você mesmo antes de liberar.
+                    </p>
+                  )
+                }
+                const cor = oco.tem ? 'var(--status-atrasado-fg)' : 'var(--status-no-prazo-fg)'
+                return (
+                  <p className="mt-2 text-[11px]" style={{ color: cor }}>
+                    <strong>
+                      {oco.tem
+                        ? 'Ocorrência de entrega ENCONTRADA no Rodopar.'
+                        : 'Ocorrência de entrega NÃO encontrada no Rodopar.'}
+                    </strong>{' '}
+                    {oco.tem
+                      ? 'O Efetuar já foi clicado — pedir a baixa de novo DUPLICA o lançamento. A baixa deve cair sozinha quando o AGENDADOR do Rodopar rodar.'
+                      : 'Nada foi lançado, então repetir é seguro.'}
+                    {oco.verificado_em && (
+                      <span className="text-muted-foreground"> Verificado em {fmtInstante(oco.verificado_em)}.</span>
+                    )}
+                  </p>
+                )
+              })()}
               {podeEscrever && onLiberarConferencia && (
                 <button
                   type="button"
