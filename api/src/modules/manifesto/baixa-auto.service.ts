@@ -27,7 +27,7 @@ import { getPendencias, type ManifestoPendencia } from './manifesto.service'
 import { lerGalileu, lerSpx, podeAgir, type LeituraFonte } from './baixa-auto.fontes'
 import { avaliar, ordenarParaFila, type Avaliacao } from './baixa-auto.regras'
 import { postoAtual, travarExecucao } from './baixa-auto.posto'
-import { pedirBaixa } from './baixa.service'
+import { pedirBaixa, recuperarPedidosPresos } from './baixa.service'
 
 const CICLO_MIN = 10
 
@@ -421,6 +421,10 @@ export async function executarAgora(): Promise<
     }
   }
   try {
+    // ANTES de avaliar: desbloqueia a fila. Um pedido órfão em `executando` impede o
+    // agente de pegar QUALQUER coisa nova — de nada adianta enfileirar mais três em
+    // cima de uma fila travada. Descoberto em 31/08, depois de 47 h paradas.
+    await recuperarPedidosPresos()
     const resumo = await avaliarCiclo()
     logger.info({ ...resumo, paraFila: resumo.paraFila.length }, '[baixa-auto] ciclo disparado manualmente')
     return { ok: true, resumo }

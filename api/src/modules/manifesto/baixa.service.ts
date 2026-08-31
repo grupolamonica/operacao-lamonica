@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, lt, sql } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { redis } from '../../redis/client'
 import {
@@ -438,4 +438,68 @@ export async function liberarConferencia(
   if (!row) return null
   logger.warn({ codman: row.codman, autor }, '[manifesto] conferência liberada manualmente')
   return resumo(row)
+}
+
+/**
+ * REAPER — devolve à vida a fila travada por um pedido `executando` órfão.
+ *
+ * O PROBLEMA, medido em produção: em 29/08 o robô pegou o pedido do manifesto
+ * 69465 às 14:04, morreu no meio (a máquina foi desligada) e nunca reportou
+ * resultado. O pedido ficou `executando` para sempre — e como
+ * `reivindicarProximo` recusa dar trabalho novo a um agente que já tem algo
+ * executando, aquele único pedido travou a fila daquela máquina por 47 HORAS.
+ * Quatro pedidos seguintes ficaram parados atrás dele, e nada avisou ninguém.
+ *
+ * POR QUE VAI PARA `conferencia` E NÃO DE VOLTA PARA `na_fila`:
+ * não sabemos se o Efetuar chegou a ser clicado. O robô morreu — pode ter sido
+ * antes de abrir a tela, ou depois de gravar. Reenfileirar às cegas duplicaria
+ * lançamento no caso ruim, e é exatamente o que os rc 6/11 já ensinaram a não
+ * fazer. `conferencia` é o estado que existe para dizer "uma PESSOA precisa
+ * olhar" — e a tela já o pinta como CONFERIR, em destaque, com o fluxo de
+ * liberação pronto (`liberarConferencia`).
+ *
+ * O reaper NÃO conserta: ele desbloqueia e chama gente. É a diferença entre uma
+ * fila parada em silêncio e uma pendência visível.
+ *
+ * Vale para pedido humano também: o bloqueio é por agente, não por origem.
+ *
+ * @param minutos idade a partir da qual um `executando` é considerado órfão. O
+ *   padrão de 30 min é generoso — a baixa real leva ~4 min (medido: 08:31→08:35,
+ *   11.835 notas), então 30 min só pega quem de fato morreu.
+ */
+export async function recuperarPedidosPresos(
+  minutos = 30,
+): Promise<{ recuperados: { id: string; codman: number; agente: string | null }[] }> {
+  const limite = new Date(Date.now() - minutos * 60_000)
+  const marca =
+    `[recuperado automaticamente: ficou executando por mais de ${minutos} min sem o robô ` +
+    'reportar resultado. CONFIRA NO RODOPAR se a baixa foi efetuada antes de liberar.]'
+
+  const linhas = await db
+    .update(manifestoBaixaPedidos)
+    .set({
+      situacao: 'conferencia',
+      mensagem: sql`trim(coalesce(${manifestoBaixaPedidos.mensagem}, '') || ' ' || ${marca})`,
+    })
+    .where(
+      and(
+        eq(manifestoBaixaPedidos.situacao, 'executando'),
+        // coalesce: `executando` sem reivindicado_em não deveria existir, mas se
+        // existir é ainda mais órfão — cai no created_at e é recuperado igual.
+        lt(sql`coalesce(${manifestoBaixaPedidos.reivindicadoEm}, ${manifestoBaixaPedidos.createdAt})`, limite),
+      ),
+    )
+    .returning({
+      id: manifestoBaixaPedidos.id,
+      codman: manifestoBaixaPedidos.codman,
+      agente: manifestoBaixaPedidos.agente,
+    })
+
+  if (linhas.length) {
+    logger.warn(
+      { qtd: linhas.length, pedidos: linhas.map((l) => l.codman), minutos },
+      '[manifesto] pedidos presos em executando movidos para conferencia — a fila estava travada',
+    )
+  }
+  return { recuperados: linhas }
 }
