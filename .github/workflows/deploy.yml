@@ -173,9 +173,19 @@ jobs:
           # e ele é intencionalmente um PR: quem desliga fica no histórico, e ninguém
           # desliga por engano mexendo num arquivo na VPS.
           #
-          # TETO=3/dia é o piloto e existe para o primeiro dia ser CONFERÍVEL — três
-          # baixas, três conferências. Subir o teto é outra decisão, com os números
-          # da sombra na mão.
+          # TETO=100/dia (31/08, decisão do Danilo). Na prática é SEM TETO: o máximo
+          # já observado nas duas famílias num dia foi 70, mediana 28. Ele não vai
+          # limitar a operação.
+          #
+          # POR QUE NÃO REMOVER O MECANISMO: o teto nunca protegeu contra erro
+          # ALEATÓRIO — três errados são três errados. Ele protege contra erro
+          # SISTEMÁTICO, que é o modo de falha real aqui: a Shopee muda o vocabulário
+          # de status, o Galileu passa a carimbar outro evento, ou alguém sobe um bug
+          # na regra. Nesses casos a falha não é um manifesto, são TODOS de uma vez.
+          # 100 é o valor a partir do qual "isso não é operação normal, é defeito".
+          #
+          # O FREIO DE VERDADE agora é outro, e é instantâneo: desativar o posto na
+          # tela. Não depende de deploy nem de mim.
           touch .env
           for kv in "ANGELLIRA_USER=${ANGELLIRA_USER}" "ANGELLIRA_PASS=${ANGELLIRA_PASS}" "ANGELLIRA_EMPRESA=${ANGELLIRA_EMPRESA}" \
                     "CARGAS_SUPABASE_URL=${CARGAS_SUPABASE_URL}" "CARGAS_SUPABASE_KEY=${CARGAS_SUPABASE_KEY}" \
@@ -184,7 +194,7 @@ jobs:
                     "SPX_ASP_API_KEY=${SPX_ASP_API_KEY}" \
                     "INTEGRATION_API_KEY=${INTEGRATION_API_KEY}" \
                     "MANIFESTO_API_KEY=${MANIFESTO_API_KEY}" \
-                    "MANIFESTO_BAIXA_AUTO_ENABLED=true" "MANIFESTO_BAIXA_AUTO_TETO=3"; do
+                    "MANIFESTO_BAIXA_AUTO_ENABLED=true" "MANIFESTO_BAIXA_AUTO_TETO=100"; do
             key="${kv%%=*}"
             if grep -q "^${key}=" .env; then
               sed -i "s|^${key}=.*|${kv}|" .env
