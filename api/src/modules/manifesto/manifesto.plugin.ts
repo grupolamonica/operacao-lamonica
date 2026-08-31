@@ -28,7 +28,7 @@ import {
 } from './baixa.service'
 import { donoDoToken, marcarUso, gerarToken, tokenAtivo, revogarToken } from './agente-token.service'
 import { applySnapshot, getPendencias } from './manifesto.service'
-import { avaliacoesPorManifesto } from './baixa-auto.service'
+import { avaliacoesPorManifesto, executarAgora } from './baixa-auto.service'
 import { assumirPosto, largarPosto, postoAtual } from './baixa-auto.posto'
 import {
   chaveManifesto,
@@ -912,6 +912,29 @@ const readPlugin = new Elysia({ name: 'manifesto-read' })
             return { ok: false, error: r.motivo, posto: r.posto }
           }
           return { ok: true, posto: r.posto }
+        },
+      )
+      // Dispara um ciclo AGORA em vez de esperar o próximo tique do cron (10 min).
+      // Serve para dois momentos concretos: logo depois de reativar o posto — que cai
+      // a cada deploy — e quando alguém quer VER a automação agir para conferir.
+      //
+      // Mesmo caminho de sempre: chama o mesmo avaliarCiclo(), com as mesmas
+      // barreiras (posto ativo, teto, fontes saudáveis). Um botão que pulasse
+      // qualquer uma seria uma segunda regra de negócio escondida atrás de um clique.
+      .post(
+        '/baixa/auto/executar',
+        async ({ user, set }) => {
+          if (!PODE_ESCREVER.includes(user.role as (typeof PODE_ESCREVER)[number])) {
+            set.status = 403
+            return { ok: false, error: `Forbidden: requires role ${PODE_ESCREVER.join('|')}` }
+          }
+          const r = await executarAgora()
+          if (!r.ok) {
+            // 409 e não 500: "já tem um ciclo rodando" não é falha, é concorrência
+            set.status = 409
+            return { ok: false, error: r.motivo }
+          }
+          return { ok: true, resumo: r.resumo }
         },
       )
       .delete(

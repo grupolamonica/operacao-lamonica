@@ -403,6 +403,39 @@ export interface NovaTratativaInput {
 }
 
 /**
+ * F3 — dispara um ciclo AGORA, sem esperar o próximo tique de 10 min.
+ *
+ * Existe para dois momentos: logo depois de reativar o posto (que cai a cada
+ * deploy) e quando alguém quer VER a automação agir para conferir. Passa pelas
+ * mesmas barreiras do ciclo agendado — não é atalho, é adiantamento.
+ *
+ * Pode demorar: o ciclo faz um fetch real no portal do cliente (~1.300 viagens).
+ * Quem chama deve mostrar estado de carregando.
+ */
+export function useExecutarAgora() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () => {
+      const { data, error } = await (api.api as any).manifesto.baixa.auto.executar.post({})
+      if (error) throw new Error((error as any)?.value?.error ?? 'Falha ao executar o ciclo')
+      return data as { ok: boolean; resumo?: ResumoCicloAuto }
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['manifesto', 'pendencias'] }),
+  })
+}
+
+/** O que o ciclo fez — devolvido pelo disparo manual, para a tela dar retorno. */
+export interface ResumoCicloAuto {
+  modo: string
+  candidatos: number
+  elegiveis: number
+  enfileirados: number
+  naoEnfileirados: string | null
+  tetoDiario: { limite: number; usadoHoje: number }
+  fontes: { spx: string; galileu: string }
+}
+
+/**
  * F3 — liga/desliga o posto de automação NESTA máquina.
  *
  * Só quem tem robô de plantão consegue ativar: a baixa roda sob a conta Rodopar da

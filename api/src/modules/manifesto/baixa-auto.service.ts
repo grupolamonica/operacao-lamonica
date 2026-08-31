@@ -26,7 +26,7 @@ import { logger } from '../../lib/logger'
 import { getPendencias, type ManifestoPendencia } from './manifesto.service'
 import { lerGalileu, lerSpx, podeAgir, type LeituraFonte } from './baixa-auto.fontes'
 import { avaliar, ordenarParaFila, type Avaliacao } from './baixa-auto.regras'
-import { postoAtual } from './baixa-auto.posto'
+import { postoAtual, travarExecucao } from './baixa-auto.posto'
 import { pedirBaixa } from './baixa.service'
 
 const CICLO_MIN = 10
@@ -394,3 +394,37 @@ export async function avaliacoesPorManifesto(
 }
 
 export { chaveDe as chaveDaPendencia }
+
+/**
+ * Executa um ciclo AGORA, a pedido de uma pessoa, em vez de esperar o proximo tique do cron.
+ *
+ * POR QUE EXISTE: o ciclo agendado é a espinha, mas há dois momentos em que
+ * esperar até 10 min é ruim de verdade — logo depois de reativar o posto (que cai
+ * a cada deploy) e quando alguém quer ver a automação agir para conferir. Botão
+ * que dá resposta imediata é o que transforma "confio que roda" em "vi rodando".
+ *
+ * NÃO É UM CAMINHO DIFERENTE: chama o MESMO `avaliarCiclo()`, com as mesmas
+ * barreiras — posto ativo, teto, fontes saudáveis. Um botão que pulasse qualquer
+ * uma delas seria uma segunda regra de negócio escondida atrás de um clique.
+ *
+ * A trava impede colidir com o ciclo agendado; sem ela, dois ciclos concorrentes
+ * poderiam gastar o teto duas vezes.
+ */
+export async function executarAgora(): Promise<
+  { ok: true; resumo: ResumoCiclo } | { ok: false; motivo: string }
+> {
+  const soltar = await travarExecucao()
+  if (!soltar) {
+    return {
+      ok: false,
+      motivo: 'Já existe um ciclo em andamento. Aguarde ele terminar — o resultado aparece na tela.',
+    }
+  }
+  try {
+    const resumo = await avaliarCiclo()
+    logger.info({ ...resumo, paraFila: resumo.paraFila.length }, '[baixa-auto] ciclo disparado manualmente')
+    return { ok: true, resumo }
+  } finally {
+    await soltar()
+  }
+}

@@ -19,7 +19,7 @@ import { syncCargas } from '../modules/cargas/cargas.sync'
 import { syncRankTrips } from '../adapters/spx-portal/rank-trips-sync.adapter'
 import { syncSpxGeofences } from '../adapters/spx-portal/spx-geofences.adapter'
 import { trackOpStatusTransitions } from '../modules/operacional/operacional.service'
-import { avaliarCiclo } from '../modules/manifesto/baixa-auto.service'
+import { executarAgora } from '../modules/manifesto/baixa-auto.service'
 
 const QUEUE_NAME = 'angellira-cron'
 
@@ -71,7 +71,10 @@ export function startAngelliraJobs(): void {
     if (job.name === 'rank-sync') return syncRankTrips()
     if (job.name === 'op-tracker') return trackOpStatusTransitions()
     if (job.name === 'spx-geofences') return syncSpxGeofences()
-    if (job.name === 'baixa-auto') return avaliarCiclo()
+    // executarAgora() e nao avaliarCiclo() direto: e o mesmo ciclo, mas passando
+    // pela trava. Sem isso a trava so protegeria o disparo manual — e o caso que
+    // ela existe para impedir e justamente o manual colidir com ESTE agendamento.
+    if (job.name === 'baixa-auto') return executarAgora()
     if (job.name === 'close-stale') { const r = await closeStaleTrips(); await recomputeCanonicalKeys(); return r }
   }, { connection })
 
