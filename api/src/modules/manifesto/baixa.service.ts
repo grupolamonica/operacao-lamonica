@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, lt, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { db } from '../../db/client'
 import { redis } from '../../redis/client'
 import {
@@ -471,29 +471,54 @@ export async function recuperarPedidosPresos(
   minutos = 30,
 ): Promise<{ recuperados: { id: string; codman: number; agente: string | null }[] }> {
   const limite = new Date(Date.now() - minutos * 60_000)
-  const marca =
-    `[recuperado automaticamente: ficou executando por mais de ${minutos} min sem o robô ` +
-    'reportar resultado. CONFIRA NO RODOPAR se a baixa foi efetuada antes de liberar.]'
 
-  const linhas = await db
-    .update(manifestoBaixaPedidos)
-    .set({
-      situacao: 'conferencia',
-      mensagem: sql`trim(coalesce(${manifestoBaixaPedidos.mensagem}, '') || ' ' || ${marca})`,
-    })
-    .where(
-      and(
-        eq(manifestoBaixaPedidos.situacao, 'executando'),
-        // coalesce: `executando` sem reivindicado_em não deveria existir, mas se
-        // existir é ainda mais órfão — cai no created_at e é recuperado igual.
-        lt(sql`coalesce(${manifestoBaixaPedidos.reivindicadoEm}, ${manifestoBaixaPedidos.createdAt})`, limite),
-      ),
-    )
-    .returning({
+  // DOIS PASSOS, sem SQL cru. A primeira versão fazia tudo num UPDATE só, com
+  // `lt(sql\`coalesce(...)\`, limite)` no WHERE e um `sql` de concatenação no SET —
+  // e devolveu 500 em produção. Não vale engenhosidade aqui: o normal é ZERO linhas,
+  // e um SELECT seguido de UPDATEs por id é trivialmente correto.
+  //
+  // A janela entre o SELECT e o UPDATE é inofensiva: o `eq(situacao,'executando')`
+  // repetido no UPDATE garante que um pedido que reportou resultado nesse meio-tempo
+  // NÃO é tocado.
+  const candidatos = await db
+    .select({
       id: manifestoBaixaPedidos.id,
       codman: manifestoBaixaPedidos.codman,
       agente: manifestoBaixaPedidos.agente,
+      mensagem: manifestoBaixaPedidos.mensagem,
+      reivindicadoEm: manifestoBaixaPedidos.reivindicadoEm,
+      createdAt: manifestoBaixaPedidos.createdAt,
     })
+    .from(manifestoBaixaPedidos)
+    .where(eq(manifestoBaixaPedidos.situacao, 'executando'))
+
+  // `executando` sem reivindicado_em não deveria existir; se existir é ainda mais
+  // órfão — cai no created_at e é recuperado igual.
+  const presos = candidatos.filter((c) => (c.reivindicadoEm ?? c.createdAt) < limite)
+  if (!presos.length) return { recuperados: [] }
+
+  const marca =
+    '[recuperado automaticamente: ficou executando por mais de ' + minutos +
+    ' min sem o robô reportar resultado. CONFIRA NO RODOPAR se a baixa foi efetuada ' +
+    'antes de liberar.]'
+
+  const linhas: { id: string; codman: number; agente: string | null }[] = []
+  for (const p of presos) {
+    const [row] = await db
+      .update(manifestoBaixaPedidos)
+      .set({
+        situacao: 'conferencia',
+        mensagem: ((p.mensagem ?? '') + ' ' + marca).trim().slice(0, 4000),
+      })
+      .where(
+        and(
+          eq(manifestoBaixaPedidos.id, p.id),
+          eq(manifestoBaixaPedidos.situacao, 'executando'),
+        ),
+      )
+      .returning({ id: manifestoBaixaPedidos.id })
+    if (row) linhas.push({ id: p.id, codman: p.codman, agente: p.agente })
+  }
 
   if (linhas.length) {
     logger.warn(
