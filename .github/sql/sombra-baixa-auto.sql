@@ -73,3 +73,33 @@ SELECT origem, count(*) AS qtd
   FROM manifesto_baixa_pedidos
  WHERE created_at > now() - make_interval(hours => :horas)
  GROUP BY 1 ORDER BY 2 DESC;
+
+\echo ''
+\echo '=== 6. PEDIDOS em detalhe — o que o robo fez com cada um ==='
+-- A pergunta que o item 5 nao responde: o pedido foi CRIADO, mas andou?
+-- 'executando' parado ha horas = robo morreu no meio e nunca reportou. Isso NAO se
+-- resolve sozinho: reivindicarProximo recusa dar trabalho novo a um agente que ja
+-- tem algo executando, entao UM pedido preso trava a fila daquela maquina inteira.
+SELECT codman, serie, origem,
+       situacao,
+       coalesce(agente, '—')                      AS agente,
+       to_char(created_at,     'DD/MM HH24:MI')   AS criado,
+       to_char(reivindicado_em,'DD/MM HH24:MI')   AS pego,
+       to_char(concluido_em,   'DD/MM HH24:MI')   AS concluido,
+       rc,
+       left(coalesce(mensagem, ''), 40)           AS mensagem,
+       coalesce(author_name, '—')                 AS autor
+  FROM manifesto_baixa_pedidos
+ WHERE created_at > now() - make_interval(hours => :horas)
+    OR situacao IN ('na_fila', 'executando', 'conferencia')
+ ORDER BY created_at DESC
+ LIMIT 40;
+
+\echo ''
+\echo '=== 7. PEDIDOS PRESOS — os que travam a fila ==='
+SELECT situacao,
+       count(*)                                                   AS qtd,
+       round(extract(epoch from now() - min(created_at)) / 3600.0, 1) AS mais_antigo_h
+  FROM manifesto_baixa_pedidos
+ WHERE situacao IN ('na_fila', 'executando', 'conferencia')
+ GROUP BY 1 ORDER BY 1;
