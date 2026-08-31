@@ -716,6 +716,14 @@ function BaixaManifestoConteudo() {
                     if (!r) { setResultadoCiclo('Ciclo executado.'); return }
                     const partes = [`${r.elegiveis} elegível(is)`, `${r.enfileirados} enfileirado(s)`]
                     if (r.naoEnfileirados) partes.push(r.naoEnfileirados)
+                    // Falha isolada continua sendo falha: desde 31/08 um manifesto que
+                    // estoura não derruba mais o ciclo, e é justamente por isso que ele
+                    // precisa aparecer aqui — senão some num ciclo de aparência normal.
+                    if (r.falhas?.length) {
+                      partes.push(
+                        `⚠ ${r.falhas.length} falha(s) ao enfileirar: ${r.falhas.map((f) => f.codman).join(', ')}`,
+                      )
+                    }
                     if (r.modo !== 'real') partes.push('modo SOMBRA — nada é enfileirado')
                     setResultadoCiclo(partes.join(' · '))
                   },

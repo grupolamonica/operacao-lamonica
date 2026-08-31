@@ -1,4 +1,5 @@
 import { Elysia, t } from 'elysia'
+import { ehCodigoPg } from '../../db/erro-pg'
 import { authGuard, requireRole } from '../../lib/rbac'
 import {
   createUser,
@@ -117,8 +118,10 @@ const adminPlugin = new Elysia({ name: 'users-admin' })
           try {
             return await createUser(body)
           } catch (e: any) {
-            // postgres-js exposes unique-violation as code '23505'.
-            if (e?.code === '23505') {
+            // postgres-js expõe unique-violation como '23505' — mas o drizzle embrulha
+            // o erro e o código fica em `cause.code`. Lendo `e.code` direto, cadastrar
+            // e-mail repetido devolvia 500 em vez de 409. Ver `db/erro-pg.ts`.
+            if (ehCodigoPg(e, '23505')) {
               set.status = 409
               return { error: 'Email already exists' }
             }

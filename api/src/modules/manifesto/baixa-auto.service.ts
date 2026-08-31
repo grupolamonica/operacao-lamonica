@@ -21,6 +21,7 @@
 import { and, gte, inArray, sql } from 'drizzle-orm'
 
 import { db } from '../../db/client'
+import { cadeiaDeErro, codigoPg, detalharErro, motivoRaiz } from '../../db/erro-pg'
 import { manifestoBaixaAutoAvaliacoes, manifestoBaixaPedidos, type ModoBaixaAuto } from '../../db/schema'
 import { logger } from '../../lib/logger'
 import { getPendencias, type ManifestoPendencia } from './manifesto.service'
@@ -45,6 +46,14 @@ export interface ResumoCiclo {
   /** só em modo real: o que foi efetivamente enfileirado, e por que o resto não foi */
   enfileirados: number
   naoEnfileirados: string | null
+  /**
+   * Manifestos que estouraram na hora de enfileirar. Normalmente vazio.
+   *
+   * Existe para que uma falha isolada seja VISÍVEL sem deixar de ser isolada: antes de
+   * 31/08 ela derrubava o ciclo inteiro (500), e a alternativa preguiçosa — engolir e
+   * seguir — deixaria o ciclo "verde" escondendo manifesto que nunca é enfileirado.
+   */
+  falhas: { codman: number; erro: string }[]
 }
 
 /** Instante do ciclo, truncado em 10 min — a identidade que dedupe usa. */
@@ -110,8 +119,12 @@ function paraData(valor: string | null): Date | null {
  * sozinho poupa a investigação inteira.
  */
 function comMensagemDeMigration(e: unknown): Error {
-  const codigo = (e as { code?: string })?.code
-  const msg = e instanceof Error ? e.message : String(e)
+  // Ambas as leituras precisam atravessar o embrulho do drizzle: `code` fica em
+  // `cause.code`, e a mensagem de topo é "Failed query: ..." — o "does not exist"
+  // só aparece na causa. Do jeito antigo, os DOIS lados do `if` davam falso e a
+  // dica de migration nunca saía. Ver `db/erro-pg.ts`.
+  const codigo = codigoPg(e)
+  const msg = cadeiaDeErro(e)
   if (codigo === '42P01' || /manifesto_baixa_auto_avaliacoes.*does not exist/i.test(msg)) {
     return new Error(
       'manifesto_baixa_auto_avaliacoes não existe — aplique drizzle/manifesto-baixa-automacao.sql ' +
@@ -245,6 +258,7 @@ export async function avaliarCiclo(): Promise<ResumoCiclo> {
   // posto não há máquina para executar, sem teto não há limite, e só então age.
   let enfileirados = 0
   let naoEnfileirados: string | null = null
+  const falhas: { codman: number; erro: string }[] = []
 
   if (modo === 'real' && paraFila.length) {
     const posto = await postoAtual()
@@ -280,34 +294,54 @@ export async function avaliarCiclo(): Promise<ResumoCiclo> {
           const achado = porChaveElegivel.get(`${item.codman}|${item.filial}|${item.serie}`)
           if (!achado) continue
           const { p, a } = achado
-          const r = await pedirBaixa({
-            codman: item.codman,
-            filial: item.filial,
-            serie: item.serie,
-            operatorId: posto.user_id,
-            origem: a.regra === 'galileu_finalizado' ? 'galileu' : 'spx',
-            regra: a.regra,
-            referenciaCliente: p.referencia_cliente?.valor ?? null,
-            clienteStatus: a.evidencia?.status ?? null,
-            clienteCarimbo: paraData(a.evidencia?.carimbo ?? null),
-            guardas: {
+          // try/catch POR ITEM, e não em volta do laço. Em 31/08 um único manifesto
+          // (o 69465, que já tinha pedido em `conferencia`) fez `pedirBaixa` lançar, e
+          // como não havia captura em lugar nenhum da cadeia o ciclo INTEIRO virou 500:
+          // os outros 20 elegíveis não foram nem tentados, e o cron repetiu isso a cada
+          // 10 min em silêncio.
+          //
+          // A lição não é o defeito daquele dia — esse está corrigido em `db/erro-pg.ts`.
+          // É que enfileirar N manifestos é N operações independentes, e uma delas
+          // falhar não é motivo para as outras não acontecerem. Falha some no `falhas`
+          // do resumo, que a tela mostra; não é engolida.
+          try {
+            const r = await pedirBaixa({
+              codman: item.codman,
+              filial: item.filial,
+              serie: item.serie,
+              operatorId: posto.user_id,
+              origem: a.regra === 'galileu_finalizado' ? 'galileu' : 'spx',
               regra: a.regra,
-              destino_cliente: a.evidencia?.destino ?? null,
-              local_entrega_cte: p.referencia_cliente?.local_entrega_cte ?? null,
-              horas_aberto: p.horas_aberto ?? null,
-              estado_coletor: p.estado ?? null,
-              posto: posto.agente,
-            },
-          })
-          if (r.ok) {
-            enfileirados += 1
-            logger.info({ codman: item.codman, regra: a.regra, pedido: r.pedido.id },
-              '[baixa-auto] baixa AUTOMATICA enfileirada')
-          } else {
-            // Recusa aqui é quase sempre "já existe pedido ativo" — inclusive um
-            // pedido HUMANO criado entre a avaliação e agora. Não é erro: é o índice
-            // único fazendo o trabalho dele.
-            logger.info({ codman: item.codman, motivo: r.motivo }, '[baixa-auto] pedido recusado')
+              referenciaCliente: p.referencia_cliente?.valor ?? null,
+              clienteStatus: a.evidencia?.status ?? null,
+              clienteCarimbo: paraData(a.evidencia?.carimbo ?? null),
+              guardas: {
+                regra: a.regra,
+                destino_cliente: a.evidencia?.destino ?? null,
+                local_entrega_cte: p.referencia_cliente?.local_entrega_cte ?? null,
+                horas_aberto: p.horas_aberto ?? null,
+                estado_coletor: p.estado ?? null,
+                posto: posto.agente,
+              },
+            })
+            if (r.ok) {
+              enfileirados += 1
+              logger.info({ codman: item.codman, regra: a.regra, pedido: r.pedido.id },
+                '[baixa-auto] baixa AUTOMATICA enfileirada')
+            } else {
+              // Recusa aqui é quase sempre "já existe pedido ativo" — inclusive um
+              // pedido HUMANO criado entre a avaliação e agora. Não é erro: é o índice
+              // único fazendo o trabalho dele.
+              logger.info({ codman: item.codman, motivo: r.motivo }, '[baixa-auto] pedido recusado')
+            }
+          } catch (erro) {
+            // motivoRaiz e não a cadeia: a mensagem de topo do drizzle é a query inteira,
+            // então cortar a cadeia em 200 guardaria SQL e descartaria o motivo.
+            falhas.push({ codman: item.codman, erro: motivoRaiz(erro) })
+            logger.error(
+              { codman: item.codman, filial: item.filial, serie: item.serie, ...detalharErro(erro) },
+              '[baixa-auto] falha ao enfileirar UM manifesto — seguindo para os próximos',
+            )
           }
         }
       }
@@ -328,6 +362,7 @@ export async function avaliarCiclo(): Promise<ResumoCiclo> {
     tetoDiario: { limite, usadoHoje: await usadoHoje() },
     enfileirados,
     naoEnfileirados,
+    falhas,
   }
 
   logger.info(

@@ -433,6 +433,12 @@ export interface ResumoCicloAuto {
   naoEnfileirados: string | null
   tetoDiario: { limite: number; usadoHoje: number }
   fontes: { spx: string; galileu: string }
+  /**
+   * Manifestos que estouraram ao enfileirar. Normalmente vazio — mas a tela precisa
+   * mostrar, senão um ciclo "verde" esconde manifesto que nunca entra na fila.
+   * Opcional porque um backend anterior a 31/08 não manda o campo.
+   */
+  falhas?: { codman: number; erro: string }[]
 }
 
 /**

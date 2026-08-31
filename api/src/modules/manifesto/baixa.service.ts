@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { db } from '../../db/client'
+import { ehCodigoPg } from '../../db/erro-pg'
 import { redis } from '../../redis/client'
 import {
   manifestoBaixaPedidos,
@@ -148,12 +149,13 @@ export async function agenteDePlantao(): Promise<BatidaAgente | null> {
 /** Violação de índice único no Postgres. */
 const UNIQUE_VIOLATION = '23505'
 
+/**
+ * Antes lia `erro.code` direto e por isso NUNCA devolvia true: o drizzle embrulha o
+ * erro do driver e o SQLSTATE fica em `cause.code`. Custou o 500 de 31/08 — tanto no
+ * ciclo automático quanto no 409 do botão humano. Detalhes em `db/erro-pg.ts`.
+ */
 function ehUnique(erro: unknown): boolean {
-  return (
-    typeof erro === 'object' &&
-    erro !== null &&
-    (erro as { code?: string }).code === UNIQUE_VIOLATION
-  )
+  return ehCodigoPg(erro, UNIQUE_VIOLATION)
 }
 
 async function nomeDoOperador(operatorId: string | null): Promise<string | null> {
