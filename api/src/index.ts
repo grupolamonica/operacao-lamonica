@@ -12,6 +12,7 @@ import * as jose from 'jose'
 
 import { logger } from './lib/logger'
 import { db } from './db/client'
+import { detalharErro } from './db/erro-pg'
 import { redis } from './redis/client'
 import { vehicles } from './db/schema/vehicles'
 import { drivers } from './db/schema/drivers'
@@ -184,7 +185,11 @@ export const app = new Elysia()
     const msg = error instanceof Error ? error.message : String(error)
     if (code === 'VALIDATION') { set.status = 422; return { error: 'Validation error', details: msg.slice(0, 200) } }
     if (set.status === 401 || set.status === 403 || set.status === 404 || set.status === 429) return { error: msg }
-    logger.error({ code, error: msg }, 'unhandled error')
+    // A CADEIA de causas, não só `error.message`. Num erro do drizzle a mensagem de topo
+    // é "Failed query: insert into ..." — diz o que foi tentado e esconde o motivo. Em
+    // 31/08 o log tinha o erro e não tinha a razão dele, e o diagnóstico levou uma hora
+    // por causa disso. `detalharErro` traz também o SQLSTATE e a constraint que barrou.
+    logger.error({ code, ...detalharErro(error) }, 'unhandled error')
     set.status = 500
     return { error: 'Internal server error' }
   })

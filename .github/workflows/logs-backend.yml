@@ -1,0 +1,85 @@
+name: Logs do backend
+
+# POR QUE ISTO EXISTE
+#
+# Em 31/08 o "Executar agora" passou a responder 500 e a unica coisa que existia para
+# diagnosticar era a string "Internal server error" na tela. Nao ha acesso SSH a VPS;
+# o runner self-hosted e o unico caminho ate o processo. Ficamos ~1h adivinhando.
+#
+# Isto le `docker logs` do container do backend, so leitura, com redacao de segredos.
+#
+# SEGURANCA. Log de aplicacao e um lugar onde segredo vaza por acidente: um erro de
+# conexao ecoa a DATABASE_URL inteira, com senha. Por isso:
+#   1. a saida passa por um sed de redacao ANTES de chegar ao log do Actions;
+#   2. `minutos` e validado como digitos e passado como variavel, nunca interpolado;
+#   3. `filtro` vai por env para o grep, nunca dentro da string do shell.
+#
+# A redacao e propositalmente agressiva. Perder uma linha util e barato; vazar a senha
+# do banco no log de um workflow publico do Actions nao tem desfazer.
+
+on:
+  workflow_dispatch:
+    inputs:
+      minutos:
+        description: 'Janela em minutos (1-1440)'
+        required: false
+        default: '30'
+      filtro:
+        description: 'Regex ERE opcional (grep -Ei). Vazio = tudo.'
+        required: false
+        default: ''
+      linhas:
+        description: 'Maximo de linhas a exibir (1-1000)'
+        required: false
+        default: '200'
+
+permissions:
+  contents: read
+
+jobs:
+  logs:
+    runs-on: [self-hosted, torre]
+    timeout-minutes: 5
+    steps:
+      - name: Ler logs do torre-backend
+        env:
+          MINUTOS: ${{ inputs.minutos }}
+          FILTRO: ${{ inputs.filtro }}
+          LINHAS: ${{ inputs.linhas }}
+        run: |
+          set -euo pipefail
+
+          case "$MINUTOS" in ''|*[!0-9]*) echo "::error::minutos precisa ser numero"; exit 1;; esac
+          case "$LINHAS"  in ''|*[!0-9]*) echo "::error::linhas precisa ser numero";  exit 1;; esac
+          [ "$MINUTOS" -ge 1 ] && [ "$MINUTOS" -le 1440 ] || { echo "::error::minutos fora de 1-1440"; exit 1; }
+          [ "$LINHAS"  -ge 1 ] && [ "$LINHAS"  -le 1000 ] || { echo "::error::linhas fora de 1-1000";  exit 1; }
+
+          if ! docker inspect torre-backend >/dev/null 2>&1; then
+            echo "::error::container torre-backend nao existe nesta maquina"
+            exit 1
+          fi
+
+          echo "### Logs do torre-backend — ultimos ${MINUTOS}min" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          # A redacao. Ordem importa: credencial-em-URL primeiro, depois tokens
+          # conhecidos, depois o pente fino generico de CHAVE=valor.
+          redigir() {
+            sed -E \
+              -e 's#://[^:/@[:space:]]+:[^@[:space:]]+@#://***:***@#g' \
+              -e 's#eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+#***JWT***#g' \
+              -e 's#(sk-|ghp_|gho_|ghs_|github_pat_|xox[baprs]-)[A-Za-z0-9_-]{8,}#***TOKEN***#g' \
+              -e 's#([A-Za-z_]*(KEY|SECRET|TOKEN|PASSWORD|PASSWD|SENHA|APIKEY)[A-Za-z_]*[=:"'"'"' ]+)[^[:space:],}"'"'"']+#\1***#gI' \
+              -e 's#(Bearer|Basic) +[A-Za-z0-9._~+/=-]{8,}#\1 ***#g'
+          }
+
+          if [ -n "$FILTRO" ]; then
+            docker logs torre-backend --since "${MINUTOS}m" 2>&1 \
+              | redigir | grep -Ei -- "$FILTRO" | tail -n "$LINHAS" >> "$GITHUB_STEP_SUMMARY" || true
+          else
+            docker logs torre-backend --since "${MINUTOS}m" 2>&1 \
+              | redigir | tail -n "$LINHAS" >> "$GITHUB_STEP_SUMMARY" || true
+          fi
+
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat "$GITHUB_STEP_SUMMARY"
