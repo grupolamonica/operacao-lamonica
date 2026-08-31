@@ -908,6 +908,11 @@ function BaixaManifestoConteudo() {
                   <tr className="border-b text-left text-[10px] uppercase tracking-wider text-muted-foreground" style={{ borderColor: 'var(--border)' }}>
                     <th className="px-3 py-2.5 font-medium">Manifesto</th>
                     <th className="px-3 py-2.5 font-medium">Estado</th>
+                    <th className="w-12 px-2 py-2.5 text-center font-medium" title="Origem do veredito do estado — GPS do rastreador, SM da Angellira ou macro do motorista">Orig</th>
+                    <th className="px-2 py-2.5 text-center font-medium" title="Se a trava do baú comprovou a descarga no destino — só existe na frota; nos agregados a coluna fica vazia porque não há trava para ler">Trava</th>
+                    <th className="px-2 py-2.5 text-center font-medium" title="O caminhão já descarregou e deixou o cliente, e o manifesto continua aberto">Saiu</th>
+                    <th className="px-2 py-2.5 text-center font-medium" title="Elegível para baixa automática pelo status confirmado no portal do cliente">Auto</th>
+                    <th className="px-3 py-2.5 text-right font-medium">Ações</th>
                     <th className="px-3 py-2.5 font-medium">Prazo</th>
                     <th className="px-3 py-2.5 font-medium">Cavalo</th>
                     <th className="px-3 py-2.5 font-medium">Motorista</th>
@@ -980,14 +985,25 @@ function BaixaManifestoConteudo() {
                             <span className="text-muted-foreground italic">aguardando emissão</span>
                           )}
                         </td>
+                        {/* UMA COLUNA POR SELO (31/08). Antes isto era um <td> só, com um flex de OITO
+                            filhos e sete deles condicionais — então a posição de cada selo dependia do
+                            que a linha por acaso tinha, e o BAIXAR mudava de lugar a cada linha. Num
+                            botão IRREVERSÍVEL isso é risco de clique errado, não só desalinho.
+
+                            Coluna de verdade resolve sem número mágico: numa <table> a largura é do
+                            CONJUNTO das linhas, então todas alinham por construção — inclusive quando
+                            o rótulo do botão cresce de BAIXAR para EXECUTANDO, ou quando o chip de rc
+                            aparece. Mesma saída que a coluna do telefone e a de Referência já usaram,
+                            pelo mesmo motivo, e a mesma da MatrizTab do GRPage. */}
                         <td className="px-3 py-2">
-                          <div className="flex items-center gap-1.5">
                             <span
                               className="inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold whitespace-nowrap"
                               style={{ background: info.bg, color: info.fg }}
                             >
                               {info.emoji} {info.label}
                             </span>
+                        </td>
+                        <td className="w-12 px-2 py-2 text-center">
                             {p.origem_estado && (
                               <span
                                 className="rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide"
@@ -997,6 +1013,8 @@ function BaixaManifestoConteudo() {
                                 {ORIGEM_LABEL[p.origem_estado]}
                               </span>
                             )}
+                        </td>
+                        <td className="px-2 py-2 text-center">
                             {p.comprovacao_trava != null && (
                               <span
                                 className="rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide whitespace-nowrap"
@@ -1009,6 +1027,8 @@ function BaixaManifestoConteudo() {
                                 {p.comprovacao_trava ? TRAVA_CHIP.sim.label : TRAVA_CHIP.nao.label}
                               </span>
                             )}
+                        </td>
+                        <td className="px-2 py-2 text-center">
                             {jaSaiuDoCliente(p) && (
                               <span
                                 className="rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide whitespace-nowrap"
@@ -1018,6 +1038,8 @@ function BaixaManifestoConteudo() {
                                 {JA_SAIU_CHIP.label}
                               </span>
                             )}
+                        </td>
+                        <td className="px-2 py-2 text-center">
                             {/* F2 — o que a automação decidiu. Em SOMBRA o selo diz
                                 explicitamente que nada foi enfileirado: enquanto a regra
                                 está sendo medida, a fila continua sendo do operador, e um
@@ -1036,6 +1058,12 @@ function BaixaManifestoConteudo() {
                                 </span>
                               )
                             })()}
+                        </td>
+                        {/* Ações juntas e ancoradas à direita: o mouse aprende UM lugar. O justify-end
+                            é o que garante que a linha SEM o VALIDAR não desloque o botão de baixa —
+                            ancorar pela esquerda traria o problema de volta em menor escala. */}
+                        <td className="px-3 py-2">
+                          <div className="flex items-center justify-end gap-1.5">
                             {/* validação pedida em TODOS os descarregados (decisão Danilo):
                                 validação opcional enviesaria a precisão medida, porque se valida
                                 o caso estranho e se ignora o óbvio */}
@@ -1198,7 +1226,7 @@ function BaixaManifestoConteudo() {
                   })}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="px-3 py-8 text-center text-muted-foreground">
+                      <td colSpan={15} className="px-3 py-8 text-center text-muted-foreground">
                         {/* nunca afirmar "nenhum manifesto" sem ter conseguido ler: lista vazia
                             e leitura falhada são coisas diferentes para quem opera a fila */}
                         {isError ? (
