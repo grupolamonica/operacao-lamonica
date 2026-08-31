@@ -67,6 +67,7 @@ import { manifestoPlugin } from './modules/manifesto/manifesto.plugin'
 
 import { operacionalPlugin } from './modules/operacional/operacional.plugin'
 import { auditPlugin } from './modules/audit/audit.plugin'
+import { oportunidadesPlugin } from './modules/oportunidades/oportunidades.plugin'
 // Phase 12 — jobs Angellira (posições ao vivo + detectores de ocorrência)
 import { startAngelliraJobs } from './jobs/angellira-cron'
 import { processAlertDetection } from './jobs/alert-inline'
@@ -206,6 +207,7 @@ export const app = new Elysia()
   // Controle Operacional — painel SPX + override de status (no cluster autenticado)
   .use(operacionalPlugin)
   .use(auditPlugin)
+  .use(oportunidadesPlugin)
   .use(driversPlugin)
   .use(alertsPlugin)
   .use(vehiclesPlugin)

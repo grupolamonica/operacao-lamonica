@@ -41,3 +41,7 @@ export * from './manifesto-baixa-pedidos'
 export * from './manifesto-baixa-auto'
 export * from './relations'
 export * from './manifesto-agente-tokens'
+
+// Oportunidades de carga captadas (WhatsApp/sites/clientes) + custo/km de referência
+// v1 para a margem. Dado ORIGINAL da torre — não é cache de sistema externo.
+export * from './oportunidades-carga'
