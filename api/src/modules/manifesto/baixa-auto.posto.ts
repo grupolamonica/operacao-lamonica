@@ -181,3 +181,44 @@ export async function largarPosto(
     return { ok: false, motivo: e instanceof Error ? e.message : String(e) }
   }
 }
+
+// ── Trava de execução ────────────────────────────────────────────────────────
+
+const CHAVE_EXEC = 'manifesto:baixa:auto:executando'
+
+/**
+ * 180 s. Cobre um ciclo inteiro com folga (o fetch do SPX traz ~1.300 viagens em
+ * 3 abas e é a parte lenta). Se o processo morrer no meio, a trava expira sozinha
+ * em vez de bloquear a automação para sempre.
+ */
+const TTL_EXEC_SEG = 180
+
+/**
+ * Impede DOIS ciclos ao mesmo tempo — o agendado das :10 e um disparo manual, por
+ * exemplo.
+ *
+ * Sem isto, dois ciclos concorrentes leriam `usadoHoje()` antes de qualquer insert
+ * e cada um acharia que tem o teto inteiro disponível. O índice único dos pedidos
+ * ainda salvaria o caso comum (mesma ordenação, mesmos 3 manifestos, o segundo
+ * recusado), mas basta o universo mudar entre as duas leituras para os dois
+ * escolherem manifestos diferentes e o teto do dia dobrar em silêncio.
+ *
+ * Devolve `null` quando não conseguiu a trava — quem chama decide o que dizer.
+ */
+export async function travarExecucao(r?: RedisPosto): Promise<(() => Promise<void>) | null> {
+  try {
+    const cli = r ?? (await clienteRedis())
+    const pegou = await cli.set(CHAVE_EXEC, new Date().toISOString(), 'EX', TTL_EXEC_SEG, 'NX')
+    if (!pegou) return null
+    return async () => {
+      try {
+        await cli.del(CHAVE_EXEC)
+      } catch {
+        // soltar é best-effort: o TTL garante que a trava não fica presa
+      }
+    }
+  } catch {
+    // Redis fora: NÃO executa. Mesma doutrina do posto — sem coordenação, não age.
+    return null
+  }
+}

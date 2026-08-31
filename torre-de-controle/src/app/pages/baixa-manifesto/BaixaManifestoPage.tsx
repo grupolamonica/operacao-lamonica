@@ -32,6 +32,7 @@ import {
   type Telefone,
   type ValidacaoRegistro,
   usePostoAutomacao,
+  useExecutarAgora,
 } from '@/hooks/useManifestoPendencias'
 import { useNow } from '@/hooks/useNow'
 import { useAuthStore } from '@/stores/useAuthStore'
@@ -452,6 +453,10 @@ function BaixaManifestoConteudo() {
   // instalações, o user_id vem do token trm_ e é a conta que executa no Rodopar.
   const { ativar: ativarPosto, desativar: desativarPosto } = usePostoAutomacao()
   const ehMeuPosto = Boolean(postoAuto && roboVivos.some((a) => a.agente === postoAuto.agente))
+  // Disparo manual do ciclo — ver useExecutarAgora. A mensagem fica na tela até o
+  // próximo clique: um toast que some em 3s não serve para conferir o que o robô fez.
+  const executarAgora = useExecutarAgora()
+  const [resultadoCiclo, setResultadoCiclo] = useState<string | null>(null)
   // O MEU robô, que desde o roteamento é outra pergunta. Com a fila roteada, o pedido
   // que eu crio só é pego pelo robô da minha máquina — então "3 robôs conectados" com
   // o meu desligado é um selo verde mentindo sobre a minha fila.
@@ -694,6 +699,39 @@ function BaixaManifestoConteudo() {
               {ativarPosto.isPending ? 'Ativando…' : 'Ativar automação'}
             </Button>
           ) : null}
+          {/* Executar agora — só faz sentido com o posto ativo AQUI: sem posto o ciclo
+              avalia e não enfileira, e o botão prometeria o que não pode cumprir. */}
+          {ehMeuPosto && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-xs"
+              disabled={executarAgora.isPending}
+              title="Roda um ciclo agora em vez de esperar os 10 min. Mesmas regras e mesmo teto — só adianta."
+              onClick={() => {
+                setResultadoCiclo(null)
+                executarAgora.mutate(undefined, {
+                  onSuccess: (d) => {
+                    const r = d?.resumo
+                    if (!r) { setResultadoCiclo('Ciclo executado.'); return }
+                    const partes = [`${r.elegiveis} elegível(is)`, `${r.enfileirados} enfileirado(s)`]
+                    if (r.naoEnfileirados) partes.push(r.naoEnfileirados)
+                    if (r.modo !== 'real') partes.push('modo SOMBRA — nada é enfileirado')
+                    setResultadoCiclo(partes.join(' · '))
+                  },
+                  onError: (e) => setResultadoCiclo((e as Error).message),
+                })
+              }}
+            >
+              <Bot className="h-3.5 w-3.5" />
+              {executarAgora.isPending ? 'Executando…' : 'Executar agora'}
+            </Button>
+          )}
+          {resultadoCiclo && (
+            <span className="text-xs text-muted-foreground" title="Resultado do último disparo manual">
+              {resultadoCiclo}
+            </span>
+          )}
           <Button
             size="sm"
             variant="outline"
