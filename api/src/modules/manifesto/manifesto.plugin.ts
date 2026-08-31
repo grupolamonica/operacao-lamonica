@@ -21,11 +21,13 @@ import { relatorioTratativas } from './tratativas.report.service'
 import {
   agentesDePlantao,
   liberarConferencia,
+  pedidosEmConferencia,
   pedidosPorManifesto,
   pedirBaixa,
   registrarResultado,
   reivindicarProximo,
 } from './baixa.service'
+import { detalharErro } from '../../db/erro-pg'
 import { donoDoToken, marcarUso, gerarToken, tokenAtivo, revogarToken } from './agente-token.service'
 import { applySnapshot, getPendencias } from './manifesto.service'
 import { avaliacoesPorManifesto, executarAgora } from './baixa-auto.service'
@@ -218,6 +220,46 @@ const ReferenciaClienteSchema = t.Object({
 }, { additionalProperties: true })
 
 /**
+ * A ocorrência que FINALIZA o manifesto no Rodopar (`RODOCO.FINMAN='S'`), perguntada
+ * ao ERP pelo coletor.
+ *
+ * ── POR QUE ISTO EXISTE ─────────────────────────────────────────────────────────
+ *
+ * Quando um pedido cai em `conferencia`, a pergunta que trava tudo é: **o Efetuar
+ * chegou a ser clicado?** Esta tela NÃO responde isso. Ela lista manifesto ABERTO
+ * (`SITUAC='E'`), e aberto não quer dizer intocado.
+ *
+ * A baixa no Rodopar tem DOIS passos, em momentos diferentes:
+ *
+ *     robô clica Efetuar   →  ocorrência FINMAN='S' gravada nas notas
+ *        ...minutos...
+ *     AGENDADOR do Rodopar →  RODMAN.SITUAC 'E'→'B' + DATBAI
+ *
+ * Entre um e outro o manifesto está aberto COM a ocorrência já lançada. Repetir ali
+ * duplica o lançamento — é exatamente o risco que faz `conferencia` existir e mandar
+ * uma pessoa abrir o Rodopar. O próprio ERP tem relatório para esse estado:
+ * `VW_REL_MAN_SEM_BAIXA_COM_OCO_FINMAN`.
+ *
+ * Este campo traz a resposta pronta, para trocar "vá conferir" por "conferimos, olha a
+ * evidência". Ele NÃO decide nada: quem libera continua sendo uma pessoa.
+ *
+ * Só o coletor pode produzi-lo — o torre não alcança o SQL Server do Rodopar. E vem só
+ * para os manifestos que o torre pediu em `GET /api/manifesto/conferencia`: a consulta
+ * é 0,1 s por manifesto com filtro por CODMAN, mas passa de 7 MINUTOS se rodada em lote
+ * sobre todos os abertos (medido em 31/08 — o filtro é o que deixa o índice trabalhar).
+ */
+const OcorrenciaEntregaSchema = t.Object({
+  /** `true` = o Efetuar JÁ foi clicado. Repetir duplicaria o lançamento. */
+  tem: t.Boolean(),
+  /** Quantas linhas casaram. Só `> 0` importa — o número varia com a quantidade de notas. */
+  registros: t.Optional(t.Nullable(t.Number())),
+  /** Quando o coletor perguntou ao Rodopar (ISO local). Evidência velha não decide nada. */
+  verificado_em: t.Optional(t.Nullable(t.String())),
+  /** Preenchido quando a consulta FALHOU. Com erro, `tem` não significa nada. */
+  erro: t.Optional(t.Nullable(t.String())),
+})
+
+/**
  * v1 e v2 coexistem no MESMO endpoint enquanto o coletor_v2.py não substitui o
  * coletor.py em produção (ver V2-CONTRATO.md). Por isso TODOS os campos — dos
  * dois formatos — são t.Optional aqui: um snapshot v1 não traz os campos v2
@@ -327,6 +369,9 @@ const PendenciaSchema = t.Object({
   macro: t.Optional(t.Nullable(MacroSchema)),
   destino_historico: t.Optional(t.Nullable(DestinoHistoricoSchema)),
   referencia_cliente: t.Optional(t.Nullable(ReferenciaClienteSchema)),
+  // Só vem para os manifestos que o torre pediu em GET /conferencia. Ausente é o normal
+  // e significa "não perguntamos", NUNCA "não tem" — a tela precisa distinguir os dois.
+  ocorrencia_entrega: t.Optional(t.Nullable(OcorrenciaEntregaSchema)),
 })
 
 const ingestPlugin = new Elysia({ name: 'manifesto-ingest' }).group('/api/manifesto', (app) =>
@@ -416,6 +461,48 @@ const ingestPlugin = new Elysia({ name: 'manifesto-ingest' }).group('/api/manife
         detail: {
           tags: ['manifesto'],
           summary: '[API key] Agente devolve o resultado da execução (rc 6/11 vira conferência humana)',
+        },
+      },
+    )
+    /**
+     * Quais manifestos estão travados em `conferencia` — a pergunta que o coletor faz
+     * ANTES de montar o snapshot.
+     *
+     * O torre não alcança o SQL Server do Rodopar; o coletor alcança. Então a divisão é:
+     * o torre diz DE QUEM precisa saber, o coletor pergunta ao ERP e devolve a resposta
+     * no `ocorrencia_entrega` de cada pendência do POST seguinte.
+     *
+     * Poderia ser o coletor perguntando por todos, e não foi por medida: a consulta da
+     * ocorrência custa 0,1 s filtrada por CODMAN e mais de 7 MINUTOS em lote sobre os
+     * abertos. Esta lista é o que mantém a verificação dentro do ciclo de 5 min.
+     *
+     * x-api-key e não authGuard: quem chama é o coletor, como no POST ao lado.
+     */
+    .get(
+      '/conferencia',
+      async ({ set, request }) => {
+        const auth = checkApiKey(request)
+        if (!auth.ok) {
+          set.status = auth.status
+          return { ok: false, error: auth.error }
+        }
+        try {
+          return { ok: true, manifestos: await pedidosEmConferencia() }
+        } catch (e: any) {
+          // Degrada para lista vazia em vez de 500: o coletor usa isto como enfeite do
+          // ciclo, e derrubar a coleta inteira porque a verificação não pôde ser montada
+          // seria trocar um diagnóstico por uma interrupção.
+          logger.error(
+            { ...detalharErro(e) },
+            '[manifesto] não consegui listar pedidos em conferência — devolvendo vazio',
+          )
+          return { ok: true, manifestos: [] as { codman: number; filial: number; serie: string }[] }
+        }
+      },
+      {
+        detail: {
+          tags: ['manifesto'],
+          summary: '[API key] Manifestos em conferência — o coletor pergunta ao Rodopar por estes',
         },
       },
     ),

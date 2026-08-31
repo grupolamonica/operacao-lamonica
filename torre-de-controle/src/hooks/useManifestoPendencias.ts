@@ -195,6 +195,28 @@ export interface PendenciaManifesto {
   destino_historico?: ManifestoDestinoHistorico | null
   // F1 — referência que o cliente usa para a viagem (RODCON.ORDCOM), só exibição
   referencia_cliente?: ManifestoReferenciaCliente | null
+  // A ocorrência que finaliza o manifesto no Rodopar (RODOCO.FINMAN='S'), respondida pelo
+  // coletor. Só vem para manifesto em `conferencia`: AUSENTE significa "não perguntamos",
+  // nunca "não tem" — a tela precisa dizer coisas diferentes nos dois casos.
+  ocorrencia_entrega?: ManifestoOcorrenciaEntrega | null
+}
+
+/**
+ * Responde a única pergunta que importa em `conferencia`: o Efetuar chegou a ser clicado?
+ *
+ * A tela lista manifesto ABERTO, e aberto não é o mesmo que intocado. A baixa no Rodopar
+ * tem dois passos — o Efetuar grava a ocorrência, e o AGENDADOR interno baixa minutos
+ * depois — e entre eles existe um estado em que repetir duplicaria o lançamento.
+ */
+export interface ManifestoOcorrenciaEntrega {
+  /** true = o Efetuar JÁ foi clicado. NÃO liberar: repetir duplica o lançamento. */
+  tem: boolean
+  /** Quantas linhas casaram. Só `> 0` importa; o número varia com a quantidade de notas. */
+  registros?: number | null
+  /** Quando o coletor perguntou ao Rodopar. Evidência velha não decide nada. */
+  verificado_em?: string | null
+  /** Preenchido quando a consulta FALHOU — com erro, `tem` não significa nada. */
+  erro?: string | null
 }
 
 // ── Justificativa do operador (12/08) ──────────────────────────────────────

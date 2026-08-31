@@ -282,6 +282,42 @@ export async function pedidosPorManifesto(
 }
 
 /**
+ * Manifestos com pedido parado em `conferencia` — a lista que o coletor pede antes de
+ * montar o snapshot, para perguntar ao Rodopar se cada um recebeu a ocorrência final.
+ *
+ * POR QUE UMA LISTA, E NÃO "TODOS". A consulta da ocorrência no Rodopar custa 0,1 s com
+ * filtro por CODMAN e passa de 7 MINUTOS em lote sobre todos os manifestos abertos
+ * (medido em 31/08): o filtro é o que permite usar o índice. Como `conferencia` é raro —
+ * um único caso em três dias de piloto — perguntar só por eles é o que torna a
+ * verificação viável dentro do ciclo de 5 min do coletor.
+ *
+ * Sem teto de propósito: se um dia houver 40 em conferência, o problema a resolver é
+ * esse, não o tamanho da resposta. 40 × 0,1 s ainda cabe no ciclo.
+ */
+export async function pedidosEmConferencia(): Promise<
+  { codman: number; filial: number; serie: string }[]
+> {
+  const rows = await db
+    .select({
+      codman: manifestoBaixaPedidos.codman,
+      filial: manifestoBaixaPedidos.filial,
+      serie: manifestoBaixaPedidos.serie,
+    })
+    .from(manifestoBaixaPedidos)
+    .where(eq(manifestoBaixaPedidos.situacao, 'conferencia'))
+    .orderBy(asc(manifestoBaixaPedidos.createdAt))
+  // O índice parcial garante no máximo um pedido ativo por manifesto, mas dedupe aqui
+  // mesmo assim: a lista vira N consultas no Rodopar e repetir seria desperdício puro.
+  const vistos = new Set<string>()
+  return rows.filter((r) => {
+    const chave = chaveManifesto(r.codman, r.filial, r.serie)
+    if (vistos.has(chave)) return false
+    vistos.add(chave)
+    return true
+  })
+}
+
+/**
  * O agente pega o próximo da fila.
  *
  * Devolve null quando a fila está vazia OU quando ESTE agente já tem um `executando`. O limite é
