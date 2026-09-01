@@ -147,3 +147,55 @@ describe('postoAtual', () => {
     expect(await postoAtual(quebrado)).toBeNull()
   })
 })
+
+/**
+ * O TTL é a coisa mais fácil de "otimizar" sem entender, e foi ele que causou o
+ * incidente de 01/09/2026. Este bloco existe para que baixá-lo quebre o CI.
+ */
+describe('TTL do posto — a invariante que o incidente de 01/09 deixou', () => {
+  /** Captura o TTL que foi realmente passado ao Redis. */
+  function espiaTtl(inicial: string | null = null) {
+    let valor = inicial
+    const ttls: number[] = []
+    const r: RedisPosto = {
+      async get() { return valor },
+      async set(_c, v, _ex, ttl, nx) {
+        ttls.push(ttl as number)
+        if (nx === 'NX' && valor !== null) return null
+        valor = v
+        return 'OK'
+      },
+      async del() { valor = null; return 1 },
+    }
+    return { r, ttls }
+  }
+
+  // O MESMO valor de TTL_AGENTE_SEG em baixa.service.ts. Se você mudar um, mude o outro.
+  const TTL_DA_BATIDA = 600
+
+  it('assumir usa o mesmo TTL da batida do agente', async () => {
+    const { r, ttls } = espiaTtl()
+    await assumirPosto('ORION-05\maria', 'u1', 'Maria', r)
+    expect(ttls).toEqual([TTL_DA_BATIDA])
+  })
+
+  it('renovar usa o mesmo TTL', async () => {
+    const { r, ttls } = espiaTtl(JSON.stringify({
+      agente: 'ORION-05\maria', user_id: 'u1', nome: 'Maria',
+      desde: '2026-09-01T12:00:00.000Z', visto_em: '2026-09-01T12:00:00.000Z',
+    }))
+    await renovarPosto('ORION-05\maria', r)
+    expect(ttls).toEqual([TTL_DA_BATIDA])
+  })
+
+  it('o TTL cobre uma baixa inteira COM folga — foi isto que falhou', async () => {
+    // Durante `Processar` o agente não chama /baixa/proximo, e esse é o único ponto que
+    // renova. Baixa medida em produção: ~3 min (13:00:00 -> 13:03:00 em 01/09, e o par
+    // 11:10 -> 11:16). Com TTL de 120 s a automação se desligava no meio da PRÓPRIA
+    // baixa que tinha autorizado, e o posto nunca voltava sozinho.
+    const BAIXA_MEDIDA_SEG = 3 * 60
+    const { r, ttls } = espiaTtl()
+    await assumirPosto('ORION-05\maria', 'u1', 'Maria', r)
+    expect(ttls[0]).toBeGreaterThan(BAIXA_MEDIDA_SEG * 2)
+  })
+})

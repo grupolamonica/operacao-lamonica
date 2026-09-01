@@ -444,6 +444,18 @@ export async function registrarResultado(input: {
     { codman: row.codman, rc: input.rc, situacao, efetuar_clicado: input.efetuarClicado },
     '[manifesto] resultado da baixa',
   )
+  // RENOVA O POSTO AO TERMINAR (01/09). Durante a baixa o agente não chama
+  // /baixa/proximo — o laço do PowerShell fica parado em `Processar`, síncrono, por ~3
+  // min medidos —, e esse é o ÚNICO ponto que renovava o posto. A automação desligava a
+  // si mesma no meio da primeira baixa que autorizava.
+  //
+  // Aqui é o primeiro instante em que a máquina volta a falar. Renovar neste ponto faz
+  // o TTL precisar cobrir UMA baixa, nunca uma cadeia delas.
+  //
+  // Usa `row.agente`, do banco, e NÃO um campo novo no corpo da requisição: o torre
+  // sobe pelo CI, mas o Agente-Baixa.ps1 vive na máquina de cada operador. Exigir campo
+  // novo quebraria todas as instalações antigas no instante do deploy.
+  if (row.agente) await renovarPosto(row.agente)
   return resumo(row)
 }
 
