@@ -55,11 +55,46 @@ async function clienteRedis(): Promise<RedisPosto> {
 const CHAVE = 'manifesto:baixa:auto:posto'
 
 /**
- * 120 s. Curto de propósito: é o tempo máximo que o posto fica preso numa máquina
- * morta. Com o agente batendo a cada 15 s, sobra folga de 8 batidas — uma rede lenta
- * não derruba o posto de quem está vivo.
+ * 600 s — o MESMO TTL da batida do agente (`baixa.service.ts`, TTL_AGENTE_SEG).
+ *
+ * ── POR QUE MUDOU DE 120 PARA 600 (01/09/2026) ──────────────────────────────────
+ *
+ * O raciocínio original ("com o agente batendo a cada 15 s, sobra folga de 8 batidas")
+ * estava certo para um agente OCIOSO e errado para um agente TRABALHANDO. A única coisa
+ * que renova o posto é `POST /baixa/proximo`, e o agente só chama isso quando está
+ * pedindo trabalho. Enquanto executa uma baixa, o laço do PowerShell fica parado em
+ * `Processar $r.pedido` — síncrono, sem uma única chamada.
+ *
+ * Baixa medida em produção: ~3 minutos. TTL: 2 minutos. Resultado: a automação
+ * DESLIGAVA A SI MESMA no meio da primeira baixa que autorizava.
+ *
+ * Cronometrado em 01/09, com o posto observado de 15 em 15 s:
+ *
+ *     12:47:04  posto assumido
+ *     12:47→12:53  vivo e renovando (5 min ocioso, muito além dos 120 s)
+ *     13:00:00  ciclo enfileira 69679 — prova de que o posto ainda estava vivo
+ *     13:00→13:03  robô executando, ZERO chamadas
+ *     13:03:00  concluído rc=0
+ *     19:20     posto = null
+ *
+ * Nenhum deploy naquele dia. O que matou foi o trabalho.
+ *
+ * ── POR QUE 600 E NÃO OUTRO NÚMERO ──────────────────────────────────────────────
+ *
+ * Não é folga arbitrária: é o TTL que a batida do agente já usa. Os dois respondem a
+ * MESMA pergunta — "essa máquina está aí?" — e tê-los com tolerâncias 5x diferentes é
+ * o que produzia o sintoma clássico: o chip "Robô conectado" (600 s) verde enquanto a
+ * automação (120 s) já tinha caído. Dois relógios discordando sobre o mesmo fato.
+ *
+ * O custo aceito: posto preso numa máquina morta por até 10 min em vez de 2. Esse
+ * fantasma JÁ EXISTE hoje para o "Robô conectado" — alinhar não cria risco novo, só
+ * para de esconder o que já havia.
+ *
+ * Isto sozinho não basta para uma baixa que trave por mais de 10 min; por isso
+ * `registrarResultado` também renova, e aí o TTL só precisa cobrir UMA baixa, nunca a
+ * cadeia inteira.
  */
-const TTL_SEG = 120
+const TTL_SEG = 600
 
 export interface Posto {
   /** nome da máquina, como o agente se identifica em /baixa/proximo */
@@ -81,12 +116,25 @@ function parse(bruto: string | null): Posto | null {
   }
 }
 
-/** Quem está no posto agora, ou null. Nunca lança: leitura de apoio. */
+/**
+ * Quem está no posto agora, ou null. Nunca lança: leitura de apoio.
+ *
+ * ATENÇÃO ao que `null` significa aqui: ele é AMBÍGUO de propósito, e o lado ambíguo é
+ * o seguro. "Ninguém no posto" e "Redis inacessível" devolvem o mesmo `null`, e quem
+ * consome trata os dois como "não automatize" — que é o certo nos dois casos.
+ *
+ * O que estava errado até 01/09 era o catch mudo: o erro sumia, então a diferença entre
+ * "posto livre" e "Redis quebrado" não existia nem no log. Agora existe.
+ */
 export async function postoAtual(r?: RedisPosto): Promise<Posto | null> {
   try {
     const cli = r ?? (await clienteRedis())
     return parse(await cli.get(CHAVE))
-  } catch {
+  } catch (e) {
+    logger.warn(
+      { erro: e instanceof Error ? e.message : String(e) },
+      '[baixa-auto] não consegui ler o posto (Redis) — tratando como vazio, a automação não vai agir',
+    )
     return null
   }
 }
@@ -153,9 +201,18 @@ export async function renovarPosto(agente: string, r?: RedisPosto): Promise<void
     if (!dono || dono.agente !== agente) return
     const renovado: Posto = { ...dono, visto_em: new Date().toISOString() }
     await cli.set(CHAVE, JSON.stringify(renovado), 'EX', TTL_SEG)
-  } catch {
-    // renovação é best-effort: se falhar, o TTL expira e o posto fica livre — de novo,
-    // o lado seguro do erro
+  } catch (e) {
+    // Continua best-effort — falhar aqui deixa o TTL expirar, que é o lado seguro do
+    // erro. O que mudou em 01/09 foi o SILÊNCIO: este catch era vazio, então oito
+    // renovações falhadas seguidas derrubavam o posto sem UMA linha de log em lugar
+    // nenhum. Passei um dia inteiro atrás de uma causa que teria aparecido aqui.
+    //
+    // warn e não error: renovação perdida é recuperável (a próxima batida resolve). Só
+    // vira problema se repetir, e repetido no log é visível.
+    logger.warn(
+      { agente, erro: e instanceof Error ? e.message : String(e) },
+      '[baixa-auto] falha ao renovar o posto — se repetir, ele expira e a automação para',
+    )
   }
 }
 

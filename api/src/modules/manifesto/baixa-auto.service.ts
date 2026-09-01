@@ -365,12 +365,22 @@ export async function avaliarCiclo(): Promise<ResumoCiclo> {
     falhas,
   }
 
+  // enfileirados/naoEnfileirados VÃO no log, e isso não é enfeite: até 01/09 esta linha
+  // omitia os dois, então um ciclo que não enfileirou NADA por falta de posto produzia
+  // exatamente a mesma saída de um ciclo saudável. A automação ficou parada horas, várias
+  // vezes, e o log dizia "ciclo avaliado" o tempo todo. Um ciclo morto tem que PARECER
+  // morto para quem lê.
   logger.info(
     { modo, candidatos: resumo.candidatos, elegiveis: resumo.elegiveis, gravadas,
-      fontes: resumo.fontes },
+      fontes: resumo.fontes,
+      enfileirados: resumo.enfileirados,
+      naoEnfileirados: resumo.naoEnfileirados,
+      falhas: resumo.falhas.length },
     modo === 'sombra'
       ? '[baixa-auto] ciclo em SOMBRA — nada foi enfileirado'
-      : '[baixa-auto] ciclo avaliado',
+      : resumo.naoEnfileirados
+        ? '[baixa-auto] ciclo avaliado — NADA ENFILEIRADO'
+        : '[baixa-auto] ciclo avaliado',
   )
 
   return resumo
