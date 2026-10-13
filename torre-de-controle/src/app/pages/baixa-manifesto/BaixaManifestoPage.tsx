@@ -1808,9 +1808,16 @@ function ManifestoDetailPanel({
                   e não dizia o que procurar nem onde. O coletor agora pergunta ao ERP pela
                   cadeia que o próprio Rodopar usa (RODIMA→RODCON→RODNFC→RODOCH→RODOCO com
                   FINMAN='S') e traz a resposta.
-                  Os TRÊS estados são distintos de propósito: sem evidência ainda, evidência
-                  de que não foi lançado, e evidência de que FOI. Tratar "ausente" como
-                  "não tem" seria o mesmo erro que este bloco existe para evitar. */}
+                  São QUATRO estados, distintos de propósito: sem evidência ainda, evidência
+                  de que não foi lançado, evidência de que FOI, e — desde 13/10 — evidência
+                  de que só foi lançada ocorrência INTERNA. Tratar "ausente" como "não tem"
+                  seria o mesmo erro que este bloco existe para evitar.
+
+                  O quarto estado é o 70329: fechado por 104 SAIDA DESCARGA da cerca
+                  eletrônica (PROC_CERCA), que não está no mapa RODOCC da Nestlé. Contando
+                  qualquer FINMAN='S', a tela dizia "ENCONTRADA, não repita" — e o cliente
+                  ficou sem ocorrência de entrega. Cor de ATENÇÃO, não verde: não está tudo
+                  bem, só não há risco de duplicar. */}
               {(() => {
                 const oco = p.ocorrencia_entrega
                 if (!oco || oco.erro) {
@@ -1824,6 +1831,25 @@ function ManifestoDetailPanel({
                     </p>
                   )
                 }
+                const verificado = oco.verificado_em && (
+                  <span className="text-muted-foreground"> Verificado em {fmtInstante(oco.verificado_em)}.</span>
+                )
+                // `tem` vence `so_interna`: se o coletor um dia mandar os dois, o lado seguro
+                // é não repetir. Só tem=false + so_interna=true abre o quarto estado.
+                if (!oco.tem && oco.so_interna) {
+                  return (
+                    <p className="mt-2 text-[11px]" style={{ color: 'var(--status-em-risco-fg)' }}>
+                      <strong>
+                        O Rodopar só tem ocorrência INTERNA{oco.detalhe ? `: ${oco.detalhe}` : ''}.
+                      </strong>{' '}
+                      Ela fecha o manifesto, mas o cliente NÃO recebeu ocorrência de entrega. Pedir
+                      a baixa de novo lança a ocorrência de entrega sem duplicar nada que o cliente
+                      vê — enquanto o manifesto estiver aberto: depois que o AGENDADOR o baixar, o
+                      robô responde "não está pendente" e a de entrega fica por lançar à mão.
+                      {verificado}
+                    </p>
+                  )
+                }
                 const cor = oco.tem ? 'var(--status-atrasado-fg)' : 'var(--status-no-prazo-fg)'
                 return (
                   <p className="mt-2 text-[11px]" style={{ color: cor }}>
@@ -1833,11 +1859,12 @@ function ManifestoDetailPanel({
                         : 'Ocorrência de entrega NÃO encontrada no Rodopar.'}
                     </strong>{' '}
                     {oco.tem
-                      ? 'O Efetuar já foi clicado — pedir a baixa de novo DUPLICA o lançamento. A baixa deve cair sozinha quando o AGENDADOR do Rodopar rodar.'
+                      ? 'A ocorrência que fecha o manifesto já foi lançada — pedir a baixa de novo DUPLICA o lançamento. A baixa deve cair sozinha quando o AGENDADOR do Rodopar rodar.'
                       : 'Nada foi lançado, então repetir é seguro.'}
-                    {oco.verificado_em && (
-                      <span className="text-muted-foreground"> Verificado em {fmtInstante(oco.verificado_em)}.</span>
-                    )}
+                    {/* ex.: 'mapa do cliente não conferido — tratado como lançada' — quem lê
+                        precisa saber quando o "não repita" é conclusão e quando é cautela */}
+                    {oco.tem && oco.detalhe && <span className="text-muted-foreground"> ({oco.detalhe})</span>}
+                    {verificado}
                   </p>
                 )
               })()}
