@@ -360,10 +360,13 @@ const ROTULO_SITUACAO_PEDIDO: Record<string, string> = {
  * A tabela completa mora no LEIA-ME.md do robô; aqui ficam só os que aparecem
  * numa falha comum. Um rc fora da lista mostra o número cru, que ainda é mais
  * informativo que nada.
+ *
+ * rc=4 saiu da tabela em 13/10: não é falha e não ganha chip — o próprio botão diz
+ * JÁ BAIXADO / NÃO PENDENTE (ver `naoPendenteNoRodopar`). O chip vermelho "já baixado"
+ * ao lado de um botão vermelho FALHOU era exatamente a contradição a desfazer.
  */
 const RC_CURTO: Record<number, string> = {
   3: 'login',
-  4: 'já baixado',
   5: 'tela não abriu',
   8: 'sessão caiu',
   9: 'tela travou',
@@ -374,6 +377,36 @@ const RC_CURTO: Record<number, string> = {
   16: 'sem banco',
 }
 
+/**
+ * rc=4 do robô: ele consultou o banco do Rodopar e o manifesto NÃO estava pendente —
+ * já baixado, cancelado ou inexistente. Não é falha: é ausência de trabalho. O robô
+ * já faz essa distinção na saída dele ("NADA A FAZER" em vez de "FALHOU"); o torre
+ * grava `falhou` porque o rc não é 0, e a tela é que precisa não repetir o grito.
+ *
+ * POR QUE (13/10/2026, manifesto 70329). Baixado pelo AGENDADOR às 13:10, ele seguiu
+ * na lista porque o coletor estava parado desde 12:38, e a automação o pediu de novo a
+ * cada ~10 min. Cada volta pintava um FALHOU vermelho com "Nada foi gravado no Rodopar
+ * — clique para tentar de novo" num manifesto que estava pronto.
+ *
+ * 'baixado' quando a mensagem diz Baixado. O texto vem de `situacao_legivel` do robô
+ * ('B' -> 'Baixado', sem acento) e o "NADA A FAZER (rc=4)" ele só imprime quando o
+ * documento já estava baixado. Casar sem acento é de propósito: a saída do .exe passa
+ * pelo PowerShell do agente, e acento pode chegar trocado.
+ */
+function naoPendenteNoRodopar(pedido: PedidoBaixa | undefined): 'baixado' | 'outro' | null {
+  if (pedido?.situacao !== 'falhou' || pedido.rc !== 4) return null
+  const msg = pedido.mensagem ?? ''
+  return /\(Baixado\b/i.test(msg) || /NADA A FAZER \(rc=4\)/.test(msg) ? 'baixado' : 'outro'
+}
+
+/** Situação do pedido para o painel — rc=4 não é "Falhou — pode pedir de novo". */
+function rotuloSituacaoPedido(pedido: PedidoBaixa): string {
+  const naoPendente = naoPendenteNoRodopar(pedido)
+  if (naoPendente === 'baixado') return 'Já estava baixado no Rodopar — nada a lançar'
+  if (naoPendente === 'outro') return 'Não pendente no Rodopar — nada a lançar'
+  return ROTULO_SITUACAO_PEDIDO[pedido.situacao] ?? pedido.situacao
+}
+
 function aparenciaBotaoBaixa(
   pedido: PedidoBaixa | undefined,
   temAgente: boolean,
@@ -381,6 +414,8 @@ function aparenciaBotaoBaixa(
   rotulo: string
   podeClicar: boolean
   destaque: boolean
+  /** clicável, mas com a cara apagada de quem não pede ação (rc=4) */
+  discreto?: boolean
   title: string
 } {
   switch (pedido?.situacao) {
@@ -407,7 +442,32 @@ function aparenciaBotaoBaixa(
       return { rotulo: 'CONFERIR', podeClicar: false, destaque: true,
                title: `rc=${pedido.rc}: o Efetuar PODE ter sido clicado e o banco não confirmou. `
                     + 'Confira este manifesto no Rodopar antes de qualquer nova tentativa.' }
-    case 'falhou':
+    case 'falhou': {
+      // rc=4 primeiro: não é falha, é o robô dizendo que não havia o que baixar (13/10,
+      // ver naoPendenteNoRodopar). Rótulo neutro, sem destaque e sem o "nada foi gravado
+      // — clique para tentar de novo", que ali mandava repetir o que já estava feito.
+      //
+      // Continua CLICÁVEL de propósito: se o manifesto voltar a aparecer com o coletor
+      // em dia (estorno da baixa no Rodopar), a pessoa tem que conseguir pedir. Repetir
+      // não grava nada — o robô confere o banco antes de abrir qualquer tela.
+      const naoPendente = naoPendenteNoRodopar(pedido)
+      if (naoPendente) {
+        const oQue = naoPendente === 'baixado'
+          ? 'este manifesto JÁ ESTÁ BAIXADO'
+          : 'este manifesto não está pendente (cancelado ou inexistente)'
+        // Cancelado também sai da lista com o próximo snapshot; inexistente não sai, e
+        // aí o número, a filial ou a série do pedido não batem com o Rodopar.
+        const porQueAinda = naoPendente === 'baixado'
+          ? 'é porque o snapshot do coletor é anterior a essa baixa.'
+          : 'é porque o snapshot do coletor é anterior a essa mudança — se continuar com o '
+            + 'coletor em dia, confira número, filial e série no Rodopar.'
+        return { rotulo: naoPendente === 'baixado' ? 'JÁ BAIXADO' : 'NÃO PENDENTE',
+                 podeClicar: true, destaque: false, discreto: true,
+                 title: `O robô consultou o banco do Rodopar: ${oQue} — não há o que baixar (rc=4). `
+                      + `Se ele ainda aparece nesta lista, ${porQueAinda}
+
+${pedido.mensagem ?? 'sem mensagem'}` }
+      }
       // FALHOU, e não "BAIXAR" como se nada tivesse acontecido (corrigido 26/08).
       //
       // Antes o botão voltava ao estado inicial e a única pista era o balão do
@@ -423,6 +483,7 @@ function aparenciaBotaoBaixa(
                     + `clique para tentar de novo.
 
 ${pedido.mensagem ?? 'sem mensagem'}` }
+    }
     default:
       return { rotulo: 'BAIXAR', podeClicar: true, destaque: false,
                title: 'Manda o robô lançar a entrega e baixar este manifesto no Rodopar' }
@@ -1117,7 +1178,7 @@ function BaixaManifestoConteudo() {
                                 style={
                                   apBaixa.destaque
                                     ? { background: 'var(--status-atrasado-fg)', color: '#fff' }
-                                    : apBaixa.podeClicar
+                                    : apBaixa.podeClicar && !apBaixa.discreto
                                       ? { background: 'var(--foreground)', color: 'var(--background)' }
                                       : { background: 'var(--muted)', color: 'var(--muted-foreground)' }
                                 }
@@ -1128,8 +1189,9 @@ function BaixaManifestoConteudo() {
                             )}
                             {/* O motivo ao lado do botão, sem depender de hover. O texto do
                                 robô é diagnóstico e não cabe aqui; o rc traduzido cabe e diz
-                                o suficiente para a pessoa decidir entre repetir e chamar ajuda. */}
-                            {pedidoBaixa?.situacao === 'falhou' && (
+                                o suficiente para a pessoa decidir entre repetir e chamar ajuda.
+                                rc=4 não tem chip: o rótulo do botão já diz JÁ BAIXADO. */}
+                            {pedidoBaixa?.situacao === 'falhou' && !naoPendenteNoRodopar(pedidoBaixa) && (
                               <span
                                 className="rounded px-1 py-0.5 text-[9px] font-semibold whitespace-nowrap"
                                 style={{ background: 'var(--status-atrasado-bg)', color: 'var(--status-atrasado-fg)' }}
@@ -1699,7 +1761,7 @@ function ManifestoDetailPanel({
                 Baixa pelo robô
               </div>
               <div className="mt-1 grid grid-cols-2 gap-2">
-                <Metric label="Situação" value={ROTULO_SITUACAO_PEDIDO[pedidoBaixa.situacao] ?? pedidoBaixa.situacao} />
+                <Metric label="Situação" value={rotuloSituacaoPedido(pedidoBaixa)} />
                 <Metric label="Pedido por" value={pedidoBaixa.autor ?? '—'} />
                 <Metric label="Pedido em" value={fmtInstante(pedidoBaixa.criado_em)} />
                 {pedidoBaixa.agente && <Metric label="Executando em" value={pedidoBaixa.agente} />}
