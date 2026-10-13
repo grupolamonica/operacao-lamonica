@@ -71,7 +71,7 @@ describe('reprovaDaProvaDoRobo (A2)', () => {
     expect(reprovaDaProvaDoRobo([antigo, novo], brt('13:45'))).toBeNull()
   })
 
-  it('rc diferente de 4 nao e prova de nada', () => {
+  it('rc fora de 4 e 0 nao e prova de nada', () => {
     // rc=12 (nao reconheceu a tela) nao diz se o manifesto esta pendente
     expect(reprovaDaProvaDoRobo([pedido({ rc: 12 })], brt('13:45'))).toBeNull()
   })
@@ -86,6 +86,35 @@ describe('reprovaDaProvaDoRobo (A2)', () => {
 
   it('sem recebido_em qualquer prova e mais nova que nenhuma leitura', () => {
     expect(reprovaDaProvaDoRobo([pedido()], null)).not.toBeNull()
+  })
+
+  // rc=0: o robo MESMO baixou. Snapshot recebido as 13:45, ciclo das 13:52 — 7 min, a A1
+  // deixa passar, e a lista ainda mostra aberto o manifesto que acabou de ser baixado.
+  const baixou = (over: Partial<PedidoParaBarreira> = {}) =>
+    pedido({ situacao: 'concluido', rc: 0, createdAt: brt('13:46'), concluidoEm: brt('13:50'), ...over })
+
+  it('rc=0 (concluido) DEPOIS do snapshot pula, com reprova propria', () => {
+    const r = reprovaDaProvaDoRobo([baixou()], brt('13:45'))
+    expect(r).toBe('robô baixou às 13:50 (rc=0) — snapshot é anterior')
+  })
+
+  it('rc=0 ANTES do snapshot nao pula: o snapshot e mais novo que a baixa', () => {
+    // se o manifesto ainda aparece num snapshot posterior a baixa, algo mudou no
+    // Rodopar depois dela (estorno) — e a A2 nao pode esconder isso
+    expect(reprovaDaProvaDoRobo([baixou()], brt('13:55'))).toBeNull()
+  })
+
+  it('pedido mais recente rc=12 depois de um rc=0 antigo nao pula', () => {
+    // a baixa das 13:50 foi estornada, alguem pediu de novo e o robo nao reconheceu a
+    // tela: quem decide e o rc=12, que nao prova nada — mesmo concluido depois do snapshot
+    const antigo = baixou()
+    const novo = pedido({ rc: 12, createdAt: brt('14:05'), concluidoEm: brt('14:07') })
+    expect(reprovaDaProvaDoRobo([antigo, novo], brt('13:45'))).toBeNull()
+    expect(reprovaDaProvaDoRobo([novo, antigo], brt('13:45'))).toBeNull()
+  })
+
+  it('rc=0 fora de concluido nao e prova: dado inconsistente nao decide', () => {
+    expect(reprovaDaProvaDoRobo([baixou({ situacao: 'falhou' })], brt('13:45'))).toBeNull()
   })
 })
 

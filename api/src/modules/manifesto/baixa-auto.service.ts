@@ -13,10 +13,11 @@
  *
  * A ORDEM DE PRECEDÊNCIA DAS BARREIRAS, de fora para dentro:
  *   1. fonte degradada  -> do ERP: snapshot do coletor velho, NINGUÉM é avaliado no ciclo
+ *                          (e SPX/Galileu nem são lidos — não haveria o que decidir)
  *                          do cliente: a família inteira não é avaliada neste ciclo
  *   2. guardas do ERP   -> vieram prontas do coletor, dentro de referencia_cliente
  *   3. regra do cliente -> status terminal + carimbo
- *   4. o que o robô já provou -> rc=4 mais novo que o snapshot; disjuntor de falhas do dia
+ *   4. o que o robô já provou -> rc=4 ou rc=0 mais novo que o snapshot; disjuntor de falhas do dia
  *   5. (F3) posto ativo, teto diário, kill switch
  * Nada aqui pula direto para a 3: evidência sem fonte confiável não é evidência. O ERP
  * entrou na barreira 1 e a 4 nasceu em 13/10 — ver `baixa-auto.barreiras.ts` (70329).
@@ -245,14 +246,25 @@ export async function avaliarCiclo(): Promise<ResumoCiclo> {
 
   // Só busca a fonte que tem cliente para avaliar. Fonte sem candidato não é
   // consultada — e uma fonte não consultada não pode derrubar a outra família.
+  //
+  // Com o snapshot velho, NENHUMA é consultada (revisão de 13/10). A barreira 1 já
+  // reprovou todos os candidatos, então a leitura não decidiria nada — e seria repetida
+  // a cada 10 min durante toda a queda do coletor (no 70329, horas), batendo na API do
+  // portal SPX (três abas, 90 dias) e no Supabase da Galileu para jogar a resposta fora.
   const [spx, galileu] = await Promise.all([
-    lhs.length ? lerSpx() : Promise.resolve(vaziaOk()),
-    grupos.length ? lerGalileu(grupos) : Promise.resolve(vaziaOk()),
+    !snapshotVelho && lhs.length ? lerSpx() : Promise.resolve(vaziaOk()),
+    !snapshotVelho && grupos.length ? lerGalileu(grupos) : Promise.resolve(vaziaOk()),
   ])
+  // O resumo diz "não consultada" em vez do 'ok' de `vaziaOk()`: 'ok' afirmaria uma
+  // leitura que não aconteceu, e quem lê o log da queda do coletor tem que ver que as
+  // fontes do cliente também ficaram de fora — e por quê.
+  const fontes = snapshotVelho
+    ? { spx: FONTE_NAO_CONSULTADA, galileu: FONTE_NAO_CONSULTADA }
+    : { spx: descreverFonte(spx), galileu: descreverFonte(galileu) }
 
   logger.info(
     { modo, candidatos: candidatos.length, lhs: lhs.length, grupos: grupos.length,
-      spx: spx.estado, galileu: galileu.estado, snapshot_idade_min: snapshot.idade_min },
+      spx: fontes.spx, galileu: fontes.galileu, snapshot_idade_min: snapshot.idade_min },
     '[baixa-auto] ciclo iniciado',
   )
 
@@ -268,6 +280,7 @@ export async function avaliarCiclo(): Promise<ResumoCiclo> {
     if (snapshotVelho) {
       // Grava assim mesmo, pelo mesmo motivo da fonte degradada logo abaixo: um ciclo
       // sem linha nenhuma seria indistinguível de um ciclo em que nada era elegível.
+      // `fonte_idade_seg` sai nula nessas linhas, e é verdade: nenhuma fonte foi lida.
       avaliacao = { elegivel: false, regra: null, reprovas: [snapshotVelho], evidencia: null }
     } else if (fonte && !podeAgir(fonte)) {
       // A barreira mais externa do lado do cliente. Registra assim mesmo: um ciclo
@@ -453,10 +466,7 @@ export async function avaliarCiclo(): Promise<ResumoCiclo> {
     elegiveis: elegiveis.length,
     gravadas,
     paraFila,
-    fontes: {
-      spx: spx.estado + (spx.motivo ? ` (${spx.motivo})` : ''),
-      galileu: galileu.estado + (galileu.motivo ? ` (${galileu.motivo})` : ''),
-    },
+    fontes,
     tetoDiario: { limite, usadoHoje: await usadoHoje() },
     enfileirados,
     naoEnfileirados,
@@ -488,6 +498,14 @@ export async function avaliarCiclo(): Promise<ResumoCiclo> {
 /** Fonte não consultada (nenhum candidato daquela família). Não é degradação. */
 function vaziaOk(): LeituraFonte<never> {
   return { estado: 'ok', motivo: null, porChave: new Map(), idadeSeg: null }
+}
+
+/** O que `fontes` do resumo diz quando o snapshot velho dispensou as duas leituras. */
+const FONTE_NAO_CONSULTADA = 'não consultada (snapshot do coletor velho)'
+
+/** Estado da fonte para o resumo e o log: o motivo vai junto quando houver. */
+function descreverFonte(f: LeituraFonte<unknown>): string {
+  return f.estado + (f.motivo ? ` (${f.motivo})` : '')
 }
 
 /** O que a tela mostra no chip. Só o essencial — o detalhe fica na auditoria. */

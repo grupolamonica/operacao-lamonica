@@ -449,22 +449,32 @@ function aparenciaBotaoBaixa(
       //
       // Continua CLICÁVEL de propósito: se o manifesto voltar a aparecer com o coletor
       // em dia (estorno da baixa no Rodopar), a pessoa tem que conseguir pedir. Repetir
-      // não grava nada — o robô confere o banco antes de abrir qualquer tela.
+      // sobre um manifesto que segue baixado não grava nada — o robô confere o banco
+      // antes de abrir qualquer tela.
       const naoPendente = naoPendenteNoRodopar(pedido)
       if (naoPendente) {
+        // O balão diz SÓ o que se sabe: o que o robô viu e quando (revisão de 13/10). A
+        // versão anterior afirmava que "o snapshot do coletor é anterior a essa baixa" — e
+        // isso pode ser falso: se a baixa foi estornada depois da consulta, o snapshot é
+        // NOVO e o manifesto voltou a estar pendente de verdade. Daí o "provavelmente" e o
+        // caminho para o caso contrário, que é justamente por que o botão segue clicável.
+        // Pretérito ("não estava") pelo mesmo motivo: o robô fala do instante da consulta.
+        const quando = pedido.concluido_em ? ` em ${fmtInstante(pedido.concluido_em)}` : ''
         const oQue = naoPendente === 'baixado'
-          ? 'este manifesto JÁ ESTÁ BAIXADO'
-          : 'este manifesto não está pendente (cancelado ou inexistente)'
+          ? 'o manifesto não estava pendente: já estava BAIXADO'
+          : 'o manifesto não estava pendente (cancelado ou inexistente)'
         // Cancelado também sai da lista com o próximo snapshot; inexistente não sai, e
         // aí o número, a filial ou a série do pedido não batem com o Rodopar.
-        const porQueAinda = naoPendente === 'baixado'
-          ? 'é porque o snapshot do coletor é anterior a essa baixa.'
-          : 'é porque o snapshot do coletor é anterior a essa mudança — se continuar com o '
-            + 'coletor em dia, confira número, filial e série no Rodopar.'
+        const seInexistente = naoPendente === 'outro'
+          ? ' Se ele continuar aqui com o coletor em dia, confira número, filial e série no Rodopar.'
+          : ''
         return { rotulo: naoPendente === 'baixado' ? 'JÁ BAIXADO' : 'NÃO PENDENTE',
                  podeClicar: true, destaque: false, discreto: true,
-                 title: `O robô consultou o banco do Rodopar: ${oQue} — não há o que baixar (rc=4). `
-                      + `Se ele ainda aparece nesta lista, ${porQueAinda}
+                 title: `O robô consultou o banco do Rodopar${quando} e ${oQue} — não havia o que `
+                      + 'baixar (rc=4). Se ele continua nesta lista, o snapshot do coletor provavelmente '
+                      + 'é anterior a essa consulta. Se não for (ex.: baixa estornada depois dela), clicar '
+                      + 'de novo pede ao robô uma nova conferência — e a baixa, se o manifesto estiver '
+                      + `pendente.${seInexistente}
 
 ${pedido.mensagem ?? 'sem mensagem'}` }
       }

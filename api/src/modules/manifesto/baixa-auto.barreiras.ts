@@ -21,7 +21,8 @@
  *
  * Três barreiras, cada uma fecha um buraco diferente:
  *   A1  snapshot velho  -> NINGUÉM é elegível no ciclo: a leitura do ERP não é de agora
- *   A2  prova do robô   -> rc=4 concluído DEPOIS do snapshot: a prova é mais nova que a evidência
+ *   A2  prova do robô   -> rc=4 (não pendente) ou rc=0 (baixou) concluído DEPOIS do snapshot:
+ *                          a prova é mais nova que a evidência
  *   A3  disjuntor       -> N falhas automáticas hoje na mesma chave: daí em diante, só pedido humano
  * A1 sozinha teria resolvido o 70329. A2 e A3 existem porque o próximo laço não vai
  * ter a mesma causa: a A2 cobre o snapshot fresco que ainda não viu a baixa, e a A3 é
@@ -30,6 +31,12 @@
 
 /** rc do robô para "não está pendente" — já baixado, cancelado ou inexistente. */
 export const RC_NAO_PENDENTE = 4
+
+/**
+ * rc do robô para "baixei e o banco confirmou". O pedido termina `concluido` — em
+ * `registrarResultado` (baixa.service.ts) rc=0, e só rc=0, vira `concluido`.
+ */
+export const RC_BAIXOU = 0
 
 /** O pedido de baixa, na parte que as barreiras usam (ver manifesto_baixa_pedidos). */
 export interface PedidoParaBarreira {
@@ -89,13 +96,23 @@ function maisRecente(pedidos: readonly PedidoParaBarreira[]): PedidoParaBarreira
 /**
  * A2 — o robô já provou, DEPOIS do snapshot, que este manifesto não está pendente?
  *
- * rc=4 quer dizer que o robô consultou o banco do Rodopar e o manifesto não estava
- * em aberto. Se isso aconteceu depois de o torre receber o snapshot, a evidência do
- * ERP que o snapshot carrega é ANTERIOR à prova — e pedir de novo é perguntar de novo
- * uma coisa já respondida. Foi o laço do 70329.
+ * Duas respostas do robô provam isso, e as duas vêm do banco do Rodopar:
+ *   rc=4  ele consultou o banco e o manifesto não estava em aberto (o laço do 70329);
+ *   rc=0  ele mesmo baixou, e o banco confirmou (`concluido`).
+ * Se isso aconteceu depois de o torre receber o snapshot, a evidência do ERP que o
+ * snapshot carrega é ANTERIOR à prova — e pedir de novo é perguntar de novo uma coisa
+ * já respondida.
  *
- * Só o pedido MAIS RECENTE da chave decide: um rc=4 antigo seguido de um pedido novo
- * (por exemplo, depois de um estorno da baixa no Rodopar) não pode travar nada.
+ * O rc=0 entrou na revisão de 13/10, e o buraco que ele fecha é o mais comum dos dois:
+ * entre o robô baixar e o próximo snapshot chegar, a lista ainda mostra o manifesto
+ * aberto — e a A1 só reprova acima de 15 min, então um snapshot de 7–15 min passa por
+ * ela. `concluido` não está no índice de pedido ativo, e nada no banco impede o pedido
+ * novo: sem esta regra, o ciclo seguinte enfileiraria de novo o manifesto que o robô
+ * acabou de baixar, e ele gastaria uma volta (e uma vaga do teto) para responder rc=4.
+ *
+ * Só o pedido MAIS RECENTE da chave decide: uma prova antiga seguida de um pedido novo
+ * (por exemplo, depois de um estorno da baixa no Rodopar) não pode travar nada — vale
+ * para o rc=4 e para o rc=0.
  *
  * Compara com `recebido_em` (relógio do torre), não com `gerado_em` (relógio do
  * coletor, sem fuso). A escolha erra para o lado de PEDIR: se o robô concluiu entre
@@ -109,13 +126,21 @@ export function reprovaDaProvaDoRobo(
   recebidoEm: Date | null,
 ): string | null {
   const ultimo = maisRecente(pedidos)
-  if (!ultimo || ultimo.rc !== RC_NAO_PENDENTE || !ultimo.concluidoEm) return null
+  if (!ultimo || !ultimo.concluidoEm) return null
+  // `concluido` E rc=0, as duas: uma sem a outra não é o desfecho que o robô reporta
+  // quando baixa, e dado inconsistente não pode virar prova.
+  const baixou = ultimo.situacao === 'concluido' && ultimo.rc === RC_BAIXOU
+  const naoPendente = ultimo.rc === RC_NAO_PENDENTE
+  if (!baixou && !naoPendente) return null
   // Sem recebido_em não há snapshot, e qualquer prova é mais nova que nenhuma leitura.
   if (recebidoEm && ultimo.concluidoEm.getTime() < recebidoEm.getTime()) return null
-  return (
-    `robô provou no banco às ${horaBrasilia(ultimo.concluidoEm)} que não está pendente ` +
-    `(rc=${RC_NAO_PENDENTE}) — snapshot é anterior`
-  )
+  const hora = horaBrasilia(ultimo.concluidoEm)
+  // Reprovas diferentes de propósito: "baixou" e "provou que não está pendente" são
+  // fatos diferentes, e a auditoria não pode chamar de baixa do robô o que foi baixa
+  // do AGENDADOR (o caso do 70329, que é rc=4).
+  return baixou
+    ? `robô baixou às ${hora} (rc=${RC_BAIXOU}) — snapshot é anterior`
+    : `robô provou no banco às ${hora} que não está pendente (rc=${RC_NAO_PENDENTE}) — snapshot é anterior`
 }
 
 /**
