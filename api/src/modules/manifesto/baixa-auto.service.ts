@@ -500,8 +500,12 @@ function vaziaOk(): LeituraFonte<never> {
   return { estado: 'ok', motivo: null, porChave: new Map(), idadeSeg: null }
 }
 
-/** O que `fontes` do resumo diz quando o snapshot velho dispensou as duas leituras. */
-const FONTE_NAO_CONSULTADA = 'não consultada (snapshot do coletor velho)'
+/**
+ * O que `fontes` do resumo diz quando a barreira A1 dispensou as duas leituras. Texto
+ * neutro de propósito: a A1 também reprova quando NÃO HÁ snapshot nenhum, e "velho"
+ * seria falso nesse caso — o motivo exato está em `naoEnfileirados`.
+ */
+const FONTE_NAO_CONSULTADA = 'não consultada (sem snapshot fresco do coletor)'
 
 /** Estado da fonte para o resumo e o log: o motivo vai junto quando houver. */
 function descreverFonte(f: LeituraFonte<unknown>): string {
