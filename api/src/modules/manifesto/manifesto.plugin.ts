@@ -247,16 +247,51 @@ const ReferenciaClienteSchema = t.Object({
  * para os manifestos que o torre pediu em `GET /api/manifesto/conferencia`: a consulta
  * é 0,1 s por manifesto com filtro por CODMAN, mas passa de 7 MINUTOS se rodada em lote
  * sobre todos os abertos (medido em 31/08 — o filtro é o que deixa o índice trabalhar).
+ *
+ * ── FINALIZA O MANIFESTO ≠ O CLIENTE VÊ (13/10) ─────────────────────────────────
+ *
+ * Nem toda ocorrência FINMAN='S' é de entrega. O 70329 (NESTLÉ, pagador 85) fechou às
+ * 13:10 por uma `104 SAIDA DESCARGA` lançada pela cerca eletrônica (USUINC='PROC_CERCA'),
+ * e o cliente ficou sem ocorrência nenhuma: o que ele enxerga é o mapa RODOCC do pagador
+ * (para o 85, só os códigos 1, 79 e 113 — nenhum cliente tem 103/104). Contando qualquer
+ * FINMAN='S', a resposta era "JÁ LANÇADA, não repita" — falsa justamente no caso em que
+ * o cliente mais precisava da ocorrência.
+ *
+ * Por isso `tem` passou a ser sobre o CLIENTE, e `so_interna` nomeia o caso que antes
+ * se escondia. Os dois campos novos são OPCIONAIS dos dois lados, e `t.Nullable` pela
+ * lição do `sm.*` acima: coletor antigo não manda, e Python manda None.
+ *
+ * ORDEM DE DEPLOY, medida em 13/10 com o Elysia 1.4.28 deste repo: chave a mais aqui
+ * dentro é REMOVIDA em silêncio (normalize padrão = exact-mirror), não dá 422. Coletor
+ * novo com torre antigo só perde os dois campos; torre novo com coletor antigo não
+ * recebe nenhum. O que dá 422 é TIPO errado — `so_interna: "sim"` congelaria a tela.
  */
 const OcorrenciaEntregaSchema = t.Object({
-  /** `true` = o Efetuar JÁ foi clicado. Repetir duplicaria o lançamento. */
+  /**
+   * `true` = o CLIENTE já tem ocorrência que finaliza (FINMAN='S' com código no mapa RODOCC
+   * do pagador) — ou o pagador não tem mapa, ou o mapa não pôde ser conferido: nesses
+   * dois não dá para dizer o que o cliente vê, e o lado seguro é não repetir. Repetir
+   * duplicaria o lançamento. Coletor antigo: qualquer FINMAN='S'.
+   */
   tem: t.Boolean(),
-  /** Quantas linhas casaram. Só `> 0` importa — o número varia com a quantidade de notas. */
+  /** Quantas linhas FINMAN='S' casaram. Só `> 0` importa — o número varia com as notas. */
   registros: t.Optional(t.Nullable(t.Number())),
   /** Quando o coletor perguntou ao Rodopar (ISO local). Evidência velha não decide nada. */
   verificado_em: t.Optional(t.Nullable(t.String())),
   /** Preenchido quando a consulta FALHOU. Com erro, `tem` não significa nada. */
   erro: t.Optional(t.Nullable(t.String())),
+  /**
+   * `true` só com `tem=false`: o Rodopar TEM ocorrência que fecha o manifesto, mas
+   * nenhuma está no mapa do cliente (ex.: 104 SAIDA DESCARGA do PROC_CERCA). O cliente
+   * não recebeu entrega, e lançá-la não duplica nada que ele vê. Ausente = coletor antigo.
+   */
+  so_interna: t.Optional(t.Nullable(t.Boolean())),
+  /**
+   * Texto curto para a tela: '104 SAIDA DESCARGA por PROC_CERCA (1 nota)', ou
+   * 'mapa do cliente não conferido — tratado como lançada'. Sem maxLength de propósito:
+   * texto comprido daria 422, e um 422 aqui congela a tela inteira.
+   */
+  detalhe: t.Optional(t.Nullable(t.String())),
 })
 
 /**

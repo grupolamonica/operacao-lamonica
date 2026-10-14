@@ -12,11 +12,15 @@
  * automática seria também a primeira medição.
  *
  * A ORDEM DE PRECEDÊNCIA DAS BARREIRAS, de fora para dentro:
- *   1. fonte degradada  -> a família inteira não é avaliada neste ciclo
+ *   1. fonte degradada  -> do ERP: snapshot do coletor velho, NINGUÉM é avaliado no ciclo
+ *                          (e SPX/Galileu nem são lidos — não haveria o que decidir)
+ *                          do cliente: a família inteira não é avaliada neste ciclo
  *   2. guardas do ERP   -> vieram prontas do coletor, dentro de referencia_cliente
  *   3. regra do cliente -> status terminal + carimbo
- *   4. (F3) posto ativo, teto diário, kill switch
- * Nada aqui pula direto para a 3: evidência sem fonte confiável não é evidência.
+ *   4. o que o robô já provou -> rc=4 ou rc=0 mais novo que o snapshot; disjuntor de falhas do dia
+ *   5. (F3) posto ativo, teto diário, kill switch
+ * Nada aqui pula direto para a 3: evidência sem fonte confiável não é evidência. O ERP
+ * entrou na barreira 1 e a 4 nasceu em 13/10 — ver `baixa-auto.barreiras.ts` (70329).
  */
 import { and, gte, inArray, sql } from 'drizzle-orm'
 
@@ -27,8 +31,10 @@ import { logger } from '../../lib/logger'
 import { getPendencias, type ManifestoPendencia } from './manifesto.service'
 import { lerGalileu, lerSpx, podeAgir, type LeituraFonte } from './baixa-auto.fontes'
 import { avaliar, ordenarParaFila, type Avaliacao } from './baixa-auto.regras'
+import { barreirasDoRobo, reprovaDoSnapshot, type PedidoParaBarreira } from './baixa-auto.barreiras'
 import { postoAtual, travarExecucao } from './baixa-auto.posto'
 import { pedirBaixa, recuperarPedidosPresos } from './baixa.service'
+import { chaveManifesto } from './tratativas.service'
 
 const CICLO_MIN = 10
 
@@ -45,6 +51,11 @@ export interface ResumoCiclo {
   tetoDiario: { limite: number; usadoHoje: number }
   /** só em modo real: o que foi efetivamente enfileirado, e por que o resto não foi */
   enfileirados: number
+  /**
+   * Por que nada (ou só parte) entrou na fila. Snapshot do coletor velho preenche nos
+   * DOIS modos: é a única barreira que zera o ciclo inteiro antes de qualquer regra, e
+   * o botão "Executar agora" precisa dizer isso em vez de "0 elegíveis" sem motivo.
+   */
   naoEnfileirados: string | null
   /**
    * Manifestos que estouraram na hora de enfileirar. Normalmente vazio.
@@ -76,22 +87,71 @@ export function modoAtual(): ModoBaixaAuto {
 }
 
 /**
+ * Meia-noite de hoje no fuso do processo (America/Sao_Paulo em produção — TZ do
+ * backend no docker-compose.prod.yml). UMA definição de "hoje" para o teto diário e
+ * para o disjuntor por manifesto: com duas, um contaria de uma hora e o outro de outra.
+ */
+export function inicioDoDia(agora = new Date()): Date {
+  const d = new Date(agora)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+/**
  * Quantos pedidos automáticos hoje. Conta SOBRE A TABELA, não em memória:
  * contador em processo zera no restart e o teto viraria decoração.
  */
 export async function usadoHoje(): Promise<number> {
-  const inicioDoDia = new Date()
-  inicioDoDia.setHours(0, 0, 0, 0)
   const [linha] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(manifestoBaixaPedidos)
     .where(
       and(
         sql`${manifestoBaixaPedidos.origem} <> 'humano'`,
-        gte(manifestoBaixaPedidos.createdAt, inicioDoDia),
+        gte(manifestoBaixaPedidos.createdAt, inicioDoDia()),
       ),
     )
   return linha?.n ?? 0
+}
+
+/**
+ * Os pedidos de baixa de cada candidato, agrupados pela chave COMPLETA, em UMA consulta.
+ *
+ * Mesmo desenho de `pedidosPorManifesto` (baixa.service.ts), inclusive no motivo: filtra
+ * por codman, que é o que o índice serve, e agrupa em memória pela chave inteira — casar
+ * só pelo número do manifesto pegaria o pedido de outra série. Uma consulta por
+ * candidato seriam ~65 idas ao banco a cada ciclo.
+ *
+ * Sem corte de data de propósito: a barreira A2 olha o pedido MAIS RECENTE da chave,
+ * seja de quando for, e um corte poderia esconder justamente ele. São poucos pedidos
+ * por manifesto — o volume é o da tela, que faz a mesma leitura a cada 30 s.
+ */
+async function pedidosDosCandidatos(
+  candidatos: ManifestoPendencia[],
+): Promise<Map<string, PedidoParaBarreira[]>> {
+  const porChave = new Map<string, PedidoParaBarreira[]>()
+  const codmans = [...new Set(candidatos.map((p) => p.codman!))]
+  if (!codmans.length) return porChave
+  const linhas = await db
+    .select({
+      codman: manifestoBaixaPedidos.codman,
+      filial: manifestoBaixaPedidos.filial,
+      serie: manifestoBaixaPedidos.serie,
+      origem: manifestoBaixaPedidos.origem,
+      situacao: manifestoBaixaPedidos.situacao,
+      rc: manifestoBaixaPedidos.rc,
+      createdAt: manifestoBaixaPedidos.createdAt,
+      concluidoEm: manifestoBaixaPedidos.concluidoEm,
+    })
+    .from(manifestoBaixaPedidos)
+    .where(inArray(manifestoBaixaPedidos.codman, codmans))
+  for (const l of linhas) {
+    const chave = chaveManifesto(l.codman, l.filial, l.serie)
+    const lista = porChave.get(chave)
+    if (lista) lista.push(l)
+    else porChave.set(chave, [l])
+  }
+  return porChave
 }
 
 const chaveDe = (p: ManifestoPendencia) =>
@@ -144,6 +204,31 @@ export async function avaliarCiclo(): Promise<ResumoCiclo> {
     (p) => p.codman != null && p.filial != null && p.referencia_cliente?.valor,
   )
 
+  // BARREIRA 1, lado do ERP (13/10). O snapshot é a única leitura do Rodopar que o torre
+  // tem — e até aqui ele não tinha portão de frescor, só as fontes do cliente tinham.
+  // Com o coletor parado desde 12:38, o snapshot das 12:33 seguiu dizendo que o 70329
+  // estava aberto horas depois de o AGENDADOR baixá-lo, e o ciclo o pediu a cada 10 min.
+  // Limite padrão = o do aviso "Coletor sem enviar há N min" da tela (15).
+  const limiteSnapshotMin = inteiroDoEnv('MANIFESTO_BAIXA_AUTO_SNAPSHOT_MAX_MIN', 15)
+  const snapshotVelho = reprovaDoSnapshot(snapshot.idade_min, limiteSnapshotMin)
+  if (snapshotVelho) {
+    logger.warn(
+      { idade_min: snapshot.idade_min, limite_min: limiteSnapshotMin, recebido_em: snapshot.recebido_em },
+      '[baixa-auto] snapshot do coletor velho — nenhum manifesto elegível neste ciclo',
+    )
+  }
+
+  // BARREIRA 4 — o que o robô já provou. Uma consulta para todos os candidatos; com o
+  // snapshot velho ela nem roda, porque ninguém passa da barreira 1.
+  const pedidosPorChave = snapshotVelho
+    ? new Map<string, PedidoParaBarreira[]>()
+    : await pedidosDosCandidatos(candidatos)
+  const contextoRobo = {
+    recebidoEm: snapshot.recebido_em ? new Date(snapshot.recebido_em) : null,
+    inicioDoDia: inicioDoDia(),
+    maxFalhasDia: inteiroDoEnv('MANIFESTO_BAIXA_AUTO_MAX_FALHAS_DIA', 3),
+  }
+
   const lhs = [
     ...new Set(
       candidatos
@@ -161,14 +246,25 @@ export async function avaliarCiclo(): Promise<ResumoCiclo> {
 
   // Só busca a fonte que tem cliente para avaliar. Fonte sem candidato não é
   // consultada — e uma fonte não consultada não pode derrubar a outra família.
+  //
+  // Com o snapshot velho, NENHUMA é consultada (revisão de 13/10). A barreira 1 já
+  // reprovou todos os candidatos, então a leitura não decidiria nada — e seria repetida
+  // a cada 10 min durante toda a queda do coletor (no 70329, horas), batendo na API do
+  // portal SPX (três abas, 90 dias) e no Supabase da Galileu para jogar a resposta fora.
   const [spx, galileu] = await Promise.all([
-    lhs.length ? lerSpx() : Promise.resolve(vaziaOk()),
-    grupos.length ? lerGalileu(grupos) : Promise.resolve(vaziaOk()),
+    !snapshotVelho && lhs.length ? lerSpx() : Promise.resolve(vaziaOk()),
+    !snapshotVelho && grupos.length ? lerGalileu(grupos) : Promise.resolve(vaziaOk()),
   ])
+  // O resumo diz "não consultada" em vez do 'ok' de `vaziaOk()`: 'ok' afirmaria uma
+  // leitura que não aconteceu, e quem lê o log da queda do coletor tem que ver que as
+  // fontes do cliente também ficaram de fora — e por quê.
+  const fontes = snapshotVelho
+    ? { spx: FONTE_NAO_CONSULTADA, galileu: FONTE_NAO_CONSULTADA }
+    : { spx: descreverFonte(spx), galileu: descreverFonte(galileu) }
 
   logger.info(
     { modo, candidatos: candidatos.length, lhs: lhs.length, grupos: grupos.length,
-      spx: spx.estado, galileu: galileu.estado },
+      spx: fontes.spx, galileu: fontes.galileu, snapshot_idade_min: snapshot.idade_min },
     '[baixa-auto] ciclo iniciado',
   )
 
@@ -181,10 +277,15 @@ export async function avaliarCiclo(): Promise<ResumoCiclo> {
     const ref = String(p.referencia_cliente?.valor ?? '').trim().toUpperCase()
 
     let avaliacao: Avaliacao
-    if (fonte && !podeAgir(fonte)) {
-      // A barreira mais externa. Registra assim mesmo: um ciclo inteiro sem linha
-      // nenhuma seria indistinguível de um ciclo em que nada era elegível, e a
-      // série histórica precisa mostrar a diferença.
+    if (snapshotVelho) {
+      // Grava assim mesmo, pelo mesmo motivo da fonte degradada logo abaixo: um ciclo
+      // sem linha nenhuma seria indistinguível de um ciclo em que nada era elegível.
+      // `fonte_idade_seg` sai nula nessas linhas, e é verdade: nenhuma fonte foi lida.
+      avaliacao = { elegivel: false, regra: null, reprovas: [snapshotVelho], evidencia: null }
+    } else if (fonte && !podeAgir(fonte)) {
+      // A barreira mais externa do lado do cliente. Registra assim mesmo: um ciclo
+      // inteiro sem linha nenhuma seria indistinguível de um ciclo em que nada era
+      // elegível, e a série histórica precisa mostrar a diferença.
       avaliacao = {
         elegivel: false,
         regra: null,
@@ -196,6 +297,13 @@ export async function avaliarCiclo(): Promise<ResumoCiclo> {
         spx: spx.porChave.get(ref) ?? [],
         galileu: galileu.porChave.get(ref) ?? [],
       })
+      // Depois da regra do cliente, e somando às reprovas dela em vez de substituí-las:
+      // a auditoria precisa dizer "o cliente diz FINALIZADO, MAS o robô já provou que não
+      // está pendente" — sem a primeira metade, ninguém entende por que o laço existia.
+      const travas = barreirasDoRobo(pedidosPorChave.get(chaveDe(p)) ?? [], contextoRobo)
+      if (travas.length) {
+        avaliacao = { ...avaliacao, elegivel: false, regra: null, reprovas: [...avaliacao.reprovas, ...travas] }
+      }
     }
 
     if (avaliacao.elegivel) elegiveis.push({ p, a: avaliacao })
@@ -257,7 +365,10 @@ export async function avaliarCiclo(): Promise<ResumoCiclo> {
   // Em sombra nada disto roda. Aqui a ordem importa e é de fora para dentro: sem
   // posto não há máquina para executar, sem teto não há limite, e só então age.
   let enfileirados = 0
-  let naoEnfileirados: string | null = null
+  // Snapshot velho zera os elegíveis, então o bloco abaixo nem entra — e sem isto o
+  // ciclo morto sairia com naoEnfileirados null e log "ciclo avaliado", igualzinho a um
+  // ciclo saudável sem nada a fazer. É a lição de 01/09 do logger no fim desta função.
+  let naoEnfileirados: string | null = snapshotVelho
   const falhas: { codman: number; erro: string }[] = []
 
   if (modo === 'real' && paraFila.length) {
@@ -355,10 +466,7 @@ export async function avaliarCiclo(): Promise<ResumoCiclo> {
     elegiveis: elegiveis.length,
     gravadas,
     paraFila,
-    fontes: {
-      spx: spx.estado + (spx.motivo ? ` (${spx.motivo})` : ''),
-      galileu: galileu.estado + (galileu.motivo ? ` (${galileu.motivo})` : ''),
-    },
+    fontes,
     tetoDiario: { limite, usadoHoje: await usadoHoje() },
     enfileirados,
     naoEnfileirados,
@@ -373,6 +481,7 @@ export async function avaliarCiclo(): Promise<ResumoCiclo> {
   logger.info(
     { modo, candidatos: resumo.candidatos, elegiveis: resumo.elegiveis, gravadas,
       fontes: resumo.fontes,
+      snapshot_idade_min: snapshot.idade_min,
       enfileirados: resumo.enfileirados,
       naoEnfileirados: resumo.naoEnfileirados,
       falhas: resumo.falhas.length },
@@ -389,6 +498,18 @@ export async function avaliarCiclo(): Promise<ResumoCiclo> {
 /** Fonte não consultada (nenhum candidato daquela família). Não é degradação. */
 function vaziaOk(): LeituraFonte<never> {
   return { estado: 'ok', motivo: null, porChave: new Map(), idadeSeg: null }
+}
+
+/**
+ * O que `fontes` do resumo diz quando a barreira A1 dispensou as duas leituras. Texto
+ * neutro de propósito: a A1 também reprova quando NÃO HÁ snapshot nenhum, e "velho"
+ * seria falso nesse caso — o motivo exato está em `naoEnfileirados`.
+ */
+const FONTE_NAO_CONSULTADA = 'não consultada (sem snapshot fresco do coletor)'
+
+/** Estado da fonte para o resumo e o log: o motivo vai junto quando houver. */
+function descreverFonte(f: LeituraFonte<unknown>): string {
+  return f.estado + (f.motivo ? ` (${f.motivo})` : '')
 }
 
 /** O que a tela mostra no chip. Só o essencial — o detalhe fica na auditoria. */

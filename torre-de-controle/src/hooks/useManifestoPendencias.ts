@@ -202,21 +202,36 @@ export interface PendenciaManifesto {
 }
 
 /**
- * Responde a única pergunta que importa em `conferencia`: o Efetuar chegou a ser clicado?
+ * Responde a única pergunta que importa em `conferencia`: o CLIENTE já tem a ocorrência
+ * de entrega? Repetir a baixa só duplica alguma coisa se ele tiver.
  *
  * A tela lista manifesto ABERTO, e aberto não é o mesmo que intocado. A baixa no Rodopar
- * tem dois passos — o Efetuar grava a ocorrência, e o AGENDADOR interno baixa minutos
- * depois — e entre eles existe um estado em que repetir duplicaria o lançamento.
+ * tem dois passos — a ocorrência é gravada, e o AGENDADOR interno baixa minutos depois —
+ * e entre eles existe um estado em que repetir duplicaria o lançamento.
+ *
+ * E nem toda ocorrência que fecha o manifesto é de entrega (13/10, 70329): a 104 SAIDA
+ * DESCARGA da cerca eletrônica fecha, mas não está no mapa RODOCC do cliente, e ele fica
+ * sem nada. É o `so_interna`. Espelha OcorrenciaEntregaSchema (api, manifesto.plugin.ts).
  */
 export interface ManifestoOcorrenciaEntrega {
-  /** true = o Efetuar JÁ foi clicado. NÃO liberar: repetir duplica o lançamento. */
+  /**
+   * true = o CLIENTE já tem ocorrência que finaliza (ou não dá para dizer o que ele vê:
+   * pagador sem mapa, mapa não conferido). NÃO liberar: repetir duplica o lançamento.
+   */
   tem: boolean
-  /** Quantas linhas casaram. Só `> 0` importa; o número varia com a quantidade de notas. */
+  /** Quantas linhas FINMAN='S' casaram. Só `> 0` importa; o número varia com as notas. */
   registros?: number | null
   /** Quando o coletor perguntou ao Rodopar. Evidência velha não decide nada. */
   verificado_em?: string | null
   /** Preenchido quando a consulta FALHOU — com erro, `tem` não significa nada. */
   erro?: string | null
+  /**
+   * true (só com tem=false) = o Rodopar só tem ocorrência INTERNA — fecha o manifesto, o
+   * cliente não vê. Ausente = coletor antigo, que não distingue: aí vale o `tem` sozinho.
+   */
+  so_interna?: boolean | null
+  /** Texto curto do coletor, ex.: '104 SAIDA DESCARGA por PROC_CERCA (1 nota)'. */
+  detalhe?: string | null
 }
 
 // ── Justificativa do operador (12/08) ──────────────────────────────────────

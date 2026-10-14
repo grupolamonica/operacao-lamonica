@@ -360,10 +360,13 @@ const ROTULO_SITUACAO_PEDIDO: Record<string, string> = {
  * A tabela completa mora no LEIA-ME.md do robô; aqui ficam só os que aparecem
  * numa falha comum. Um rc fora da lista mostra o número cru, que ainda é mais
  * informativo que nada.
+ *
+ * rc=4 saiu da tabela em 13/10: não é falha e não ganha chip — o próprio botão diz
+ * JÁ BAIXADO / NÃO PENDENTE (ver `naoPendenteNoRodopar`). O chip vermelho "já baixado"
+ * ao lado de um botão vermelho FALHOU era exatamente a contradição a desfazer.
  */
 const RC_CURTO: Record<number, string> = {
   3: 'login',
-  4: 'já baixado',
   5: 'tela não abriu',
   8: 'sessão caiu',
   9: 'tela travou',
@@ -374,6 +377,36 @@ const RC_CURTO: Record<number, string> = {
   16: 'sem banco',
 }
 
+/**
+ * rc=4 do robô: ele consultou o banco do Rodopar e o manifesto NÃO estava pendente —
+ * já baixado, cancelado ou inexistente. Não é falha: é ausência de trabalho. O robô
+ * já faz essa distinção na saída dele ("NADA A FAZER" em vez de "FALHOU"); o torre
+ * grava `falhou` porque o rc não é 0, e a tela é que precisa não repetir o grito.
+ *
+ * POR QUE (13/10/2026, manifesto 70329). Baixado pelo AGENDADOR às 13:10, ele seguiu
+ * na lista porque o coletor estava parado desde 12:38, e a automação o pediu de novo a
+ * cada ~10 min. Cada volta pintava um FALHOU vermelho com "Nada foi gravado no Rodopar
+ * — clique para tentar de novo" num manifesto que estava pronto.
+ *
+ * 'baixado' quando a mensagem diz Baixado. O texto vem de `situacao_legivel` do robô
+ * ('B' -> 'Baixado', sem acento) e o "NADA A FAZER (rc=4)" ele só imprime quando o
+ * documento já estava baixado. Casar sem acento é de propósito: a saída do .exe passa
+ * pelo PowerShell do agente, e acento pode chegar trocado.
+ */
+function naoPendenteNoRodopar(pedido: PedidoBaixa | undefined): 'baixado' | 'outro' | null {
+  if (pedido?.situacao !== 'falhou' || pedido.rc !== 4) return null
+  const msg = pedido.mensagem ?? ''
+  return /\(Baixado\b/i.test(msg) || /NADA A FAZER \(rc=4\)/.test(msg) ? 'baixado' : 'outro'
+}
+
+/** Situação do pedido para o painel — rc=4 não é "Falhou — pode pedir de novo". */
+function rotuloSituacaoPedido(pedido: PedidoBaixa): string {
+  const naoPendente = naoPendenteNoRodopar(pedido)
+  if (naoPendente === 'baixado') return 'Já estava baixado no Rodopar — nada a lançar'
+  if (naoPendente === 'outro') return 'Não pendente no Rodopar — nada a lançar'
+  return ROTULO_SITUACAO_PEDIDO[pedido.situacao] ?? pedido.situacao
+}
+
 function aparenciaBotaoBaixa(
   pedido: PedidoBaixa | undefined,
   temAgente: boolean,
@@ -381,6 +414,8 @@ function aparenciaBotaoBaixa(
   rotulo: string
   podeClicar: boolean
   destaque: boolean
+  /** clicável, mas com a cara apagada de quem não pede ação (rc=4) */
+  discreto?: boolean
   title: string
 } {
   switch (pedido?.situacao) {
@@ -407,7 +442,42 @@ function aparenciaBotaoBaixa(
       return { rotulo: 'CONFERIR', podeClicar: false, destaque: true,
                title: `rc=${pedido.rc}: o Efetuar PODE ter sido clicado e o banco não confirmou. `
                     + 'Confira este manifesto no Rodopar antes de qualquer nova tentativa.' }
-    case 'falhou':
+    case 'falhou': {
+      // rc=4 primeiro: não é falha, é o robô dizendo que não havia o que baixar (13/10,
+      // ver naoPendenteNoRodopar). Rótulo neutro, sem destaque e sem o "nada foi gravado
+      // — clique para tentar de novo", que ali mandava repetir o que já estava feito.
+      //
+      // Continua CLICÁVEL de propósito: se o manifesto voltar a aparecer com o coletor
+      // em dia (estorno da baixa no Rodopar), a pessoa tem que conseguir pedir. Repetir
+      // sobre um manifesto que segue baixado não grava nada — o robô confere o banco
+      // antes de abrir qualquer tela.
+      const naoPendente = naoPendenteNoRodopar(pedido)
+      if (naoPendente) {
+        // O balão diz SÓ o que se sabe: o que o robô viu e quando (revisão de 13/10). A
+        // versão anterior afirmava que "o snapshot do coletor é anterior a essa baixa" — e
+        // isso pode ser falso: se a baixa foi estornada depois da consulta, o snapshot é
+        // NOVO e o manifesto voltou a estar pendente de verdade. Daí o "provavelmente" e o
+        // caminho para o caso contrário, que é justamente por que o botão segue clicável.
+        // Pretérito ("não estava") pelo mesmo motivo: o robô fala do instante da consulta.
+        const quando = pedido.concluido_em ? ` em ${fmtInstante(pedido.concluido_em)}` : ''
+        const oQue = naoPendente === 'baixado'
+          ? 'o manifesto não estava pendente: já estava BAIXADO'
+          : 'o manifesto não estava pendente (cancelado ou inexistente)'
+        // Cancelado também sai da lista com o próximo snapshot; inexistente não sai, e
+        // aí o número, a filial ou a série do pedido não batem com o Rodopar.
+        const seInexistente = naoPendente === 'outro'
+          ? ' Se ele continuar aqui com o coletor em dia, confira número, filial e série no Rodopar.'
+          : ''
+        return { rotulo: naoPendente === 'baixado' ? 'JÁ BAIXADO' : 'NÃO PENDENTE',
+                 podeClicar: true, destaque: false, discreto: true,
+                 title: `O robô consultou o banco do Rodopar${quando} e ${oQue} — não havia o que `
+                      + 'baixar (rc=4). Se ele continua nesta lista, o snapshot do coletor provavelmente '
+                      + 'é anterior a essa consulta. Se não for (ex.: baixa estornada depois dela), clicar '
+                      + 'de novo pede ao robô uma nova conferência — e a baixa, se o manifesto estiver '
+                      + `pendente.${seInexistente}
+
+${pedido.mensagem ?? 'sem mensagem'}` }
+      }
       // FALHOU, e não "BAIXAR" como se nada tivesse acontecido (corrigido 26/08).
       //
       // Antes o botão voltava ao estado inicial e a única pista era o balão do
@@ -423,6 +493,7 @@ function aparenciaBotaoBaixa(
                     + `clique para tentar de novo.
 
 ${pedido.mensagem ?? 'sem mensagem'}` }
+    }
     default:
       return { rotulo: 'BAIXAR', podeClicar: true, destaque: false,
                title: 'Manda o robô lançar a entrega e baixar este manifesto no Rodopar' }
@@ -1117,7 +1188,7 @@ function BaixaManifestoConteudo() {
                                 style={
                                   apBaixa.destaque
                                     ? { background: 'var(--status-atrasado-fg)', color: '#fff' }
-                                    : apBaixa.podeClicar
+                                    : apBaixa.podeClicar && !apBaixa.discreto
                                       ? { background: 'var(--foreground)', color: 'var(--background)' }
                                       : { background: 'var(--muted)', color: 'var(--muted-foreground)' }
                                 }
@@ -1128,8 +1199,9 @@ function BaixaManifestoConteudo() {
                             )}
                             {/* O motivo ao lado do botão, sem depender de hover. O texto do
                                 robô é diagnóstico e não cabe aqui; o rc traduzido cabe e diz
-                                o suficiente para a pessoa decidir entre repetir e chamar ajuda. */}
-                            {pedidoBaixa?.situacao === 'falhou' && (
+                                o suficiente para a pessoa decidir entre repetir e chamar ajuda.
+                                rc=4 não tem chip: o rótulo do botão já diz JÁ BAIXADO. */}
+                            {pedidoBaixa?.situacao === 'falhou' && !naoPendenteNoRodopar(pedidoBaixa) && (
                               <span
                                 className="rounded px-1 py-0.5 text-[9px] font-semibold whitespace-nowrap"
                                 style={{ background: 'var(--status-atrasado-bg)', color: 'var(--status-atrasado-fg)' }}
@@ -1699,7 +1771,7 @@ function ManifestoDetailPanel({
                 Baixa pelo robô
               </div>
               <div className="mt-1 grid grid-cols-2 gap-2">
-                <Metric label="Situação" value={ROTULO_SITUACAO_PEDIDO[pedidoBaixa.situacao] ?? pedidoBaixa.situacao} />
+                <Metric label="Situação" value={rotuloSituacaoPedido(pedidoBaixa)} />
                 <Metric label="Pedido por" value={pedidoBaixa.autor ?? '—'} />
                 <Metric label="Pedido em" value={fmtInstante(pedidoBaixa.criado_em)} />
                 {pedidoBaixa.agente && <Metric label="Executando em" value={pedidoBaixa.agente} />}
@@ -1746,9 +1818,16 @@ function ManifestoDetailPanel({
                   e não dizia o que procurar nem onde. O coletor agora pergunta ao ERP pela
                   cadeia que o próprio Rodopar usa (RODIMA→RODCON→RODNFC→RODOCH→RODOCO com
                   FINMAN='S') e traz a resposta.
-                  Os TRÊS estados são distintos de propósito: sem evidência ainda, evidência
-                  de que não foi lançado, e evidência de que FOI. Tratar "ausente" como
-                  "não tem" seria o mesmo erro que este bloco existe para evitar. */}
+                  São QUATRO estados, distintos de propósito: sem evidência ainda, evidência
+                  de que não foi lançado, evidência de que FOI, e — desde 13/10 — evidência
+                  de que só foi lançada ocorrência INTERNA. Tratar "ausente" como "não tem"
+                  seria o mesmo erro que este bloco existe para evitar.
+
+                  O quarto estado é o 70329: fechado por 104 SAIDA DESCARGA da cerca
+                  eletrônica (PROC_CERCA), que não está no mapa RODOCC da Nestlé. Contando
+                  qualquer FINMAN='S', a tela dizia "ENCONTRADA, não repita" — e o cliente
+                  ficou sem ocorrência de entrega. Cor de ATENÇÃO, não verde: não está tudo
+                  bem, só não há risco de duplicar. */}
               {(() => {
                 const oco = p.ocorrencia_entrega
                 if (!oco || oco.erro) {
@@ -1762,6 +1841,25 @@ function ManifestoDetailPanel({
                     </p>
                   )
                 }
+                const verificado = oco.verificado_em && (
+                  <span className="text-muted-foreground"> Verificado em {fmtInstante(oco.verificado_em)}.</span>
+                )
+                // `tem` vence `so_interna`: se o coletor um dia mandar os dois, o lado seguro
+                // é não repetir. Só tem=false + so_interna=true abre o quarto estado.
+                if (!oco.tem && oco.so_interna) {
+                  return (
+                    <p className="mt-2 text-[11px]" style={{ color: 'var(--status-em-risco-fg)' }}>
+                      <strong>
+                        O Rodopar só tem ocorrência INTERNA{oco.detalhe ? `: ${oco.detalhe}` : ''}.
+                      </strong>{' '}
+                      Ela fecha o manifesto, mas o cliente NÃO recebeu ocorrência de entrega. Pedir
+                      a baixa de novo lança a ocorrência de entrega sem duplicar nada que o cliente
+                      vê — enquanto o manifesto estiver aberto: depois que o AGENDADOR o baixar, o
+                      robô responde "não está pendente" e a de entrega fica por lançar à mão.
+                      {verificado}
+                    </p>
+                  )
+                }
                 const cor = oco.tem ? 'var(--status-atrasado-fg)' : 'var(--status-no-prazo-fg)'
                 return (
                   <p className="mt-2 text-[11px]" style={{ color: cor }}>
@@ -1771,11 +1869,12 @@ function ManifestoDetailPanel({
                         : 'Ocorrência de entrega NÃO encontrada no Rodopar.'}
                     </strong>{' '}
                     {oco.tem
-                      ? 'O Efetuar já foi clicado — pedir a baixa de novo DUPLICA o lançamento. A baixa deve cair sozinha quando o AGENDADOR do Rodopar rodar.'
+                      ? 'A ocorrência que fecha o manifesto já foi lançada — pedir a baixa de novo DUPLICA o lançamento. A baixa deve cair sozinha quando o AGENDADOR do Rodopar rodar.'
                       : 'Nada foi lançado, então repetir é seguro.'}
-                    {oco.verificado_em && (
-                      <span className="text-muted-foreground"> Verificado em {fmtInstante(oco.verificado_em)}.</span>
-                    )}
+                    {/* ex.: 'mapa do cliente não conferido — tratado como lançada' — quem lê
+                        precisa saber quando o "não repita" é conclusão e quando é cautela */}
+                    {oco.tem && oco.detalhe && <span className="text-muted-foreground"> ({oco.detalhe})</span>}
+                    {verificado}
                   </p>
                 )
               })()}
