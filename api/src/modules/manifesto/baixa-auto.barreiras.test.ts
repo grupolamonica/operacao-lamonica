@@ -4,7 +4,9 @@ import {
   barreirasDoRobo,
   falhasAutomaticasHoje,
   horaBrasilia,
+  RC_SERIE_AMBIGUA,
   reprovaDaProvaDoRobo,
+  reprovaDaSerieAmbigua,
   reprovaDoDisjuntor,
   reprovaDoSnapshot,
   type PedidoParaBarreira,
@@ -118,6 +120,54 @@ describe('reprovaDaProvaDoRobo (A2)', () => {
   })
 })
 
+describe('reprovaDaSerieAmbigua (A4)', () => {
+  // O caso do 6642 (filial 1, serie U) em 28/10/2026: o robo leu outra serie e respondeu
+  // rc=4 as 03:29, 03:38 e 03:48. Com o robo novo a resposta e rc=17, e a automacao nao
+  // pode voltar a pedir. Fixtures com a hora real, em Brasilia.
+  const RECUSA = 'robô não distingue a série deste manifesto (rc=17) — só pedido humano'
+  const recusou = (over: Partial<PedidoParaBarreira> = {}) =>
+    pedido({ rc: RC_SERIE_AMBIGUA, createdAt: brt('03:29', '2026-10-28'), concluidoEm: brt('03:29', '2026-10-28'), ...over })
+
+  it('o ultimo pedido terminou rc=17: nao reenfileira, com a reprova honesta', () => {
+    expect(reprovaDaSerieAmbigua([recusou()])).toBe(RECUSA)
+  })
+
+  it('SEM janela de tempo: a recusa de 3 dias atras continua travando', () => {
+    // diferente da A2, cuja prova envelhece com o snapshot: a ambiguidade e do manifesto
+    const velha = recusou({ createdAt: brt('03:29', '2026-10-25'), concluidoEm: brt('03:29', '2026-10-25') })
+    expect(reprovaDaSerieAmbigua([velha])).toBe(RECUSA)
+  })
+
+  it('pedido HUMANO mais novo tira a trava, em qualquer ordem da lista', () => {
+    const humano = pedido({ origem: 'humano', situacao: 'na_fila', rc: null, createdAt: brt('09:10', '2026-10-28'), concluidoEm: null })
+    expect(reprovaDaSerieAmbigua([recusou(), humano])).toBeNull()
+    expect(reprovaDaSerieAmbigua([humano, recusou()])).toBeNull()
+  })
+
+  it('o humano que TAMBEM terminou rc=17 e o mais recente: a trava volta', () => {
+    // o robo segue sem distinguir; a maquina nao insiste onde a pessoa acabou de falhar
+    const humano = pedido({ origem: 'humano', rc: RC_SERIE_AMBIGUA, createdAt: brt('09:10', '2026-10-28'), concluidoEm: brt('09:10', '2026-10-28') })
+    expect(reprovaDaSerieAmbigua([recusou(), humano])).toBe(RECUSA)
+  })
+
+  it('rc=17 antigo seguido de outro desfecho (robo ja atualizado) nao trava', () => {
+    // so o pedido MAIS RECENTE decide: depois do rc=17 veio uma falha comum (rc=12)
+    const depois = pedido({ origem: 'humano', rc: 12, createdAt: brt('09:10', '2026-10-28'), concluidoEm: brt('09:14', '2026-10-28') })
+    expect(reprovaDaSerieAmbigua([recusou(), depois])).toBeNull()
+  })
+
+  it('rc=4 e rc=0 nao sao rc=17; sem pedido nenhum nao trava', () => {
+    expect(reprovaDaSerieAmbigua([pedido({ rc: 4 })])).toBeNull()
+    expect(reprovaDaSerieAmbigua([pedido({ situacao: 'concluido', rc: 0 })])).toBeNull()
+    expect(reprovaDaSerieAmbigua([])).toBeNull()
+  })
+
+  it('o rc=17 liberado da conferencia continua sendo rc=17', () => {
+    // situacao nao importa: o rc so e gravado por registrarResultado
+    expect(reprovaDaSerieAmbigua([recusou({ situacao: 'conferencia' })])).toBe(RECUSA)
+  })
+})
+
 describe('disjuntor por manifesto (A3)', () => {
   const falhaAuto = (hhmm: string, over: Partial<PedidoParaBarreira> = {}) =>
     pedido({ rc: 12, createdAt: brt(hhmm), concluidoEm: brt(hhmm), ...over })
@@ -159,7 +209,7 @@ describe('disjuntor por manifesto (A3)', () => {
   })
 })
 
-describe('barreirasDoRobo (A2 + A3)', () => {
+describe('barreirasDoRobo (A2 + A4 + A3)', () => {
   const ctx = { recebidoEm: brt('13:45'), inicioDoDia: INICIO_DO_DIA, maxFalhasDia: 3 }
 
   it('o laco do 70329 depois de 3 voltas: as duas barreiras falam', () => {
@@ -176,6 +226,23 @@ describe('barreirasDoRobo (A2 + A3)', () => {
 
   it('manifesto sem historico passa', () => {
     expect(barreirasDoRobo([], ctx)).toEqual([])
+  })
+
+  it('rc=17 sozinho: so a A4 fala (nenhuma falha anterior, A2 nao e prova)', () => {
+    const r = barreirasDoRobo([pedido({ rc: RC_SERIE_AMBIGUA })], ctx)
+    expect(r).toEqual(['robô não distingue a série deste manifesto (rc=17) — só pedido humano'])
+  })
+
+  it('A4 vem antes do disjuntor na auditoria: a causa reconhecida antes do teto generico', () => {
+    const voltas = [
+      pedido({ rc: 12, createdAt: brt('13:19'), concluidoEm: brt('13:20') }),
+      pedido({ rc: 12, createdAt: brt('13:29'), concluidoEm: brt('13:30') }),
+      pedido({ rc: RC_SERIE_AMBIGUA, createdAt: brt('13:39'), concluidoEm: brt('13:40') }),
+    ]
+    const r = barreirasDoRobo(voltas, ctx)
+    expect(r).toHaveLength(2)
+    expect(r[0]).toContain('rc=17')
+    expect(r[1]).toContain('3 tentativas automáticas')
   })
 })
 

@@ -19,14 +19,32 @@
  * min, gasta 144 pedidos por dia contra um teto de 100: bloquearia TODA a baixa
  * automática real, por causa de um manifesto que não tinha nada a fazer.
  *
- * Três barreiras, cada uma fecha um buraco diferente:
+ * Quatro barreiras, cada uma fecha um buraco diferente:
  *   A1  snapshot velho  -> NINGUÉM é elegível no ciclo: a leitura do ERP não é de agora
  *   A2  prova do robô   -> rc=4 (não pendente) ou rc=0 (baixou) concluído DEPOIS do snapshot:
  *                          a prova é mais nova que a evidência
  *   A3  disjuntor       -> N falhas automáticas hoje na mesma chave: daí em diante, só pedido humano
+ *   A4  série ambígua   -> o último pedido da chave terminou rc=17 (o robô não distingue qual
+ *                          documento é o pedido): sem pedido humano mais novo, nunca reenfileira
  * A1 sozinha teria resolvido o 70329. A2 e A3 existem porque o próximo laço não vai
  * ter a mesma causa: a A2 cobre o snapshot fresco que ainda não viu a baixa, e a A3 é
  * o teto de qualquer laço que nenhuma das outras reconheça.
+ *
+ * ── A4: POR QUE EXISTE (31/10/2026, manifesto 6642, filial 1, série U) ────────────
+ *
+ * O Rodopar numera o manifesto por SÉRIE: na filial 1 o 6642 existe em quatro documentos
+ * (U, ITA, 13 e 5 — só a U está aberta, emitida em 23/10). O robô identificava o manifesto
+ * só por número e filial, lia OUTRA série (já Baixada) e saía com rc=4 em 6 s. A baixa
+ * automática o enfileirou em 28/10 às 03:29, 03:38 e 03:48 — três voltas de um laço que a
+ * A2 não pega: o snapshot é fresco e segue listando o 6642 aberto (a prova do robô é
+ * ANTERIOR a ele), e a A3 só para na terceira. Em 60 dias, 506 de 1.402 manifestos emitidos
+ * eram de série cujo número se repete em outra série da mesma filial (U 104 de 104).
+ *
+ * O robô novo recusa com rc=17 antes de abrir o navegador, quando não consegue provar qual
+ * documento é o pedido. rc=17 não é "tente de novo": é falta de informação que a próxima
+ * volta automática não vai ter — só uma pessoa decide (baixa à mão conferindo a série, ou
+ * repete o pedido depois de o robô ser atualizado). Diferente da A2, não há janela de
+ * tempo: ela só cai quando existir um pedido mais novo na chave.
  */
 
 /** rc do robô para "não está pendente" — já baixado, cancelado ou inexistente. */
@@ -37,6 +55,13 @@ export const RC_NAO_PENDENTE = 4
  * `registrarResultado` (baixa.service.ts) rc=0, e só rc=0, vira `concluido`.
  */
 export const RC_BAIXOU = 0
+
+/**
+ * rc do robô para "o número deste manifesto atende por mais de um documento e não consigo
+ * provar qual é o pedido" (31/10/2026). O robô sai ANTES de abrir o navegador e sem clicar
+ * em nada, então o pedido termina `falhou` (nunca `conferencia`) e repetir é inofensivo.
+ */
+export const RC_SERIE_AMBIGUA = 17
 
 /** O pedido de baixa, na parte que as barreiras usam (ver manifesto_baixa_pedidos). */
 export interface PedidoParaBarreira {
@@ -144,6 +169,29 @@ export function reprovaDaProvaDoRobo(
 }
 
 /**
+ * A4 — o robô já disse que não distingue a série deste manifesto?
+ *
+ * Só o pedido MAIS RECENTE da chave completa decide, de qualquer origem: um pedido humano
+ * mais novo (na fila, ou terminado com outro rc) tira a trava, porque é uma pessoa tentando
+ * de novo — talvez com o robô já atualizado, que passa a série e resolve. Se esse pedido
+ * humano TAMBÉM terminar rc=17, ele é o mais recente e a trava volta: o robô continua
+ * sem distinguir, e a máquina não deve insistir onde a pessoa acabou de falhar.
+ *
+ * Sem janela de tempo, de propósito (a A2 tem, porque a prova dela envelhece junto com o
+ * snapshot). A ambiguidade de série é propriedade do manifesto, não do instante: o 6642
+ * continuará com quatro documentos amanhã. Também não exige `concluidoEm` nem `situacao`:
+ * o rc só é gravado por `registrarResultado`, e um rc=17 que a pessoa liberou da conferência
+ * continua sendo um rc=17.
+ *
+ * `pedidos` = todos os da chave completa (codman|filial|serie), em qualquer ordem.
+ */
+export function reprovaDaSerieAmbigua(pedidos: readonly PedidoParaBarreira[]): string | null {
+  const ultimo = maisRecente(pedidos)
+  if (!ultimo || ultimo.rc !== RC_SERIE_AMBIGUA) return null
+  return `robô não distingue a série deste manifesto (rc=${RC_SERIE_AMBIGUA}) — só pedido humano`
+}
+
+/**
  * Quantos pedidos AUTOMÁTICOS desta chave foram criados hoje e terminaram `falhou`.
  *
  * Pedido humano não conta: o disjuntor existe para parar a máquina que repete, não a
@@ -185,7 +233,10 @@ export function reprovaDoDisjuntor(
 }
 
 /**
- * A2 e A3 juntas, na ordem em que vão para a auditoria. Lista vazia = nada trava.
+ * A2, A4 e A3 juntas, na ordem em que vão para a auditoria: as que reconhecem uma causa
+ * (a prova do robô, a série ambígua) antes do disjuntor, que é o teto genérico. A2 e A4
+ * nunca falam juntas — as duas olham o pedido mais recente, e ele termina em rc=4/0 ou
+ * em rc=17, não nos dois. Lista vazia = nada trava.
  *
  * Valem nos DOIS modos. Em sombra elas não impedem nada (nada é enfileirado), mas a
  * avaliação gravada precisa dizer o que o modo real faria — senão a série histórica
@@ -198,6 +249,8 @@ export function barreirasDoRobo(
   const reprovas: string[] = []
   const prova = reprovaDaProvaDoRobo(pedidos, ctx.recebidoEm)
   if (prova) reprovas.push(prova)
+  const serieAmbigua = reprovaDaSerieAmbigua(pedidos)
+  if (serieAmbigua) reprovas.push(serieAmbigua)
   const disjuntor = reprovaDoDisjuntor(pedidos, ctx.inicioDoDia, ctx.maxFalhasDia)
   if (disjuntor) reprovas.push(disjuntor)
   return reprovas
