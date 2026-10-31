@@ -364,6 +364,10 @@ const ROTULO_SITUACAO_PEDIDO: Record<string, string> = {
  * rc=4 saiu da tabela em 13/10: não é falha e não ganha chip — o próprio botão diz
  * JÁ BAIXADO / NÃO PENDENTE (ver `naoPendenteNoRodopar`). O chip vermelho "já baixado"
  * ao lado de um botão vermelho FALHOU era exatamente a contradição a desfazer.
+ *
+ * rc=17 (série ambígua, 31/10) também não ganha chip, mas por outro motivo: o rótulo do
+ * botão já é este texto (ver `aparenciaBotaoBaixa`), e os dois lado a lado repetiriam a
+ * mesma frase. A entrada fica aqui para a tela ter UMA fonte do texto curto do 17.
  */
 const RC_CURTO: Record<number, string> = {
   3: 'login',
@@ -375,7 +379,20 @@ const RC_CURTO: Record<number, string> = {
   13: 'validação',
   15: 'falta pré-requisito',
   16: 'sem banco',
+  17: 'série ambígua',
 }
+
+/**
+ * rc=17 do robô: o número do manifesto atende por mais de UM documento na filial (séries
+ * diferentes) e o robô não consegue provar qual é o pedido — então recusa ANTES de abrir
+ * o navegador, sem clicar em nada. Mesmo valor de `RC_SERIE_AMBIGUA` na api.
+ *
+ * POR QUE EXISTE (31/10/2026, manifesto 6642, filial 1, série U). Aberto no Rodopar e
+ * mesmo assim rotulado JÁ BAIXADO: o robô lia outra série do 6642 (ITA, 13 e 5, todas
+ * Baixadas) e respondia rc=4. Em 60 dias, 506 de 1.402 manifestos emitidos eram de série
+ * cujo número se repete na filial (U: 104 de 104).
+ */
+const RC_SERIE_AMBIGUA = 17
 
 /**
  * rc=4 do robô: ele consultou o banco do Rodopar e o manifesto NÃO estava pendente —
@@ -401,6 +418,9 @@ function naoPendenteNoRodopar(pedido: PedidoBaixa | undefined): 'baixado' | 'out
 
 /** Situação do pedido para o painel — rc=4 não é "Falhou — pode pedir de novo". */
 function rotuloSituacaoPedido(pedido: PedidoBaixa): string {
+  if (pedido.situacao === 'falhou' && pedido.rc === RC_SERIE_AMBIGUA) {
+    return 'Série ambígua — o robô não sabe qual documento baixar (nada foi gravado)'
+  }
   const naoPendente = naoPendenteNoRodopar(pedido)
   if (naoPendente === 'baixado') return 'Já estava baixado no Rodopar — nada a lançar'
   if (naoPendente === 'outro') return 'Não pendente no Rodopar — nada a lançar'
@@ -410,6 +430,8 @@ function rotuloSituacaoPedido(pedido: PedidoBaixa): string {
 function aparenciaBotaoBaixa(
   pedido: PedidoBaixa | undefined,
   temAgente: boolean,
+  /** o que o ITEM da lista sabe e o pedido não guarda: a série (o pedido só tem o rc e a mensagem) */
+  item: { serie?: string | null } = {},
 ): {
   rotulo: string
   podeClicar: boolean
@@ -443,6 +465,31 @@ function aparenciaBotaoBaixa(
                title: `rc=${pedido.rc}: o Efetuar PODE ter sido clicado e o banco não confirmou. `
                     + 'Confira este manifesto no Rodopar antes de qualquer nova tentativa.' }
     case 'falhou': {
+      // rc=17 antes de tudo (31/10): o robô RECUSOU o pedido porque o número do manifesto
+      // atende por mais de um documento e ele não prova qual é o seu. Nada foi aberto nem
+      // gravado — e, principalmente, NÃO é "já baixado": o 6642 aberto da série U aparecia
+      // como JÁ BAIXADO porque o robô lia a série ITA, já baixada.
+      //
+      // Vermelho (destaque) porque exige uma PESSOA: a automação não repete sozinha (barreira
+      // A4 na api), e baixar pelo Rodopar conferindo a série é o caminho certo hoje.
+      //
+      // Continua CLICÁVEL de propósito, pelo mesmo motivo do rc=4: repetir é inofensivo (o robô
+      // recusa antes de abrir qualquer tela, ~6 s) e é o único jeito de a pessoa pedir DEPOIS
+      // de o robô ser atualizado — a A4 só solta a chave quando existe um pedido humano mais novo.
+      // O rótulo vem do RC_CURTO: um texto só para o 17, nunca "FALHOU" nem "JÁ BAIXADO".
+      if (pedido.rc === RC_SERIE_AMBIGUA) {
+        const serie = (item.serie ?? '').trim()
+        const quando = pedido.concluido_em ? ` em ${fmtInstante(pedido.concluido_em)}` : ''
+        return { rotulo: RC_CURTO[RC_SERIE_AMBIGUA].toUpperCase(), podeClicar: true, destaque: true,
+                 title: `O robô recusou este pedido${quando} (rc=17): o número deste manifesto existe em `
+                      + 'mais de um documento do Rodopar (séries diferentes) e ele não consegue provar '
+                      + `qual é o seu${serie ? ` — o desta linha é a série ${serie}` : ''}. Não abriu `
+                      + 'nenhuma tela e NÃO gravou nada. Baixe pelo Rodopar conferindo a série. Se o robô '
+                      + 'desta máquina já foi atualizado, clicar de novo repete o pedido já com a série.'
+                      + `
+
+${pedido.mensagem ?? 'sem mensagem'}` }
+      }
       // rc=4 primeiro: não é falha, é o robô dizendo que não havia o que baixar (13/10,
       // ver naoPendenteNoRodopar). Rótulo neutro, sem destaque e sem o "nada foi gravado
       // — clique para tentar de novo", que ali mandava repetir o que já estava feito.
@@ -1015,7 +1062,7 @@ function BaixaManifestoConteudo() {
                     const validarPendente = precisaValidar(p)
                     // pedido de baixa deste manifesto, se houver — governa o botão
                     const pedidoBaixa = baixaPedidos[chaveTratativa(p) ?? ''] as PedidoBaixa | undefined
-                    const apBaixa = aparenciaBotaoBaixa(pedidoBaixa, meuRoboVivo || roboAnonimo)
+                    const apBaixa = aparenciaBotaoBaixa(pedidoBaixa, meuRoboVivo || roboAnonimo, { serie: p.serie })
                     const cliente = p.sm?.cliente || p.destino || '—'
                     const destinoLinha = [p.destino, p.destino_uf ?? p.viagem?.destino_uf].filter(Boolean).join('/')
                     return (
@@ -1200,8 +1247,9 @@ function BaixaManifestoConteudo() {
                             {/* O motivo ao lado do botão, sem depender de hover. O texto do
                                 robô é diagnóstico e não cabe aqui; o rc traduzido cabe e diz
                                 o suficiente para a pessoa decidir entre repetir e chamar ajuda.
-                                rc=4 não tem chip: o rótulo do botão já diz JÁ BAIXADO. */}
-                            {pedidoBaixa?.situacao === 'falhou' && !naoPendenteNoRodopar(pedidoBaixa) && (
+                                rc=4 e rc=17 não têm chip: o rótulo do botão já diz JÁ BAIXADO / SÉRIE AMBÍGUA. */}
+                            {pedidoBaixa?.situacao === 'falhou' && !naoPendenteNoRodopar(pedidoBaixa)
+                              && pedidoBaixa.rc !== RC_SERIE_AMBIGUA && (
                               <span
                                 className="rounded px-1 py-0.5 text-[9px] font-semibold whitespace-nowrap"
                                 style={{ background: 'var(--status-atrasado-bg)', color: 'var(--status-atrasado-fg)' }}
