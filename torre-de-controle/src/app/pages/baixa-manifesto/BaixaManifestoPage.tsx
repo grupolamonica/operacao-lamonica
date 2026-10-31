@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react'
 import { BookOpen, Bot, MessageSquare, PackageCheck, Phone, Volume2, VolumeX } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { AUTO_CHIP, ESTADOS, ESTADO_INFO, JA_SAIU_CHIP, SEM_PRAZO_CHIP, TRAVA_CHIP } from './chips'
+import { snapshotContradizRobo } from './contradicaoDoSnapshot'
 import { PanelCard } from '@/components/domain/PanelCard'
 import { RelatorioMotivos } from './components/RelatorioMotivos'
 import { ValidacaoSecao } from './components/ValidacaoSecao'
@@ -416,12 +417,22 @@ function naoPendenteNoRodopar(pedido: PedidoBaixa | undefined): 'baixado' | 'out
   return /\(Baixado\b/i.test(msg) || /NADA A FAZER \(rc=4\)/.test(msg) ? 'baixado' : 'outro'
 }
 
-/** Situação do pedido para o painel — rc=4 não é "Falhou — pode pedir de novo". */
-function rotuloSituacaoPedido(pedido: PedidoBaixa): string {
+/**
+ * Situação do pedido para o painel — rc=4 não é "Falhou — pode pedir de novo".
+ *
+ * `snapshotEm` = quando o torre recebeu o snapshot que a lista está mostrando. Com ele, o
+ * "já estava baixado" deixa de ser afirmado quando o ERP o contradiz (ver
+ * `snapshotContradizRobo`): o painel não pode dizer "nada a lançar" de um manifesto que o
+ * ERP segue listando como aberto.
+ */
+function rotuloSituacaoPedido(pedido: PedidoBaixa, snapshotEm?: string | Date | null): string {
   if (pedido.situacao === 'falhou' && pedido.rc === RC_SERIE_AMBIGUA) {
     return 'Série ambígua — o robô não sabe qual documento baixar (nada foi gravado)'
   }
   const naoPendente = naoPendenteNoRodopar(pedido)
+  if (naoPendente && snapshotContradizRobo(pedido.concluido_em, snapshotEm)) {
+    return 'O robô respondeu "não pendente", mas o ERP ainda lista este manifesto como aberto — conferir a série'
+  }
   if (naoPendente === 'baixado') return 'Já estava baixado no Rodopar — nada a lançar'
   if (naoPendente === 'outro') return 'Não pendente no Rodopar — nada a lançar'
   return ROTULO_SITUACAO_PEDIDO[pedido.situacao] ?? pedido.situacao
@@ -430,8 +441,12 @@ function rotuloSituacaoPedido(pedido: PedidoBaixa): string {
 function aparenciaBotaoBaixa(
   pedido: PedidoBaixa | undefined,
   temAgente: boolean,
-  /** o que o ITEM da lista sabe e o pedido não guarda: a série (o pedido só tem o rc e a mensagem) */
-  item: { serie?: string | null } = {},
+  /**
+   * O que o ITEM da lista sabe e o pedido não guarda: a série (o pedido só tem o rc e a
+   * mensagem) e quando o torre recebeu o snapshot que o lista (`recebido_em`), para saber se o
+   * ERP contradiz a resposta rc=4 do robô.
+   */
+  item: { serie?: string | null; snapshotEm?: string | Date | null } = {},
 ): {
   rotulo: string
   podeClicar: boolean
@@ -510,6 +525,33 @@ ${pedido.mensagem ?? 'sem mensagem'}` }
         const oQue = naoPendente === 'baixado'
           ? 'o manifesto não estava pendente: já estava BAIXADO'
           : 'o manifesto não estava pendente (cancelado ou inexistente)'
+        // A AFIRMAÇÃO CONTRADITA (31/10, 6642). Se o snapshot que lista este manifesto chegou
+        // DEPOIS da resposta do robô, o ERP o dá como ABERTO e o "já baixado" não se sustenta:
+        // o robô pode ter lido outro documento do mesmo número (outra série), ou a baixa foi
+        // estornada. O rótulo neutro JÁ BAIXADO escondia exatamente isso — o 6642 da série U,
+        // aberto desde 23/10, ficou três dias com ele.
+        //
+        // 'CONFERIR SÉRIE', e não 'BAIXAR': voltar ao rótulo de manifesto intocado apagaria o
+        // fato de que o robô JÁ respondeu, e a única pista ficaria no balão do mouse (a lição
+        // de 26/08 do FALHOU). Também não 'CONFERIR' sozinho, que é o estado de conferência
+        // (o Efetuar PODE ter sido clicado) — aqui nada foi clicado, só a resposta é duvidosa.
+        // Sem destaque vermelho: é dúvida, não falha. Estilo de botão normal, que convida a agir.
+        //
+        // Continua CLICÁVEL, pelo mesmo motivo do rc=4 de sempre: o robô confere o banco antes
+        // de abrir qualquer tela, então repetir não grava nada — e, com o robô atualizado, o
+        // pedido passa a levar a série e resolve (ou responde rc=17, que tem rótulo próprio).
+        if (snapshotContradizRobo(pedido.concluido_em, item.snapshotEm)) {
+          const serie = (item.serie ?? '').trim()
+          return { rotulo: 'CONFERIR SÉRIE', podeClicar: true, destaque: false,
+                   title: `O robô consultou o banco do Rodopar${quando} e respondeu (rc=4) que ${oQue}, mas o `
+                        + `snapshot do coletor de ${fmtInstante(item.snapshotEm)} — posterior a essa resposta — `
+                        + `AINDA lista este manifesto como aberto${serie ? ` (série ${serie})` : ''}. Pode ser outro `
+                        + 'documento com o mesmo número (outra série), ou a baixa pode ter sido estornada. Baixe '
+                        + 'pelo Rodopar conferindo a série, ou clique para o robô tentar de novo.'
+                        + `
+
+${pedido.mensagem ?? 'sem mensagem'}` }
+        }
         // Cancelado também sai da lista com o próximo snapshot; inexistente não sai, e
         // aí o número, a filial ou a série do pedido não batem com o Rodopar.
         const seInexistente = naoPendente === 'outro'
@@ -1062,7 +1104,8 @@ function BaixaManifestoConteudo() {
                     const validarPendente = precisaValidar(p)
                     // pedido de baixa deste manifesto, se houver — governa o botão
                     const pedidoBaixa = baixaPedidos[chaveTratativa(p) ?? ''] as PedidoBaixa | undefined
-                    const apBaixa = aparenciaBotaoBaixa(pedidoBaixa, meuRoboVivo || roboAnonimo, { serie: p.serie })
+                    const apBaixa = aparenciaBotaoBaixa(pedidoBaixa, meuRoboVivo || roboAnonimo,
+                      { serie: p.serie, snapshotEm: snapshot?.recebido_em })
                     const cliente = p.sm?.cliente || p.destino || '—'
                     const destinoLinha = [p.destino, p.destino_uf ?? p.viagem?.destino_uf].filter(Boolean).join('/')
                     return (
@@ -1398,6 +1441,7 @@ function BaixaManifestoConteudo() {
               motivosErro={motivosErro}
               podeEscrever={podeEscrever}
               pedidoBaixa={baixaPedidos[chaveTratativa(selected) ?? ''] as PedidoBaixa | undefined}
+              snapshotRecebidoEm={snapshot?.recebido_em}
               agenteFila={agenteFila}
               onLiberarConferencia={(id) => {
                 // "Conferi no Rodopar" é declaração de uma PESSOA — por isso confirma de novo:
@@ -1726,6 +1770,7 @@ function ManifestoDetailPanel({
   motivosErro,
   podeEscrever,
   pedidoBaixa,
+  snapshotRecebidoEm,
   agenteFila,
   onLiberarConferencia,
 }: {
@@ -1742,6 +1787,8 @@ function ManifestoDetailPanel({
   podeEscrever: boolean
   // pedido de baixa deste manifesto, quando existir
   pedidoBaixa?: PedidoBaixa
+  // quando o torre recebeu o snapshot que está na tela — o painel não afirma "já baixado" se ele o contradiz
+  snapshotRecebidoEm?: string | Date | null
   // quem está de plantão para executar; null = ninguém, e o pedido não anda
   agenteFila?: BatidaAgente | null
   onLiberarConferencia?: (id: string) => void
@@ -1819,7 +1866,7 @@ function ManifestoDetailPanel({
                 Baixa pelo robô
               </div>
               <div className="mt-1 grid grid-cols-2 gap-2">
-                <Metric label="Situação" value={rotuloSituacaoPedido(pedidoBaixa)} />
+                <Metric label="Situação" value={rotuloSituacaoPedido(pedidoBaixa, snapshotRecebidoEm)} />
                 <Metric label="Pedido por" value={pedidoBaixa.autor ?? '—'} />
                 <Metric label="Pedido em" value={fmtInstante(pedidoBaixa.criado_em)} />
                 {pedidoBaixa.agente && <Metric label="Executando em" value={pedidoBaixa.agente} />}
