@@ -4,7 +4,7 @@ import { ehCodigoPg } from '../../db/erro-pg'
 import { redis } from '../../redis/client'
 import {
   manifestoBaixaPedidos,
-  RC_EXIGE_CONFERENCIA,
+  situacaoDoResultado,
   SITUACOES_ATIVAS,
   users,
   type SituacaoPedido,
@@ -413,6 +413,12 @@ export async function reivindicarProximo(
  *   6 ou 11        → conferencia  (pode ter gravado — NUNCA volta pra fila sozinho)
  *   qualquer outro → falhou       (o operador pode pedir de novo)
  *
+ * rc=17 (série ambígua, 31/10) é um "qualquer outro" de propósito: o robô recusa antes de
+ * abrir o navegador, sem clicar em nada — nada a conferir. Quem não o reenfileira sozinho
+ * é a barreira A4 (`baixa-auto.barreiras.ts`), não a situação. A mensagem do robô (curta,
+ * legível pela operação) vai inteira para `mensagem`: o corte em 4000 é o mesmo limite do
+ * corpo da requisição no plugin, então o que o schema aceita nunca é encurtado aqui.
+ *
  * `efetuar_clicado` reforça: se o robô clicou Efetuar e o rc não é 0, é conferência mesmo que o
  * código não esteja na lista. Preferimos travar um documento a duplicar um lançamento.
  */
@@ -422,11 +428,7 @@ export async function registrarResultado(input: {
   mensagem?: string | null
   efetuarClicado?: boolean | null
 }): Promise<PedidoResumo | null> {
-  const exigeConferencia =
-    (RC_EXIGE_CONFERENCIA as readonly number[]).includes(input.rc) ||
-    (input.rc !== 0 && input.efetuarClicado === true)
-  const situacao: SituacaoPedido =
-    input.rc === 0 ? 'concluido' : exigeConferencia ? 'conferencia' : 'falhou'
+  const situacao = situacaoDoResultado(input.rc, input.efetuarClicado)
 
   const [row] = await db
     .update(manifestoBaixaPedidos)

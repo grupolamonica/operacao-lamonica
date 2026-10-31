@@ -17,10 +17,13 @@
  *                          do cliente: a família inteira não é avaliada neste ciclo
  *   2. guardas do ERP   -> vieram prontas do coletor, dentro de referencia_cliente
  *   3. regra do cliente -> status terminal + carimbo
- *   4. o que o robô já provou -> rc=4 ou rc=0 mais novo que o snapshot; disjuntor de falhas do dia
+ *   4. o que o robô já disse -> rc=4 ou rc=0 mais novo que o snapshot (A2); rc=17 "não
+ *                          distingo a série" sem pedido humano depois (A4, 31/10); disjuntor
+ *                          de falhas do dia (A3)
  *   5. (F3) posto ativo, teto diário, kill switch
  * Nada aqui pula direto para a 3: evidência sem fonte confiável não é evidência. O ERP
- * entrou na barreira 1 e a 4 nasceu em 13/10 — ver `baixa-auto.barreiras.ts` (70329).
+ * entrou na barreira 1 e a 4 nasceu em 13/10 — ver `baixa-auto.barreiras.ts` (70329, e o
+ * 6642 de 31/10 para a rc=17).
  */
 import { and, gte, inArray, sql } from 'drizzle-orm'
 

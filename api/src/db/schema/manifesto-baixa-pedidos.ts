@@ -86,4 +86,27 @@ export const SITUACOES_ATIVAS: readonly SituacaoPedido[] = ['na_fila', 'executan
 //: lançamento. Ver docs/CONVENCAO-ROBO.md §3 no repo do robô.
 //:   6  = conferência humana pendente (clique em aberto de execução anterior)
 //:   11 = efetuou na tela e o banco não confirmou
+//:
+//: rc=17 (série ambígua, 31/10/2026) NÃO entra aqui, de propósito: o robô sai ANTES de
+//: abrir o navegador e sem clicar em nada (efetuar_clicado=false), então não há dúvida
+//: sobre o que foi gravado — o pedido termina `falhou`, e repetir é inofensivo. Pôr o 17
+//: nesta lista travaria o manifesto numa conferência que não tem o que conferir.
 export const RC_EXIGE_CONFERENCIA = [6, 11] as const
+
+/**
+ * A situação final do pedido a partir do que o robô devolveu. A regra de
+ * `registrarResultado`, isolada para ser testável sem banco:
+ *
+ *   rc=0                                  → concluido
+ *   rc 6/11, ou rc≠0 com Efetuar clicado   → conferencia  (pode ter gravado)
+ *   qualquer outro                        → falhou
+ *
+ * `efetuarClicado` só trava quando é `true`: ausente/null/false não promovem nada — um
+ * robô antigo que não manda o campo cai no `falhou`, que é o que a lista de rc já dava.
+ */
+export function situacaoDoResultado(rc: number, efetuarClicado?: boolean | null): SituacaoPedido {
+  if (rc === 0) return 'concluido'
+  const exigeConferencia =
+    (RC_EXIGE_CONFERENCIA as readonly number[]).includes(rc) || efetuarClicado === true
+  return exigeConferencia ? 'conferencia' : 'falhou'
+}
